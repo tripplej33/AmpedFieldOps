@@ -80,6 +80,23 @@ done
 read -p "Enter company name [AmpedFieldOps]: " COMPANY_NAME
 COMPANY_NAME=${COMPANY_NAME:-AmpedFieldOps}
 
+echo ""
+echo -e "${YELLOW}Network Configuration${NC}"
+echo "---------------------"
+echo "If accessing from another machine (e.g., running in a VM/LXC),"
+echo "enter the server's IP address. Otherwise press Enter for localhost."
+echo ""
+read -p "Server IP address [localhost]: " SERVER_IP
+SERVER_IP=${SERVER_IP:-localhost}
+
+# Update .env with server IP
+if [ "$SERVER_IP" != "localhost" ]; then
+    sed -i "s|VITE_API_URL=http://localhost:3001|VITE_API_URL=http://$SERVER_IP:3001|" .env
+    sed -i "s|FRONTEND_URL=http://localhost:3000|FRONTEND_URL=http://$SERVER_IP:3000|" .env
+    sed -i "s|FRONTEND_URL=http://localhost:5173|FRONTEND_URL=http://$SERVER_IP:3000|" .env
+    echo -e "${GREEN}✓ Configured for remote access at $SERVER_IP${NC}"
+fi
+
 # Create uploads directories
 echo -e "${YELLOW}Creating upload directories...${NC}"
 mkdir -p backend/uploads/logos
@@ -155,15 +172,15 @@ echo -e "${GREEN}╔════════════════════
 echo "║              Installation Complete! 🎉                     ║"
 echo "╚═══════════════════════════════════════════════════════════╝${NC}"
 echo ""
-echo -e "Access AmpedFieldOps at: ${GREEN}http://localhost:3000${NC}"
-echo -e "API endpoint: ${GREEN}http://localhost:3001${NC}"
+echo -e "Access AmpedFieldOps at: ${GREEN}http://$SERVER_IP:3000${NC}"
+echo -e "API endpoint: ${GREEN}http://$SERVER_IP:3001${NC}"
 echo ""
 echo -e "Login with:"
 echo -e "  Email: ${YELLOW}$ADMIN_EMAIL${NC}"
 echo -e "  Password: ${YELLOW}(the password you entered)${NC}"
 echo ""
 echo -e "${YELLOW}Next steps:${NC}"
-echo "  1. Open http://localhost:3000 in your browser"
+echo "  1. Open http://$SERVER_IP:3000 in your browser"
 echo "  2. Log in with your admin credentials"
 echo "  3. Configure Xero integration in Settings (optional)"
 echo "  4. Add your first client and project"
