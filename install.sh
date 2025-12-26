@@ -39,13 +39,13 @@ if [ ! -f .env ]; then
     echo -e "${YELLOW}Creating .env file from template...${NC}"
     cp .env.example .env
     
-    # Generate secure JWT secret
-    JWT_SECRET=$(openssl rand -base64 32)
-    sed -i "s/your-super-secret-jwt-key-change-in-production-min-32-chars/$JWT_SECRET/" .env
+    # Generate secure JWT secret (alphanumeric only to avoid sed issues)
+    JWT_SECRET=$(openssl rand -base64 48 | tr -dc 'a-zA-Z0-9' | head -c 32)
+    sed -i "s|your-super-secret-jwt-key-change-in-production-min-32-chars|$JWT_SECRET|" .env
     
     # Generate secure DB password
-    DB_PASSWORD=$(openssl rand -base64 16 | tr -dc 'a-zA-Z0-9')
-    sed -i "s/changeme123/$DB_PASSWORD/g" .env
+    DB_PASSWORD=$(openssl rand -base64 24 | tr -dc 'a-zA-Z0-9' | head -c 16)
+    sed -i "s|changeme123|$DB_PASSWORD|g" .env
     
     echo -e "${GREEN}✓ .env file created with secure secrets${NC}"
 else
