@@ -1,0 +1,190 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@700;800&family=JetBrains+Mono:wght@400;500&family=Inter:wght@400;600&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    /* Technical Command Center Color System */
+    --background: 210 15% 10%;
+    --foreground: 210 20% 92%;
+
+    --card: 210 15% 12%;
+    --card-foreground: 210 20% 92%;
+
+    --popover: 210 15% 12%;
+    --popover-foreground: 210 20% 92%;
+
+    --primary: 190 100% 50%;
+    --primary-foreground: 210 15% 10%;
+
+    --secondary: 45 100% 52%;
+    --secondary-foreground: 210 15% 10%;
+
+    --muted: 210 15% 20%;
+    --muted-foreground: 210 10% 65%;
+
+    --accent: 130 100% 54%;
+    --accent-foreground: 210 15% 10%;
+
+    --destructive: 0 84.2% 60.2%;
+    --destructive-foreground: 210 20% 92%;
+
+    --border: 210 15% 15%;
+    --input: 210 15% 15%;
+    --ring: 190 100% 50%;
+
+    --radius: 0.5rem;
+
+    --sidebar-background: 210 15% 8%;
+    --sidebar-foreground: 210 20% 92%;
+    --sidebar-primary: 190 100% 50%;
+    --sidebar-primary-foreground: 210 15% 10%;
+    --sidebar-accent: 210 15% 15%;
+    --sidebar-accent-foreground: 210 20% 92%;
+    --sidebar-border: 210 15% 12%;
+    --sidebar-ring: 190 100% 50%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  
+  body {
+    @apply bg-background text-foreground;
+    font-family: 'Inter', sans-serif;
+    background-image: 
+      radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.03) 1px, transparent 0);
+    background-size: 40px 40px;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Space Grotesk', sans-serif;
+    font-weight: 700;
+  }
+
+  .font-mono {
+    font-family: 'JetBrains Mono', monospace;
+  }
+}
+
+@layer utilities {
+  .glow-primary {
+    box-shadow: 0 0 12px rgba(0, 212, 255, 0.3);
+  }
+
+  .glow-warning {
+    box-shadow: 0 0 12px rgba(255, 214, 10, 0.3);
+  }
+
+  .glow-success {
+    box-shadow: 0 0 12px rgba(57, 255, 20, 0.3);
+  }
+
+  .text-electric {
+    color: #00d4ff;
+  }
+
+  .text-voltage {
+    color: #39ff14;
+  }
+
+  .text-warning {
+    color: #ffd60a;
+  }
+
+  .bg-electric {
+    background-color: #00d4ff;
+  }
+
+  .bg-voltage {
+    background-color: #39ff14;
+  }
+
+  .bg-warning {
+    background-color: #ffd60a;
+  }
+
+  .border-electric {
+    border-color: #00d4ff;
+  }
+
+  @keyframes button-press {
+    0% {
+      transform: scale(1);
+    }
+    50% {
+      transform: scale(0.95);
+    }
+    100% {
+      transform: scale(1);
+    }
+  }
+
+  @keyframes slide-up-fade {
+    0% {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    100% {
+      opacity: 0;
+      transform: translateY(-20px);
+    }
+  }
+
+  @keyframes elastic-bounce {
+    0% {
+      transform: scale(0);
+    }
+    50% {
+      transform: scale(1.2);
+    }
+    100% {
+      transform: scale(1);
+    }
+  }
+
+  @keyframes screen-shake {
+    0%, 100% {
+      transform: translateX(0);
+    }
+    25% {
+      transform: translateX(-2px);
+    }
+    75% {
+      transform: translateX(2px);
+    }
+  }
+
+  @keyframes rotate {
+    from {
+      transform: rotate(0deg);
+    }
+    to {
+      transform: rotate(360deg);
+    }
+  }
+
+  .animate-button-press {
+    animation: button-press 200ms ease-out;
+  }
+
+  .animate-slide-up-fade {
+    animation: slide-up-fade 300ms ease-out forwards;
+  }
+
+  .animate-elastic-bounce {
+    animation: elastic-bounce 400ms ease-out;
+  }
+
+  .animate-screen-shake {
+    animation: screen-shake 200ms ease-out;
+  }
+
+  .animate-rotate {
+    animation: rotate 1s linear infinite;
+  }
+}

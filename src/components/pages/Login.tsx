@@ -1,0 +1,157 @@
+import { useState, useEffect } from 'react';
+import { useNavigate, Link } from 'react-router-dom';
+import { useAuth } from '@/contexts/AuthContext';
+import { api } from '@/lib/api';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Zap, Eye, EyeOff, Loader2 } from 'lucide-react';
+
+export default function Login() {
+  const navigate = useNavigate();
+  const { login, isAuthenticated } = useAuth();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [branding, setBranding] = useState<{ company_name: string; company_logo: string | null }>({
+    company_name: 'AmpedFieldOps',
+    company_logo: null
+  });
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      navigate('/');
+    }
+  }, [isAuthenticated, navigate]);
+
+  useEffect(() => {
+    const loadBranding = async () => {
+      try {
+        const data = await api.getBranding();
+        setBranding(data);
+      } catch (error) {
+        // Use defaults
+      }
+    };
+    loadBranding();
+  }, []);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    setIsLoading(true);
+
+    try {
+      await login(email, password);
+      navigate('/');
+    } catch (err: any) {
+      setError(err.message || 'Login failed');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-background flex items-center justify-center p-4">
+      <Card className="w-full max-w-md p-8 bg-card border-border">
+        {/* Logo */}
+        <div className="flex flex-col items-center mb-8">
+          {branding.company_logo ? (
+            <img 
+              src={branding.company_logo} 
+              alt={branding.company_name}
+              className="h-16 w-auto mb-4"
+            />
+          ) : (
+            <div className="w-16 h-16 rounded-xl bg-electric flex items-center justify-center mb-4">
+              <Zap className="w-10 h-10 text-background" />
+            </div>
+          )}
+          <h1 className="text-2xl font-bold text-electric">{branding.company_name}</h1>
+          <p className="text-sm text-muted-foreground mt-1">Sign in to your account</p>
+        </div>
+
+        {/* Error */}
+        {error && (
+          <div className="mb-4 p-3 rounded-lg bg-destructive/10 border border-destructive/20">
+            <p className="text-sm text-destructive">{error}</p>
+          </div>
+        )}
+
+        {/* Form */}
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <Label htmlFor="email" className="font-mono text-xs uppercase tracking-wider">
+              Email
+            </Label>
+            <Input
+              id="email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@company.com"
+              required
+              className="mt-2 focus:border-electric focus:glow-primary"
+            />
+          </div>
+
+          <div>
+            <Label htmlFor="password" className="font-mono text-xs uppercase tracking-wider">
+              Password
+            </Label>
+            <div className="relative mt-2">
+              <Input
+                id="password"
+                type={showPassword ? 'text' : 'password'}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                required
+                className="pr-10 focus:border-electric focus:glow-primary"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              >
+                {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-end">
+            <Link 
+              to="/forgot-password" 
+              className="text-sm text-electric hover:underline"
+            >
+              Forgot password?
+            </Link>
+          </div>
+
+          <Button
+            type="submit"
+            disabled={isLoading}
+            className="w-full bg-electric text-background hover:bg-electric/90 glow-primary"
+          >
+            {isLoading ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Signing in...
+              </>
+            ) : (
+              'Sign in'
+            )}
+          </Button>
+        </form>
+
+        {/* Version */}
+        <p className="mt-8 text-center text-xs font-mono text-muted-foreground">
+          v2.0.0
+        </p>
+      </Card>
+    </div>
+  );
+}
