@@ -1,29 +1,74 @@
+import { useState, useEffect } from 'react';
 import Header from '@/components/layout/Header';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { mockProjects, mockCostCenters, mockTimesheetEntries } from '@/lib/mockData';
-import { Download, Filter, TrendingUp } from 'lucide-react';
+import { api } from '@/lib/api';
+import { CostCenter, Project, TimesheetEntry } from '@/types';
+import { Download, Filter, TrendingUp, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-export default function Reports() {
-  // Calculate cost center metrics
-  const costCenterMetrics = mockCostCenters.map((cc) => {
-    const ccProjects = mockProjects.filter((p) => p.costCenters.includes(cc.id));
-    const ccEntries = mockTimesheetEntries.filter((e) => e.costCenter === cc.code);
-    const totalHours = ccEntries.reduce((sum, e) => sum + e.hours, 0);
-    const totalBudget = ccProjects.reduce((sum, p) => sum + p.budget, 0);
-    const totalActual = ccProjects.reduce((sum, p) => sum + p.actualCost, 0);
-    const utilization = totalBudget > 0 ? (totalActual / totalBudget) * 100 : 0;
+interface CostCenterMetric extends CostCenter {
+  totalHours: number;
+  totalBudget: number;
+  totalActual: number;
+  utilization: number;
+  projectCount: number;
+}
 
-    return {
-      ...cc,
-      totalHours,
-      totalBudget,
-      totalActual,
-      utilization,
-      projectCount: ccProjects.length,
-    };
-  });
+export default function Reports() {
+  const [costCenterMetrics, setCostCenterMetrics] = useState<CostCenterMetric[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    loadReportData();
+  }, []);
+
+  const loadReportData = async () => {
+    try {
+      const [costCenters, projects, timesheets] = await Promise.all([
+        api.getCostCenters(),
+        api.getProjects(),
+        api.getTimesheets(),
+      ]);
+
+      const metrics = costCenters.map((cc: CostCenter) => {
+        const ccProjects = projects.filter((p: Project) => 
+          (p.cost_center_codes || []).includes(cc.code)
+        );
+        const ccEntries = timesheets.filter((e: TimesheetEntry) => e.cost_center_code === cc.code);
+        const totalHours = ccEntries.reduce((sum: number, e: TimesheetEntry) => sum + parseFloat(String(e.hours)), 0);
+        const totalBudget = ccProjects.reduce((sum: number, p: Project) => sum + (p.budget || 0), 0);
+        const totalActual = ccProjects.reduce((sum: number, p: Project) => sum + (p.actual_cost || 0), 0);
+        const utilization = totalBudget > 0 ? (totalActual / totalBudget) * 100 : 0;
+
+        return {
+          ...cc,
+          totalHours,
+          totalBudget,
+          totalActual,
+          utilization,
+          projectCount: ccProjects.length,
+        };
+      });
+
+      setCostCenterMetrics(metrics);
+    } catch (error) {
+      console.error('Failed to load report data:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <>
+        <Header title="Cost Center Reports" subtitle="Financial and resource allocation analysis" />
+        <div className="flex items-center justify-center h-64">
+          <Loader2 className="w-8 h-8 animate-spin text-electric" />
+        </div>
+      </>
+    );
+  }
 
   return (
     <>
@@ -88,9 +133,9 @@ export default function Reports() {
           <Card className="p-6 bg-card border-border">
             <p className="text-sm font-mono text-muted-foreground uppercase tracking-wider mb-2">Avg Utilization</p>
             <p className="text-3xl font-bold font-mono text-foreground">
-              {Math.round(
+              {costCenterMetrics.length > 0 ? Math.round(
                 costCenterMetrics.reduce((sum, cc) => sum + cc.utilization, 0) / costCenterMetrics.length
-              )}
+              ) : 0}
               %
             </p>
             <div className="flex items-center gap-1 mt-2">

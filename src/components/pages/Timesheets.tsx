@@ -1,32 +1,31 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Header from '@/components/layout/Header';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { mockTimesheetEntries, mockProjects, mockClients } from '@/lib/mockData';
-import { TimesheetEntry, ActivityType } from '@/types';
-import { Plus, Calendar, Clock, Wrench, CheckCircle, Pencil, Trash2 } from 'lucide-react';
+import { api } from '@/lib/api';
+import { TimesheetEntry } from '@/types';
+import { Plus, Calendar, Clock, Wrench, Pencil, Trash2, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-const activityIcons: Record<ActivityType, React.ElementType> = {
-  installation: Wrench,
-  repair: Wrench,
-  maintenance: CheckCircle,
-  inspection: CheckCircle,
-  consultation: Pencil,
-};
-
-const activityColors: Record<ActivityType, string> = {
-  installation: 'text-electric border-electric/30 bg-electric/10',
-  repair: 'text-warning border-warning/30 bg-warning/10',
-  maintenance: 'text-voltage border-voltage/30 bg-voltage/10',
-  inspection: 'text-blue-400 border-blue-400/30 bg-blue-400/10',
-  consultation: 'text-purple-400 border-purple-400/30 bg-purple-400/10',
-};
-
 export default function Timesheets() {
-  const [entries] = useState<TimesheetEntry[]>(mockTimesheetEntries);
-  const [selectedDate, setSelectedDate] = useState(new Date());
+  const [entries, setEntries] = useState<TimesheetEntry[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    loadTimesheets();
+  }, []);
+
+  const loadTimesheets = async () => {
+    try {
+      const data = await api.getTimesheets();
+      setEntries(data);
+    } catch (error) {
+      console.error('Failed to load timesheets:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   // Group entries by date
   const groupedEntries = entries.reduce((acc, entry) => {
@@ -37,6 +36,18 @@ export default function Timesheets() {
   }, {} as Record<string, TimesheetEntry[]>);
 
   const dates = Object.keys(groupedEntries).sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
+  const totalHoursThisWeek = entries.reduce((sum, e) => sum + parseFloat(String(e.hours)), 0);
+
+  if (isLoading) {
+    return (
+      <>
+        <Header title="Timesheet Management" subtitle="Track and manage team hours and activities" />
+        <div className="flex items-center justify-center h-64">
+          <Loader2 className="w-8 h-8 animate-spin text-electric" />
+        </div>
+      </>
+    );
+  }
 
   return (
     <>
@@ -51,7 +62,7 @@ export default function Timesheets() {
               This Week
             </Button>
             <div className="text-sm font-mono text-muted-foreground">
-              Total Hours: <span className="text-foreground font-bold">47.5</span>
+              Total Hours: <span className="text-foreground font-bold">{totalHoursThisWeek.toFixed(1)}</span>
             </div>
           </div>
           <Button className="bg-electric text-background hover:bg-electric/90 glow-primary">
@@ -75,7 +86,7 @@ export default function Timesheets() {
               date.setDate(date.getDate() - date.getDay() + i + 1);
               const dateStr = date.toISOString().split('T')[0];
               const dayEntries = groupedEntries[dateStr] || [];
-              const totalHours = dayEntries.reduce((sum, e) => sum + e.hours, 0);
+              const totalHours = dayEntries.reduce((sum, e) => sum + parseFloat(String(e.hours)), 0);
               const isToday = dateStr === new Date().toISOString().split('T')[0];
 
               return (
@@ -102,9 +113,14 @@ export default function Timesheets() {
 
         {/* Timesheet Entries */}
         <div className="space-y-6">
+          {dates.length === 0 && (
+            <Card className="p-8 bg-card border-border">
+              <p className="text-center text-muted-foreground">No timesheet entries found</p>
+            </Card>
+          )}
           {dates.map((date) => {
             const dateEntries = groupedEntries[date];
-            const totalHours = dateEntries.reduce((sum, e) => sum + e.hours, 0);
+            const totalHours = dateEntries.reduce((sum, e) => sum + parseFloat(String(e.hours)), 0);
 
             return (
               <div key={date}>
@@ -124,62 +140,54 @@ export default function Timesheets() {
                 </div>
 
                 <div className="space-y-3">
-                  {dateEntries.map((entry) => {
-                    const ActivityIcon = activityIcons[entry.activityType];
-                    return (
-                      <Card
-                        key={entry.id}
-                        className="p-4 bg-card border-border hover:border-electric transition-all group"
-                      >
-                        <div className="flex items-start gap-4">
-                          <div
-                            className={cn(
-                              'w-10 h-10 rounded-lg border flex items-center justify-center',
-                              activityColors[entry.activityType]
-                            )}
-                          >
-                            <ActivityIcon className="w-5 h-5" />
+                  {dateEntries.map((entry) => (
+                    <Card
+                      key={entry.id}
+                      className="p-4 bg-card border-border hover:border-electric transition-all group"
+                    >
+                      <div className="flex items-start gap-4">
+                        <div className="w-10 h-10 rounded-lg border-2 flex items-center justify-center bg-electric/20 border-electric text-electric">
+                          <Wrench className="w-5 h-5" />
+                        </div>
+
+                        <div className="flex-1">
+                          <div className="flex items-start justify-between mb-2">
+                            <div>
+                              <h4 className="font-semibold text-foreground group-hover:text-electric transition-colors">
+                                {entry.project_name}
+                              </h4>
+                              <p className="text-sm text-muted-foreground">
+                                {entry.client_name} • {entry.user_name}
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Badge variant="outline" className="font-mono">
+                                {entry.cost_center_code}
+                              </Badge>
+                              <span className="text-lg font-bold font-mono text-electric">{entry.hours}h</span>
+                            </div>
                           </div>
 
-                          <div className="flex-1">
-                            <div className="flex items-start justify-between mb-2">
-                              <div>
-                                <h4 className="font-semibold text-foreground group-hover:text-electric transition-colors">
-                                  {entry.projectName}
-                                </h4>
-                                <p className="text-sm text-muted-foreground">
-                                  {entry.clientName} • {entry.userName}
-                                </p>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <Badge variant="outline" className="font-mono">
-                                  {entry.costCenter}
-                                </Badge>
-                                <span className="text-lg font-bold font-mono text-electric">{entry.hours}h</span>
-                              </div>
-                            </div>
+                          <p className="text-sm text-muted-foreground mb-3">{entry.notes}</p>
 
-                            <p className="text-sm text-muted-foreground mb-3">{entry.notes}</p>
+                          <div className="flex items-center justify-between">
+                            <Badge className="capitalize bg-electric/20 text-electric border-electric/30">
+                              {entry.activity_type_name}
+                            </Badge>
 
-                            <div className="flex items-center justify-between">
-                              <Badge className={cn('capitalize', activityColors[entry.activityType])}>
-                                {entry.activityType}
-                              </Badge>
-
-                              <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <Button variant="ghost" size="sm" className="h-8">
-                                  <Pencil className="w-3 h-3" />
-                                </Button>
-                                <Button variant="ghost" size="sm" className="h-8 text-destructive hover:text-destructive">
-                                  <Trash2 className="w-3 h-3" />
-                                </Button>
-                              </div>
+                            <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <Button variant="ghost" size="sm" className="h-8">
+                                <Pencil className="w-3 h-3" />
+                              </Button>
+                              <Button variant="ghost" size="sm" className="h-8 text-destructive hover:text-destructive">
+                                <Trash2 className="w-3 h-3" />
+                              </Button>
                             </div>
                           </div>
                         </div>
-                      </Card>
-                    );
-                  })}
+                      </div>
+                    </Card>
+                  ))}
                 </div>
               </div>
             );

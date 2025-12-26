@@ -1,22 +1,49 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Header from '@/components/layout/Header';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
-import { mockClients } from '@/lib/mockData';
+import { api } from '@/lib/api';
 import { Client } from '@/types';
-import { Search, Plus, Phone, Mail, MapPin, Clock, Briefcase } from 'lucide-react';
+import { Search, Plus, Phone, Mail, MapPin, Clock, Briefcase, Loader2 } from 'lucide-react';
 
 export default function Clients() {
-  const [clients] = useState<Client[]>(mockClients);
+  const [clients, setClients] = useState<Client[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    loadClients();
+  }, []);
+
+  const loadClients = async () => {
+    try {
+      const data = await api.getClients({ search: searchQuery || undefined });
+      setClients(data);
+    } catch (error) {
+      console.error('Failed to load clients:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const filteredClients = clients.filter((client) =>
     client.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    client.contactName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    client.location.toLowerCase().includes(searchQuery.toLowerCase())
+    (client.contact_name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
+    (client.location || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
+
+  if (isLoading) {
+    return (
+      <>
+        <Header title="Client Directory" subtitle="Manage client relationships and contacts" />
+        <div className="flex items-center justify-center h-64">
+          <Loader2 className="w-8 h-8 animate-spin text-electric" />
+        </div>
+      </>
+    );
+  }
 
   return (
     <>
@@ -52,7 +79,7 @@ export default function Clients() {
                   <h3 className="font-bold text-lg text-foreground group-hover:text-electric transition-colors">
                     {client.name}
                   </h3>
-                  <p className="text-sm text-muted-foreground mt-1">{client.contactName}</p>
+                  <p className="text-sm text-muted-foreground mt-1">{client.contact_name}</p>
                 </div>
                 <Badge
                   variant={client.status === 'active' ? 'default' : 'secondary'}
@@ -83,23 +110,23 @@ export default function Clients() {
                   <div className="flex items-center justify-center gap-1 mb-1">
                     <Briefcase className="w-3 h-3 text-electric" />
                   </div>
-                  <p className="text-lg font-bold font-mono text-foreground">{client.activeProjects}</p>
+                  <p className="text-lg font-bold font-mono text-foreground">{client.active_projects || 0}</p>
                   <p className="text-xs text-muted-foreground">Projects</p>
                 </div>
                 <div className="text-center">
                   <div className="flex items-center justify-center gap-1 mb-1">
                     <Clock className="w-3 h-3 text-electric" />
                   </div>
-                  <p className="text-lg font-bold font-mono text-foreground">{client.totalHours}</p>
+                  <p className="text-lg font-bold font-mono text-foreground">{client.total_hours || 0}</p>
                   <p className="text-xs text-muted-foreground">Hours</p>
                 </div>
                 <div className="text-center">
                   <p className="text-xs text-muted-foreground mb-1">Last Contact</p>
                   <p className="text-xs font-mono text-foreground">
-                    {new Date(client.lastContact).toLocaleDateString('en-US', {
+                    {client.last_contact ? new Date(client.last_contact).toLocaleDateString('en-US', {
                       month: 'short',
                       day: 'numeric',
-                    })}
+                    }) : '-'}
                   </p>
                 </div>
               </div>

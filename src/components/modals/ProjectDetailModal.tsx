@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Project } from '@/types';
+import { useState, useEffect } from 'react';
+import { Project, TimesheetEntry } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
@@ -12,8 +12,8 @@ import {
 } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card } from '@/components/ui/card';
-import { mockTimesheetEntries, mockCostCenters } from '@/lib/mockData';
-import { DollarSign, Clock, Calendar, Send, TrendingUp, Wrench, Users } from 'lucide-react';
+import { api } from '@/lib/api';
+import { DollarSign, Clock, Calendar, Send, TrendingUp, Wrench, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface ProjectDetailModalProps {
@@ -24,23 +24,44 @@ interface ProjectDetailModalProps {
 
 export default function ProjectDetailModal({ project, open, onOpenChange }: ProjectDetailModalProps) {
   const [isSyncing, setIsSyncing] = useState(false);
+  const [projectEntries, setProjectEntries] = useState<TimesheetEntry[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    if (project && open) {
+      loadProjectTimesheets();
+    }
+  }, [project, open]);
+
+  const loadProjectTimesheets = async () => {
+    if (!project) return;
+    setIsLoading(true);
+    try {
+      const timesheets = await api.getTimesheets({ project_id: project.id });
+      setProjectEntries(timesheets);
+    } catch (error) {
+      console.error('Failed to load project timesheets:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   if (!project) return null;
 
-  const progress = (project.actualCost / project.budget) * 100;
+  const progress = project.budget > 0 ? ((project.actual_cost || 0) / project.budget) * 100 : 0;
   const isOverBudget = progress > 100;
 
-  const projectEntries = mockTimesheetEntries.filter((e) => e.projectId === project.id);
-  const totalHours = projectEntries.reduce((sum, e) => sum + e.hours, 0);
+  const totalHours = projectEntries.reduce((sum, e) => sum + parseFloat(String(e.hours)), 0);
 
   // Group entries by cost center
   const entriesByCostCenter = projectEntries.reduce((acc, entry) => {
-    if (!acc[entry.costCenter]) {
-      acc[entry.costCenter] = [];
+    const cc = entry.cost_center_code || 'Unknown';
+    if (!acc[cc]) {
+      acc[cc] = [];
     }
-    acc[entry.costCenter].push(entry);
+    acc[cc].push(entry);
     return acc;
-  }, {} as Record<string, typeof projectEntries>);
+  }, {} as Record<string, TimesheetEntry[]>);
 
   const handleSendToXero = () => {
     setIsSyncing(true);
@@ -59,7 +80,7 @@ export default function ProjectDetailModal({ project, open, onOpenChange }: Proj
             <div>
               <DialogTitle className="text-2xl font-bold">{project.name}</DialogTitle>
               <DialogDescription className="font-mono text-sm mt-1">
-                {project.code} • {project.clientName}
+                {project.code} • {project.client_name}
               </DialogDescription>
             </div>
             <Badge
@@ -95,7 +116,7 @@ export default function ProjectDetailModal({ project, open, onOpenChange }: Proj
                   <TrendingUp className="w-4 h-4 text-muted-foreground" />
                   <span className="text-sm font-mono text-muted-foreground uppercase">Actual</span>
                 </div>
-                <p className="text-2xl font-bold font-mono text-electric">${project.actualCost.toLocaleString()}</p>
+                <p className="text-2xl font-bold font-mono text-electric">${(project.actual_cost || 0).toLocaleString()}</p>
               </div>
               <div>
                 <div className="flex items-center gap-2 mb-2">
@@ -133,59 +154,77 @@ export default function ProjectDetailModal({ project, open, onOpenChange }: Proj
 
             {/* Cost Breakdown */}
             <TabsContent value="breakdown" className="space-y-4 mt-4">
-              {Object.entries(entriesByCostCenter).map(([costCenter, entries]) => {
-                const totalCCHours = entries.reduce((sum, e) => sum + e.hours, 0);
-                const cc = mockCostCenters.find((c) => c.code === costCenter);
-                return (
-                  <Card key={costCenter} className="p-4 bg-card border-border">
-                    <div className="flex items-center justify-between mb-3">
-                      <div>
-                        <h4 className="font-mono font-semibold text-foreground">{costCenter}</h4>
-                        <p className="text-xs text-muted-foreground">{cc?.name || 'Unknown Cost Center'}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="font-mono font-bold text-electric">{totalCCHours}h</p>
-                        <p className="text-xs text-muted-foreground">{entries.length} entries</p>
-                      </div>
-                    </div>
-                    <div className="space-y-2">
-                      {entries.slice(0, 3).map((entry) => (
-                        <div key={entry.id} className="flex items-center justify-between text-sm py-1">
-                          <span className="text-muted-foreground">{entry.userName}</span>
-                          <span className="font-mono text-foreground">{entry.hours}h</span>
+              {isLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="w-6 h-6 animate-spin text-electric" />
+                </div>
+              ) : Object.entries(entriesByCostCenter).length === 0 ? (
+                <Card className="p-6 bg-card border-border">
+                  <p className="text-center text-muted-foreground">No timesheet entries found</p>
+                </Card>
+              ) : (
+                Object.entries(entriesByCostCenter).map(([costCenter, entries]) => {
+                  const totalCCHours = entries.reduce((sum, e) => sum + parseFloat(String(e.hours)), 0);
+                  return (
+                    <Card key={costCenter} className="p-4 bg-card border-border">
+                      <div className="flex items-center justify-between mb-3">
+                        <div>
+                          <h4 className="font-mono font-semibold text-foreground">{costCenter}</h4>
                         </div>
-                      ))}
-                      {entries.length > 3 && (
-                        <p className="text-xs text-muted-foreground text-center pt-1">
-                          +{entries.length - 3} more entries
-                        </p>
-                      )}
-                    </div>
-                  </Card>
-                );
-              })}
+                        <div className="text-right">
+                          <p className="font-mono font-bold text-electric">{totalCCHours}h</p>
+                          <p className="text-xs text-muted-foreground">{entries.length} entries</p>
+                        </div>
+                      </div>
+                      <div className="space-y-2">
+                        {entries.slice(0, 3).map((entry) => (
+                          <div key={entry.id} className="flex items-center justify-between text-sm py-1">
+                            <span className="text-muted-foreground">{entry.user_name}</span>
+                            <span className="font-mono text-foreground">{entry.hours}h</span>
+                          </div>
+                        ))}
+                        {entries.length > 3 && (
+                          <p className="text-xs text-muted-foreground text-center pt-1">
+                            +{entries.length - 3} more entries
+                          </p>
+                        )}
+                      </div>
+                    </Card>
+                  );
+                })
+              )}
             </TabsContent>
 
             {/* Timesheets */}
             <TabsContent value="timesheets" className="space-y-3 mt-4">
-              {projectEntries.map((entry) => (
-                <Card key={entry.id} className="p-4 bg-card border-border">
-                  <div className="flex items-center justify-between mb-2">
-                    <div>
-                      <p className="font-semibold text-foreground">{entry.userName}</p>
-                      <p className="text-xs text-muted-foreground font-mono">{entry.date}</p>
-                    </div>
-                    <div className="text-right">
-                      <p className="font-mono font-bold text-electric">{entry.hours}h</p>
-                      <Badge variant="outline" className="text-xs mt-1">
-                        {entry.costCenter}
-                      </Badge>
-                    </div>
-                  </div>
-                  <p className="text-sm text-muted-foreground">{entry.notes}</p>
-                  <Badge className="mt-2 capitalize text-xs">{entry.activityType}</Badge>
+              {isLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="w-6 h-6 animate-spin text-electric" />
+                </div>
+              ) : projectEntries.length === 0 ? (
+                <Card className="p-6 bg-card border-border">
+                  <p className="text-center text-muted-foreground">No timesheet entries found</p>
                 </Card>
-              ))}
+              ) : (
+                projectEntries.map((entry) => (
+                  <Card key={entry.id} className="p-4 bg-card border-border">
+                    <div className="flex items-center justify-between mb-2">
+                      <div>
+                        <p className="font-semibold text-foreground">{entry.user_name}</p>
+                        <p className="text-xs text-muted-foreground font-mono">{entry.date}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-mono font-bold text-electric">{entry.hours}h</p>
+                        <Badge variant="outline" className="text-xs mt-1">
+                          {entry.cost_center_code}
+                        </Badge>
+                      </div>
+                    </div>
+                    <p className="text-sm text-muted-foreground">{entry.notes}</p>
+                    <Badge className="mt-2 capitalize text-xs">{entry.activity_type_name}</Badge>
+                  </Card>
+                ))
+              )}
             </TabsContent>
 
             {/* Details */}
@@ -197,17 +236,17 @@ export default function ProjectDetailModal({ project, open, onOpenChange }: Proj
                     <div className="flex-1">
                       <p className="text-xs text-muted-foreground">Start Date</p>
                       <p className="font-mono text-sm">
-                        {new Date(project.startDate).toLocaleDateString()}
+                        {project.start_date ? new Date(project.start_date).toLocaleDateString() : 'Not set'}
                       </p>
                     </div>
                   </div>
-                  {project.endDate && (
+                  {project.end_date && (
                     <div className="flex items-center gap-3">
                       <Calendar className="w-4 h-4 text-muted-foreground" />
                       <div className="flex-1">
                         <p className="text-xs text-muted-foreground">End Date</p>
                         <p className="font-mono text-sm">
-                          {new Date(project.endDate).toLocaleDateString()}
+                          {new Date(project.end_date).toLocaleDateString()}
                         </p>
                       </div>
                     </div>
@@ -217,9 +256,9 @@ export default function ProjectDetailModal({ project, open, onOpenChange }: Proj
                     <div className="flex-1">
                       <p className="text-xs text-muted-foreground">Cost Centers</p>
                       <div className="flex flex-wrap gap-1 mt-1">
-                        {project.costCenters.map((cc) => (
+                        {(project.cost_center_codes || []).map((cc) => (
                           <Badge key={cc} variant="outline" className="text-xs">
-                            CC-{cc.padStart(3, '0')}
+                            {cc}
                           </Badge>
                         ))}
                       </div>

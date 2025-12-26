@@ -1,11 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Header from '@/components/layout/Header';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { mockProjects } from '@/lib/mockData';
+import { api } from '@/lib/api';
 import { Project, ProjectStatus } from '@/types';
-import { Plus, MoreVertical, TrendingUp, Clock, DollarSign } from 'lucide-react';
+import { Plus, MoreVertical, TrendingUp, Clock, DollarSign, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import {
   DropdownMenu,
@@ -23,7 +23,7 @@ const statusColumns: { status: ProjectStatus; label: string; color: string }[] =
 ];
 
 function ProjectCard({ project, onClick }: { project: Project; onClick: () => void }) {
-  const progress = (project.actualCost / project.budget) * 100;
+  const progress = project.budget > 0 ? ((project.actual_cost || 0) / project.budget) * 100 : 0;
   const isOverBudget = progress > 100;
 
   return (
@@ -50,7 +50,7 @@ function ProjectCard({ project, onClick }: { project: Project; onClick: () => vo
         </DropdownMenu>
       </div>
 
-      <p className="text-sm text-muted-foreground mb-4">{project.clientName}</p>
+      <p className="text-sm text-muted-foreground mb-4">{project.client_name}</p>
 
       {/* Progress Ring */}
       <div className="flex items-center gap-4 mb-4">
@@ -89,21 +89,21 @@ function ProjectCard({ project, onClick }: { project: Project; onClick: () => vo
           <div className="flex items-center gap-2 text-xs">
             <DollarSign className="w-3 h-3 text-muted-foreground" />
             <span className="font-mono text-muted-foreground">
-              ${project.actualCost.toLocaleString()} / ${project.budget.toLocaleString()}
+              ${(project.actual_cost || 0).toLocaleString()} / ${project.budget.toLocaleString()}
             </span>
           </div>
           <div className="flex items-center gap-2 text-xs">
             <Clock className="w-3 h-3 text-muted-foreground" />
-            <span className="font-mono text-muted-foreground">{project.hoursLogged}h logged</span>
+            <span className="font-mono text-muted-foreground">{project.hours_logged || 0}h logged</span>
           </div>
         </div>
       </div>
 
       {/* Cost Centers */}
       <div className="flex flex-wrap gap-1">
-        {project.costCenters.map((cc, i) => (
+        {(project.cost_center_codes || []).map((cc, i) => (
           <Badge key={i} variant="outline" className="text-xs font-mono">
-            CC-{cc.padStart(3, '0')}
+            {cc}
           </Badge>
         ))}
       </div>
@@ -112,14 +112,41 @@ function ProjectCard({ project, onClick }: { project: Project; onClick: () => vo
 }
 
 export default function Projects() {
-  const [projects] = useState<Project[]>(mockProjects);
+  const [projects, setProjects] = useState<Project[]>([]);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [detailModalOpen, setDetailModalOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    loadProjects();
+  }, []);
+
+  const loadProjects = async () => {
+    try {
+      const data = await api.getProjects();
+      setProjects(data);
+    } catch (error) {
+      console.error('Failed to load projects:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
 
   const handleProjectClick = (project: Project) => {
     setSelectedProject(project);
     setDetailModalOpen(true);
   };
+
+  if (isLoading) {
+    return (
+      <>
+        <Header title="Project Status Board" subtitle="Kanban view of all active projects" />
+        <div className="flex items-center justify-center h-64">
+          <Loader2 className="w-8 h-8 animate-spin text-electric" />
+        </div>
+      </>
+    );
+  }
 
   return (
     <>
