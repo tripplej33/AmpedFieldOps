@@ -342,6 +342,20 @@ export default function Settings() {
               <p className="text-xs text-muted-foreground">
                 Get your credentials from the <a href="https://developer.xero.com/myapps" target="_blank" rel="noopener noreferrer" className="text-electric hover:underline">Xero Developer Portal</a>
               </p>
+              <div className="bg-warning/10 border border-warning/30 rounded-lg p-3 mt-3">
+                <Label className="font-mono text-xs uppercase tracking-wider text-warning flex items-center gap-2">
+                  <span>⚠️</span> Important: Redirect URI
+                </Label>
+                <p className="text-xs text-muted-foreground mt-2 mb-2">
+                  In your Xero app settings, add this exact redirect URI:
+                </p>
+                <code className="text-xs bg-background px-2 py-1 rounded border border-border block font-mono break-all">
+                  {window.location.origin.replace(/:\d+/, ':3001')}/api/xero/callback
+                </code>
+                <p className="text-xs text-muted-foreground mt-2">
+                  Go to <strong>Configuration → OAuth 2.0 redirect URIs</strong> in your Xero app
+                </p>
+              </div>
             </div>
 
             <Separator />
@@ -464,6 +478,20 @@ export default function Settings() {
               <p className="text-xs text-muted-foreground">
                 Get your credentials from the <a href="https://developer.xero.com/myapps" target="_blank" rel="noopener noreferrer" className="text-electric hover:underline">Xero Developer Portal</a>
               </p>
+              <div className="bg-warning/10 border border-warning/30 rounded-lg p-3 mt-3">
+                <Label className="font-mono text-xs uppercase tracking-wider text-warning flex items-center gap-2">
+                  <span>⚠️</span> Important: Redirect URI
+                </Label>
+                <p className="text-xs text-muted-foreground mt-2 mb-2">
+                  In your Xero app settings, add this exact redirect URI:
+                </p>
+                <code className="text-xs bg-background px-2 py-1 rounded border border-border block font-mono break-all">
+                  {window.location.origin.replace(/:\d+/, ':3001')}/api/xero/callback
+                </code>
+                <p className="text-xs text-muted-foreground mt-2">
+                  Go to <strong>Configuration → OAuth 2.0 redirect URIs</strong> in your Xero app
+                </p>
+              </div>
             </div>
 
             <div className="text-center py-6">

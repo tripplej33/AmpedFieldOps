@@ -4,8 +4,6 @@
 
 A mobile-first service business management platform designed for electrical contractors and their field teams. Orchestrates client relationships, project workflows, timesheet capture, and financial reconciliation through Xero integration.
 
-**Repository**: https://github.com/tripplej33/AmpedFieldOps
-
 ![AmpedFieldOps](https://images.unsplash.com/photo-1621905251189-08b45d6a269e?w=1200&q=80)
 
 ## Features
@@ -46,6 +44,9 @@ A mobile-first service business management platform designed for electrical cont
 
 ```bash
 # Clone and run installation script
+git clone https://github.com/tripplej33/AmpedFieldOps.git
+cd AmpedFieldOps
+
 chmod +x install.sh
 ./install.sh
 ```

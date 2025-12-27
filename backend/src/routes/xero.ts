@@ -19,7 +19,13 @@ async function getXeroCredentials() {
   
   const clientId = clientIdResult.rows[0]?.value || process.env.XERO_CLIENT_ID;
   const clientSecret = clientSecretResult.rows[0]?.value || process.env.XERO_CLIENT_SECRET;
-  const redirectUri = process.env.XERO_REDIRECT_URI || `${process.env.BACKEND_URL || 'http://localhost:3001'}/api/xero/callback`;
+  
+  // Construct redirect URI - use BACKEND_URL or default to localhost
+  let redirectUri = process.env.XERO_REDIRECT_URI;
+  if (!redirectUri) {
+    const backendUrl = process.env.BACKEND_URL || 'http://localhost:3001';
+    redirectUri = `${backendUrl}/api/xero/callback`;
+  }
   
   return { clientId, clientSecret, redirectUri };
 }
