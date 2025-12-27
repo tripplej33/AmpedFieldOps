@@ -52,30 +52,10 @@ else
     echo -e "${YELLOW}✓ .env file already exists${NC}"
 fi
 
-# Get admin credentials
+# Get company name
 echo ""
-echo -e "${YELLOW}Setup Admin Account${NC}"
-echo "-------------------"
-
-read -p "Enter admin email: " ADMIN_EMAIL
-while [ -z "$ADMIN_EMAIL" ]; do
-    echo -e "${RED}Email cannot be empty${NC}"
-    read -p "Enter admin email: " ADMIN_EMAIL
-done
-
-read -sp "Enter admin password (min 8 characters): " ADMIN_PASSWORD
-echo ""
-while [ ${#ADMIN_PASSWORD} -lt 8 ]; do
-    echo -e "${RED}Password must be at least 8 characters${NC}"
-    read -sp "Enter admin password: " ADMIN_PASSWORD
-    echo ""
-done
-
-read -p "Enter admin name: " ADMIN_NAME
-while [ -z "$ADMIN_NAME" ]; do
-    echo -e "${RED}Name cannot be empty${NC}"
-    read -p "Enter admin name: " ADMIN_NAME
-done
+echo -e "${YELLOW}Company Configuration${NC}"
+echo "---------------------"
 
 read -p "Enter company name [AmpedFieldOps]: " COMPANY_NAME
 COMPANY_NAME=${COMPANY_NAME:-AmpedFieldOps}
@@ -140,29 +120,7 @@ echo -e "${GREEN}✓ Migrations completed${NC}"
 # Run seeds
 echo -e "${YELLOW}Seeding default data...${NC}"
 $COMPOSE_CMD exec -T backend node dist/db/seed.js
-echo -e "${GREEN}✓ Default data seeded${NC}"
-
-# Create admin user via API
-echo -e "${YELLOW}Creating admin user...${NC}"
-
-# Wait for backend to be ready
-sleep 3
-
-RESPONSE=$(curl -s -X POST http://localhost:3001/api/setup/admin \
-    -H "Content-Type: application/json" \
-    -d "{
-        \"email\": \"$ADMIN_EMAIL\",
-        \"password\": \"$ADMIN_PASSWORD\",
-        \"name\": \"$ADMIN_NAME\",
-        \"company_name\": \"$COMPANY_NAME\"
-    }")
-
-if echo "$RESPONSE" | grep -q "error"; then
-    echo -e "${YELLOW}Admin user may already exist or there was an issue:${NC}"
-    echo "$RESPONSE"
-else
-    echo -e "${GREEN}✓ Admin user created${NC}"
-fi
+echo -e "${GREEN}✓ Default data seeded (including admin user)${NC}"
 
 # Complete setup
 curl -s -X POST http://localhost:3001/api/setup/complete > /dev/null
@@ -175,15 +133,18 @@ echo ""
 echo -e "Access AmpedFieldOps at: ${GREEN}http://$SERVER_IP:3000${NC}"
 echo -e "API endpoint: ${GREEN}http://$SERVER_IP:3001${NC}"
 echo ""
-echo -e "Login with:"
-echo -e "  Email: ${YELLOW}$ADMIN_EMAIL${NC}"
-echo -e "  Password: ${YELLOW}(the password you entered)${NC}"
+echo -e "${YELLOW}Default Admin Login:${NC}"
+echo -e "  Email: ${YELLOW}admin@ampedfieldops.com${NC}"
+echo -e "  Password: ${YELLOW}admin123${NC}"
+echo ""
+echo -e "${RED}⚠️  IMPORTANT: Please change the admin password immediately after first login!${NC}"
 echo ""
 echo -e "${YELLOW}Next steps:${NC}"
 echo "  1. Open http://$SERVER_IP:3000 in your browser"
-echo "  2. Log in with your admin credentials"
-echo "  3. Configure Xero integration in Settings (optional)"
-echo "  4. Add your first client and project"
+echo "  2. Log in with the default credentials above"
+echo "  3. Change your password in Settings > Profile"
+echo "  4. Configure Xero integration in Settings (optional)"
+echo "  5. Add your first client and project"
 echo ""
 echo -e "${YELLOW}Useful commands:${NC}"
 echo "  View logs:    $COMPOSE_CMD logs -f"

@@ -70,6 +70,21 @@ async function seed() {
     }
     console.log('  ✓ Default settings seeded');
     
+    // Create default admin user
+    const hashedPassword = await bcrypt.hash('admin123', 10);
+    
+    try {
+      await client.query(
+        `INSERT INTO users (email, password, name, role, is_active) 
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (email) DO NOTHING`,
+        ['admin@ampedfieldops.com', hashedPassword, 'Admin User', 'admin', true]
+      );
+      console.log('  ✓ Default admin user created (email: admin@ampedfieldops.com, password: admin123)');
+    } catch (error) {
+      console.log('  ⚠️  Admin user might already exist');
+    }
+    
     await client.query('COMMIT');
     console.log('✅ Database seeded successfully!');
     
