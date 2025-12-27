@@ -241,7 +241,54 @@ class ApiClient {
   }
 
   async createTimesheet(data: any) {
-    return this.request('/api/timesheets', { method: 'POST', body: data });
+    // If there are image files, use FormData
+    if (data.image_files && data.image_files.length > 0) {
+      const formData = new FormData();
+      formData.append('project_id', data.project_id);
+      formData.append('activity_type_id', data.activity_type_id);
+      formData.append('cost_center_id', data.cost_center_id);
+      formData.append('date', data.date);
+      formData.append('hours', data.hours.toString());
+      if (data.notes) formData.append('notes', data.notes);
+      if (data.user_id) formData.append('user_id', data.user_id);
+      
+      data.image_files.forEach((file: File, index: number) => {
+        formData.append(`images`, file);
+      });
+
+      return this.requestFormData('/api/timesheets', formData);
+    }
+    
+    const { image_files, ...jsonData } = data;
+    return this.request('/api/timesheets', { method: 'POST', body: jsonData });
+  }
+
+  async requestFormData<T>(endpoint: string, formData: FormData): Promise<T> {
+    const config: RequestInit = {
+      method: 'POST',
+      body: formData,
+    };
+
+    if (this.token) {
+      config.headers = {
+        'Authorization': `Bearer ${this.token}`,
+      };
+    }
+
+    const response = await fetch(`${API_URL}${endpoint}`, config);
+
+    if (response.status === 401) {
+      this.setToken(null);
+      window.location.href = '/login';
+      throw new Error('Unauthorized');
+    }
+
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Request failed' }));
+      throw new Error(error.error || error.message || 'Request failed');
+    }
+
+    return response.json();
   }
 
   async updateTimesheet(id: string, data: any) {

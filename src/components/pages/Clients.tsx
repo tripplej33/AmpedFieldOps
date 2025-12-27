@@ -17,6 +17,8 @@ export default function Clients() {
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Form state
@@ -48,6 +50,18 @@ export default function Clients() {
     setCreateModalOpen(true);
   };
 
+  const resetForm = () => {
+    setFormData({
+      name: '',
+      contact_name: '',
+      email: '',
+      phone: '',
+      location: '',
+      notes: '',
+    });
+    setEditingClient(null);
+  };
+
   const handleSubmit = async () => {
     if (!formData.name || !formData.email) {
       toast.error('Please fill in required fields');
@@ -59,19 +73,58 @@ export default function Clients() {
       await api.createClient(formData);
       toast.success('Client created successfully');
       setCreateModalOpen(false);
-      setFormData({
-        name: '',
-        contact_name: '',
-        email: '',
-        phone: '',
-        location: '',
-        notes: '',
-      });
+      resetForm();
       loadClients();
     } catch (error: any) {
       toast.error(error.message || 'Failed to create client');
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleEdit = (client: Client) => {
+    setEditingClient(client);
+    setFormData({
+      name: client.name,
+      contact_name: client.contact_name || '',
+      email: client.email,
+      phone: client.phone || '',
+      location: client.location || '',
+      notes: client.notes || '',
+    });
+    setEditModalOpen(true);
+  };
+
+  const handleUpdate = async () => {
+    if (!editingClient) return;
+    if (!formData.name || !formData.email) {
+      toast.error('Please fill in required fields');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      await api.updateClient(editingClient.id, formData);
+      toast.success('Client updated successfully');
+      setEditModalOpen(false);
+      resetForm();
+      loadClients();
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to update client');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleDelete = async (client: Client) => {
+    if (!confirm(`Are you sure you want to delete ${client.name}?`)) return;
+
+    try {
+      await api.deleteClient(client.id);
+      toast.success('Client deleted');
+      loadClients();
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to delete client');
     }
   };
 
@@ -183,11 +236,21 @@ export default function Clients() {
 
               {/* Quick Actions */}
               <div className="mt-4 flex gap-2">
-                <Button variant="outline" size="sm" className="flex-1 text-xs">
-                  View Details
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="flex-1 text-xs"
+                  onClick={() => handleEdit(client)}
+                >
+                  Edit
                 </Button>
-                <Button variant="outline" size="sm" className="flex-1 text-xs">
-                  New Project
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="flex-1 text-xs text-destructive hover:text-destructive"
+                  onClick={() => handleDelete(client)}
+                >
+                  Delete
                 </Button>
               </div>
             </Card>
@@ -306,6 +369,116 @@ export default function Clients() {
               className="bg-electric text-background hover:bg-electric/90"
             >
               {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Create Client'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Edit Client Modal */}
+      <Dialog open={editModalOpen} onOpenChange={setEditModalOpen}>
+        <DialogContent className="sm:max-w-[600px] bg-card border-border">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold">Edit Client</DialogTitle>
+            <DialogDescription>Update client information</DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div>
+              <Label htmlFor="edit_client_name" className="font-mono text-xs uppercase tracking-wider">
+                Company Name *
+              </Label>
+              <Input
+                id="edit_client_name"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                placeholder="ABC Construction Ltd"
+                className="mt-2"
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="edit_contact_name" className="font-mono text-xs uppercase tracking-wider">
+                Contact Name
+              </Label>
+              <Input
+                id="edit_contact_name"
+                value={formData.contact_name}
+                onChange={(e) => setFormData({ ...formData, contact_name: e.target.value })}
+                placeholder="John Smith"
+                className="mt-2"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="edit_email" className="font-mono text-xs uppercase tracking-wider">
+                  Email *
+                </Label>
+                <Input
+                  id="edit_email"
+                  type="email"
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  placeholder="contact@company.com"
+                  className="mt-2"
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="edit_phone" className="font-mono text-xs uppercase tracking-wider">
+                  Phone
+                </Label>
+                <Input
+                  id="edit_phone"
+                  value={formData.phone}
+                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                  placeholder="555-1234"
+                  className="mt-2"
+                />
+              </div>
+            </div>
+
+            <div>
+              <Label htmlFor="edit_location" className="font-mono text-xs uppercase tracking-wider">
+                Location
+              </Label>
+              <Input
+                id="edit_location"
+                value={formData.location}
+                onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                placeholder="Auckland, New Zealand"
+                className="mt-2"
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="edit_notes" className="font-mono text-xs uppercase tracking-wider">
+                Notes
+              </Label>
+              <Textarea
+                id="edit_notes"
+                value={formData.notes || ''}
+                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                placeholder="Additional information..."
+                className="mt-2 min-h-[100px]"
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-3">
+            <Button 
+              variant="outline" 
+              onClick={() => { setEditModalOpen(false); resetForm(); }}
+              disabled={isSubmitting}
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleUpdate}
+              disabled={isSubmitting}
+              className="bg-electric text-background hover:bg-electric/90"
+            >
+              {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save Changes'}
             </Button>
           </div>
         </DialogContent>

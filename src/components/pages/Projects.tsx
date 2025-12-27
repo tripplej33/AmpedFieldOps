@@ -28,7 +28,15 @@ const statusColumns: { status: ProjectStatus; label: string; color: string }[] =
   { status: 'invoiced', label: 'Invoiced', color: 'text-warning' },
 ];
 
-function ProjectCard({ project, onClick }: { project: Project; onClick: () => void }) {
+function ProjectCard({ 
+  project, 
+  onClick, 
+  onDelete 
+}: { 
+  project: Project; 
+  onClick: () => void;
+  onDelete: (project: Project) => void;
+}) {
   const progress = project.budget > 0 ? ((project.actual_cost || 0) / project.budget) * 100 : 0;
   const isOverBudget = progress > 100;
 
@@ -42,16 +50,21 @@ function ProjectCard({ project, onClick }: { project: Project; onClick: () => vo
           <p className="text-xs font-mono text-muted-foreground mt-1">{project.code}</p>
         </div>
         <DropdownMenu>
-          <DropdownMenuTrigger asChild>
+          <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
             <Button variant="ghost" size="icon" className="h-8 w-8">
               <MoreVertical className="h-4 w-4" />
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem>View Details</DropdownMenuItem>
-            <DropdownMenuItem>Edit Project</DropdownMenuItem>
-            <DropdownMenuItem>Send to Xero</DropdownMenuItem>
-            <DropdownMenuItem className="text-destructive">Delete</DropdownMenuItem>
+            <DropdownMenuItem onClick={(e) => { e.stopPropagation(); onClick(); }}>
+              View Details
+            </DropdownMenuItem>
+            <DropdownMenuItem 
+              className="text-destructive" 
+              onClick={(e) => { e.stopPropagation(); onDelete(project); }}
+            >
+              Delete
+            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
@@ -169,6 +182,16 @@ export default function Projects() {
     setCreateModalOpen(true);
   };
 
+  const resetForm = () => {
+    setFormData({
+      name: '',
+      client_id: '',
+      description: '',
+      budget: '',
+      status: 'quoted',
+    });
+  };
+
   const handleSubmit = async () => {
     if (!formData.name || !formData.client_id) {
       toast.error('Please fill in required fields');
@@ -183,18 +206,24 @@ export default function Projects() {
       });
       toast.success('Project created successfully');
       setCreateModalOpen(false);
-      setFormData({
-        name: '',
-        client_id: '',
-        description: '',
-        budget: '',
-        status: 'quoted',
-      });
+      resetForm();
       loadProjects();
     } catch (error: any) {
       toast.error(error.message || 'Failed to create project');
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleDeleteProject = async (project: Project) => {
+    if (!confirm(`Are you sure you want to delete "${project.name}"?`)) return;
+
+    try {
+      await api.deleteProject(project.id);
+      toast.success('Project deleted');
+      loadProjects();
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to delete project');
     }
   };
 
@@ -254,7 +283,7 @@ export default function Projects() {
                 {projects
                   .filter((p) => p.status === column.status)
                   .map((project) => (
-                    <ProjectCard key={project.id} project={project} onClick={() => handleProjectClick(project)} />
+                    <ProjectCard key={project.id} project={project} onClick={() => handleProjectClick(project)} onDelete={handleDeleteProject} />
                   ))}
               </div>
 

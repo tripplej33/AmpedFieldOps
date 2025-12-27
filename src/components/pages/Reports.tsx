@@ -2,10 +2,15 @@ import { useState, useEffect } from 'react';
 import Header from '@/components/layout/Header';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Calendar } from '@/components/ui/calendar';
 import { api } from '@/lib/api';
-import { CostCenter, Project, TimesheetEntry } from '@/types';
-import { Download, Filter, TrendingUp, Loader2 } from 'lucide-react';
+import { CostCenter, Project, TimesheetEntry, User } from '@/types';
+import { Download, Filter, TrendingUp, Loader2, CalendarIcon } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
+import { format } from 'date-fns';
 
 interface CostCenterMetric extends CostCenter {
   totalHours: number;
@@ -17,11 +22,30 @@ interface CostCenterMetric extends CostCenter {
 
 export default function Reports() {
   const [costCenterMetrics, setCostCenterMetrics] = useState<CostCenterMetric[]>([]);
+  const [allCostCenters, setAllCostCenters] = useState<CostCenter[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  
+  // Filters
+  const [selectedCostCenter, setSelectedCostCenter] = useState<string>('all');
+  const [selectedUser, setSelectedUser] = useState<string>('all');
+  const [dateRange, setDateRange] = useState<string>('month');
+  const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined);
+  const [dateTo, setDateTo] = useState<Date | undefined>(undefined);
 
   useEffect(() => {
     loadReportData();
+    loadUsers();
   }, []);
+
+  const loadUsers = async () => {
+    try {
+      const data = await api.getUsers();
+      setUsers(data);
+    } catch (error) {
+      console.error('Failed to load users:', error);
+    }
+  };
 
   const loadReportData = async () => {
     try {
@@ -30,6 +54,8 @@ export default function Reports() {
         api.getProjects(),
         api.getTimesheets(),
       ]);
+
+      setAllCostCenters(costCenters);
 
       const metrics = costCenters.map((cc: CostCenter) => {
         const ccProjects = projects.filter((p: Project) => 
@@ -59,6 +85,60 @@ export default function Reports() {
     }
   };
 
+  // Filter the metrics based on selection
+  const filteredMetrics = costCenterMetrics.filter(cc => {
+    if (selectedCostCenter !== 'all' && cc.id !== selectedCostCenter) return false;
+    return true;
+  });
+
+  // Export to CSV
+  const handleExportCSV = () => {
+    const headers = ['Cost Center Code', 'Cost Center Name', 'Projects', 'Hours', 'Budget', 'Actual', 'Utilization %'];
+    const rows = filteredMetrics.map(cc => [
+      cc.code,
+      cc.name,
+      cc.projectCount,
+      cc.totalHours,
+      cc.totalBudget,
+      cc.totalActual,
+      Math.round(cc.utilization),
+    ]);
+
+    const csvContent = [
+      headers.join(','),
+      ...rows.map(row => row.join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `cost-center-report-${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success('Report exported successfully');
+  };
+
+  const handleDateRangeChange = (range: string) => {
+    setDateRange(range);
+    const now = new Date();
+    if (range === 'week') {
+      setDateFrom(new Date(now.setDate(now.getDate() - 7)));
+      setDateTo(new Date());
+    } else if (range === 'month') {
+      setDateFrom(new Date(now.getFullYear(), now.getMonth(), 1));
+      setDateTo(new Date());
+    } else if (range === 'quarter') {
+      setDateFrom(new Date(now.getFullYear(), now.getMonth() - 3, 1));
+      setDateTo(new Date());
+    } else if (range === 'year') {
+      setDateFrom(new Date(now.getFullYear(), 0, 1));
+      setDateTo(new Date());
+    }
+  };
+
   if (isLoading) {
     return (
       <>
@@ -76,20 +156,50 @@ export default function Reports() {
 
       <div className="p-8 max-w-[1400px] mx-auto">
         {/* Filter Bar */}
-        <div className="mb-6 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Button variant="outline" size="sm">
-              <Filter className="w-4 h-4 mr-2" />
-              Filter
-            </Button>
-            <Button variant="outline" size="sm">
-              This Month
-            </Button>
-            <Button variant="outline" size="sm">
-              All Cost Centers
-            </Button>
+        <div className="mb-6 flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
+            <Select value={dateRange} onValueChange={handleDateRangeChange}>
+              <SelectTrigger className="w-[140px]">
+                <CalendarIcon className="w-4 h-4 mr-2" />
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="week">This Week</SelectItem>
+                <SelectItem value="month">This Month</SelectItem>
+                <SelectItem value="quarter">This Quarter</SelectItem>
+                <SelectItem value="year">This Year</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select value={selectedCostCenter} onValueChange={setSelectedCostCenter}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="All Cost Centers" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Cost Centers</SelectItem>
+                {allCostCenters.map((cc) => (
+                  <SelectItem key={cc.id} value={cc.id}>
+                    {cc.code} - {cc.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select value={selectedUser} onValueChange={setSelectedUser}>
+              <SelectTrigger className="w-[160px]">
+                <SelectValue placeholder="All Team" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Team Members</SelectItem>
+                {users.map((user) => (
+                  <SelectItem key={user.id} value={user.id}>
+                    {user.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
-          <Button variant="outline" size="sm">
+          <Button variant="outline" size="sm" onClick={handleExportCSV}>
             <Download className="w-4 h-4 mr-2" />
             Export CSV
           </Button>
@@ -100,7 +210,7 @@ export default function Reports() {
           <Card className="p-6 bg-card border-border">
             <p className="text-sm font-mono text-muted-foreground uppercase tracking-wider mb-2">Total Budget</p>
             <p className="text-3xl font-bold font-mono text-foreground">
-              ${costCenterMetrics.reduce((sum, cc) => sum + cc.totalBudget, 0).toLocaleString()}
+              ${filteredMetrics.reduce((sum, cc) => sum + cc.totalBudget, 0).toLocaleString()}
             </p>
             <div className="flex items-center gap-1 mt-2">
               <TrendingUp className="w-3 h-3 text-voltage" />
@@ -111,7 +221,7 @@ export default function Reports() {
           <Card className="p-6 bg-card border-border">
             <p className="text-sm font-mono text-muted-foreground uppercase tracking-wider mb-2">Actual Cost</p>
             <p className="text-3xl font-bold font-mono text-foreground">
-              ${costCenterMetrics.reduce((sum, cc) => sum + cc.totalActual, 0).toLocaleString()}
+              ${filteredMetrics.reduce((sum, cc) => sum + cc.totalActual, 0).toLocaleString()}
             </p>
             <div className="flex items-center gap-1 mt-2">
               <TrendingUp className="w-3 h-3 text-electric" />
@@ -122,7 +232,7 @@ export default function Reports() {
           <Card className="p-6 bg-card border-border">
             <p className="text-sm font-mono text-muted-foreground uppercase tracking-wider mb-2">Total Hours</p>
             <p className="text-3xl font-bold font-mono text-foreground">
-              {costCenterMetrics.reduce((sum, cc) => sum + cc.totalHours, 0).toLocaleString()}
+              {filteredMetrics.reduce((sum, cc) => sum + cc.totalHours, 0).toLocaleString()}
             </p>
             <div className="flex items-center gap-1 mt-2">
               <TrendingUp className="w-3 h-3 text-voltage" />
@@ -133,8 +243,8 @@ export default function Reports() {
           <Card className="p-6 bg-card border-border">
             <p className="text-sm font-mono text-muted-foreground uppercase tracking-wider mb-2">Avg Utilization</p>
             <p className="text-3xl font-bold font-mono text-foreground">
-              {costCenterMetrics.length > 0 ? Math.round(
-                costCenterMetrics.reduce((sum, cc) => sum + cc.utilization, 0) / costCenterMetrics.length
+              {filteredMetrics.length > 0 ? Math.round(
+                filteredMetrics.reduce((sum, cc) => sum + cc.utilization, 0) / filteredMetrics.length
               ) : 0}
               %
             </p>
@@ -172,7 +282,7 @@ export default function Reports() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {costCenterMetrics.map((cc) => (
+                {filteredMetrics.map((cc) => (
                   <tr key={cc.id} className="hover:bg-muted/30 transition-colors">
                     <td className="px-6 py-4">
                       <div>
@@ -223,7 +333,7 @@ export default function Reports() {
         <Card className="mt-8 p-6 bg-card border-border">
           <h3 className="text-lg font-bold mb-6">Budget Burn Rate</h3>
           <div className="space-y-4">
-            {costCenterMetrics.slice(0, 5).map((cc) => (
+            {filteredMetrics.slice(0, 5).map((cc) => (
               <div key={cc.id}>
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-mono text-foreground">{cc.code}</span>

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -19,7 +19,7 @@ import {
 } from '@/components/ui/select';
 import { api } from '@/lib/api';
 import { Client, Project, ActivityType, CostCenter } from '@/types';
-import { Camera, Wrench, CheckCircle, Search, MessageSquare, Clock, Loader2 } from 'lucide-react';
+import { Camera, Wrench, CheckCircle, Search, MessageSquare, Clock, Loader2, Image, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -49,6 +49,13 @@ export default function MobileTimesheetModal({ open, onOpenChange }: MobileTimes
   const [selectedCostCenter, setSelectedCostCenter] = useState('');
   const [hours, setHours] = useState('');
   const [notes, setNotes] = useState('');
+  const [selectedDate, setSelectedDate] = useState(new Date().toISOString().split('T')[0]);
+  
+  // Image state
+  const [imageFiles, setImageFiles] = useState<File[]>([]);
+  const [imagePreviews, setImagePreviews] = useState<string[]>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (open) {
@@ -90,6 +97,36 @@ export default function MobileTimesheetModal({ open, onOpenChange }: MobileTimes
     }
   };
 
+  // Image handling
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (files.length + imageFiles.length > 5) {
+      toast.error('Maximum 5 images allowed');
+      return;
+    }
+    
+    files.forEach(file => {
+      if (file.size > 10 * 1024 * 1024) {
+        toast.error('Image must be less than 10MB');
+        return;
+      }
+      
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setImagePreviews(prev => [...prev, reader.result as string]);
+      };
+      reader.readAsDataURL(file);
+    });
+    
+    setImageFiles(prev => [...prev, ...files]);
+    if (e.target) e.target.value = '';
+  };
+
+  const removeImage = (index: number) => {
+    setImageFiles(prev => prev.filter((_, i) => i !== index));
+    setImagePreviews(prev => prev.filter((_, i) => i !== index));
+  };
+
   const handleSubmit = async () => {
     if (!selectedProject || !selectedActivity || !selectedCostCenter || !hours) {
       toast.error('Please fill in all required fields');
@@ -102,9 +139,10 @@ export default function MobileTimesheetModal({ open, onOpenChange }: MobileTimes
         project_id: selectedProject,
         activity_type_id: selectedActivity,
         cost_center_id: selectedCostCenter,
-        date: new Date().toISOString().split('T')[0],
+        date: selectedDate,
         hours: parseFloat(hours),
-        notes
+        notes,
+        image_files: imageFiles,
       });
       toast.success('Timesheet entry created');
       onOpenChange(false);
@@ -123,6 +161,9 @@ export default function MobileTimesheetModal({ open, onOpenChange }: MobileTimes
     setSelectedCostCenter('');
     setHours('');
     setNotes('');
+    setSelectedDate(new Date().toISOString().split('T')[0]);
+    setImageFiles([]);
+    setImagePreviews([]);
   };
 
   const filteredProjects = projects;
@@ -133,7 +174,7 @@ export default function MobileTimesheetModal({ open, onOpenChange }: MobileTimes
         <DialogHeader>
           <DialogTitle className="text-xl font-bold">New Timesheet Entry</DialogTitle>
           <DialogDescription className="font-mono text-xs">
-            {new Date().toLocaleDateString('en-US', { 
+            {new Date(selectedDate).toLocaleDateString('en-US', { 
               weekday: 'long', 
               month: 'long', 
               day: 'numeric',
@@ -143,18 +184,87 @@ export default function MobileTimesheetModal({ open, onOpenChange }: MobileTimes
         </DialogHeader>
 
         <div className="space-y-6 py-4">
+          {/* Date Selection */}
+          <div>
+            <Label className="font-mono text-xs uppercase tracking-wider mb-2 block">Date</Label>
+            <Input
+              type="date"
+              value={selectedDate}
+              onChange={(e) => setSelectedDate(e.target.value)}
+              className="font-mono"
+            />
+          </div>
+
           {/* Photo Capture */}
           <div>
             <Label className="font-mono text-xs uppercase tracking-wider mb-2 block">Photos (Optional)</Label>
-            <Button
-              variant="outline"
-              className="w-full h-32 border-dashed border-2 hover:border-electric hover:bg-electric/5"
-            >
-              <div className="flex flex-col items-center gap-2">
-                <Camera className="w-8 h-8 text-muted-foreground" />
-                <span className="text-sm text-muted-foreground">Tap to capture photo</span>
+            
+            {/* Image Previews */}
+            {imagePreviews.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-3">
+                {imagePreviews.map((preview, index) => (
+                  <div key={index} className="relative w-16 h-16 rounded-lg overflow-hidden border border-border">
+                    <img src={preview} alt={`Preview ${index + 1}`} className="w-full h-full object-cover" />
+                    <button
+                      type="button"
+                      onClick={() => removeImage(index)}
+                      className="absolute top-0.5 right-0.5 w-4 h-4 bg-destructive rounded-full flex items-center justify-center"
+                    >
+                      <X className="w-2.5 h-2.5 text-white" />
+                    </button>
+                  </div>
+                ))}
               </div>
-            </Button>
+            )}
+            
+            {imagePreviews.length < 5 && (
+              <div className="flex gap-3">
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="flex-1 h-20 border-dashed border-2 hover:border-electric hover:bg-electric/5"
+                  onClick={() => cameraInputRef.current?.click()}
+                >
+                  <div className="flex flex-col items-center gap-1">
+                    <Camera className="w-6 h-6 text-muted-foreground" />
+                    <span className="text-xs text-muted-foreground">Take Photo</span>
+                  </div>
+                </Button>
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="flex-1 h-20 border-dashed border-2 hover:border-electric hover:bg-electric/5"
+                  onClick={() => fileInputRef.current?.click()}
+                >
+                  <div className="flex flex-col items-center gap-1">
+                    <Image className="w-6 h-6 text-muted-foreground" />
+                    <span className="text-xs text-muted-foreground">Gallery</span>
+                  </div>
+                </Button>
+              </div>
+            )}
+            
+            {/* Hidden file inputs */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              onChange={handleFileSelect}
+              className="hidden"
+            />
+            <input
+              ref={cameraInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={handleFileSelect}
+              className="hidden"
+            />
+            
+            <p className="text-xs text-muted-foreground mt-2">
+              {imagePreviews.length}/5 photos added
+            </p>
           </div>
 
           {isLoading ? (
