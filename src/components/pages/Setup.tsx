@@ -147,12 +147,13 @@ export default function Setup() {
 
   const handleComplete = async () => {
     setIsLoading(true);
+    setError('');
     try {
       await api.completeSetup();
-      navigate('/');
+      // Force navigation to dashboard after marking setup complete
+      window.location.href = '/';
     } catch (err: any) {
       setError(err.message);
-    } finally {
       setIsLoading(false);
     }
   };
