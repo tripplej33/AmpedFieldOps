@@ -454,6 +454,33 @@ class ApiClient {
     return this.request('/api/xero/sync', { method: 'POST', body: { type } });
   }
 
+  // Pull contacts from Xero to local clients
+  async pullXeroContacts() {
+    return this.request<{
+      success: boolean;
+      synced_at: string;
+      results: { total: number; created: number; updated: number; skipped: number };
+    }>('/api/xero/contacts/pull', { method: 'POST' });
+  }
+
+  // Push a single client to Xero
+  async pushClientToXero(clientId: string) {
+    return this.request<{
+      success: boolean;
+      action: 'created' | 'updated';
+      xero_contact_id: string;
+    }>(`/api/xero/contacts/push/${clientId}`, { method: 'POST' });
+  }
+
+  // Push all local clients without xero_contact_id to Xero
+  async pushAllClientsToXero() {
+    return this.request<{
+      success: boolean;
+      synced_at: string;
+      results: { total: number; created: number; failed: number };
+    }>('/api/xero/contacts/push-all', { method: 'POST' });
+  }
+
   async getXeroInvoices(params?: { status?: string; client_id?: string; date_from?: string; date_to?: string }) {
     const searchParams = new URLSearchParams(params as Record<string, string>);
     return this.request<any[]>(`/api/xero/invoices?${searchParams}`);

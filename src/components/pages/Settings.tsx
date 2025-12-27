@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
-import { RefreshCw, CheckCircle, Link2, Upload, Loader2 } from 'lucide-react';
+import { RefreshCw, CheckCircle, Link2, Upload, Download, Loader2 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { CostCenter } from '@/types';
@@ -24,6 +24,21 @@ export default function Settings() {
 
   useEffect(() => {
     loadSettings();
+
+    // Listen for Xero OAuth popup messages
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'XERO_CONNECTED') {
+        if (event.data.success) {
+          toast.success('Successfully connected to Xero!');
+          loadSettings();
+        } else {
+          toast.error('Failed to connect to Xero');
+        }
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
   }, []);
 
   const loadSettings = async () => {
@@ -61,7 +76,26 @@ export default function Settings() {
       // Now request the auth URL
       const response = await api.getXeroAuthUrl();
       if (response.url) {
-        window.location.href = response.url;
+        // Open popup window for Xero OAuth
+        const width = 600;
+        const height = 700;
+        const left = window.screenX + (window.outerWidth - width) / 2;
+        const top = window.screenY + (window.outerHeight - height) / 2;
+        
+        const popup = window.open(
+          response.url,
+          'xero-auth',
+          `width=${width},height=${height},left=${left},top=${top},scrollbars=yes,resizable=yes`
+        );
+
+        // Listen for the popup to close or redirect
+        const checkPopup = setInterval(() => {
+          if (popup?.closed) {
+            clearInterval(checkPopup);
+            // Reload settings to check if connection was successful
+            loadSettings();
+          }
+        }, 500);
       } else if (!response.configured) {
         toast.error('Xero credentials not configured. Please save your credentials and try again.');
       } else {
@@ -92,6 +126,30 @@ export default function Settings() {
       loadSettings();
     } catch (error: any) {
       toast.error(error.message || 'Sync failed');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const handlePullContacts = async () => {
+    setIsSyncing(true);
+    try {
+      const result = await api.pullXeroContacts();
+      toast.success(`Pulled contacts from Xero: ${result.results.created} created, ${result.results.updated} updated`);
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to pull contacts from Xero');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const handlePushAllContacts = async () => {
+    setIsSyncing(true);
+    try {
+      const result = await api.pushAllClientsToXero();
+      toast.success(`Pushed to Xero: ${result.results.created} clients created`);
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to push clients to Xero');
     } finally {
       setIsSyncing(false);
     }
@@ -318,6 +376,36 @@ export default function Settings() {
               />
             </div>
 
+            {/* Contact Sync Options */}
+            <Separator />
+            
+            <div>
+              <Label className="font-mono text-xs uppercase tracking-wider mb-3 block">Contact Sync</Label>
+              <p className="text-xs text-muted-foreground mb-3">
+                Keep your Xero contacts and local clients in sync. Xero is the source of truth.
+              </p>
+              <div className="flex flex-wrap gap-3">
+                <Button 
+                  variant="outline"
+                  onClick={handlePullContacts}
+                  disabled={isSyncing}
+                >
+                  <Download className={cn("w-4 h-4 mr-2")} />
+                  Pull from Xero
+                </Button>
+                <Button 
+                  variant="outline"
+                  onClick={handlePushAllContacts}
+                  disabled={isSyncing}
+                >
+                  <Upload className={cn("w-4 h-4 mr-2")} />
+                  Push New to Xero
+                </Button>
+              </div>
+            </div>
+
+            <Separator />
+
             <div className="flex gap-3">
               <Button 
                 className="bg-electric text-background hover:bg-electric/90"
@@ -325,7 +413,7 @@ export default function Settings() {
                 disabled={isSyncing}
               >
                 <RefreshCw className={cn("w-4 h-4 mr-2", isSyncing && "animate-spin")} />
-                {isSyncing ? 'Syncing...' : 'Sync Now'}
+                {isSyncing ? 'Syncing...' : 'Sync All'}
               </Button>
               <Button variant="outline" onClick={handleXeroDisconnect}>Disconnect</Button>
             </div>

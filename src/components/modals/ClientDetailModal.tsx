@@ -25,7 +25,9 @@ import {
   Loader2, 
   Pencil,
   TrendingUp,
-  User
+  User,
+  Upload,
+  Check
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
@@ -41,6 +43,7 @@ export default function ClientDetailModal({ client, open, onOpenChange, onClient
   const [isLoading, setIsLoading] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isPushingToXero, setIsPushingToXero] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
   const [timesheets, setTimesheets] = useState<TimesheetEntry[]>([]);
 
@@ -107,6 +110,21 @@ export default function ClientDetailModal({ client, open, onOpenChange, onClient
     }
   };
 
+  const handlePushToXero = async () => {
+    if (!client) return;
+    
+    setIsPushingToXero(true);
+    try {
+      const result = await api.pushClientToXero(client.id);
+      toast.success(`Client ${result.action === 'created' ? 'added to' : 'updated in'} Xero`);
+      onClientUpdated?.();
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to push client to Xero');
+    } finally {
+      setIsPushingToXero(false);
+    }
+  };
+
   if (!client) return null;
 
   // Calculate metrics
@@ -127,9 +145,32 @@ export default function ClientDetailModal({ client, open, onOpenChange, onClient
                 {client.contact_name && `${client.contact_name} • `}{client.email}
               </DialogDescription>
             </div>
-            <Badge className="bg-electric/20 text-electric border-electric">
-              {client.active_projects || 0} Active Projects
-            </Badge>
+            <div className="flex items-center gap-2">
+              {client.xero_contact_id ? (
+                <Badge className="bg-voltage/20 text-voltage border-voltage">
+                  <Check className="w-3 h-3 mr-1" />
+                  Synced to Xero
+                </Badge>
+              ) : (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handlePushToXero}
+                  disabled={isPushingToXero}
+                  className="text-xs"
+                >
+                  {isPushingToXero ? (
+                    <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                  ) : (
+                    <Upload className="w-3 h-3 mr-1" />
+                  )}
+                  Push to Xero
+                </Button>
+              )}
+              <Badge className="bg-electric/20 text-electric border-electric">
+                {client.active_projects || 0} Active Projects
+              </Badge>
+            </div>
           </div>
         </DialogHeader>
 
