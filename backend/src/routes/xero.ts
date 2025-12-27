@@ -20,12 +20,23 @@ async function getXeroCredentials() {
   const clientId = clientIdResult.rows[0]?.value || process.env.XERO_CLIENT_ID;
   const clientSecret = clientSecretResult.rows[0]?.value || process.env.XERO_CLIENT_SECRET;
   
-  // Construct redirect URI - use BACKEND_URL or default to localhost
+  // Construct redirect URI
+  // Priority: XERO_REDIRECT_URI env -> FRONTEND_URL + /api/xero/callback -> BACKEND_URL + /api/xero/callback -> localhost
   let redirectUri = process.env.XERO_REDIRECT_URI;
   if (!redirectUri) {
-    const backendUrl = process.env.BACKEND_URL || 'http://localhost:3001';
-    redirectUri = `${backendUrl}/api/xero/callback`;
+    // If FRONTEND_URL is set (e.g., https://admin.ampedlogix.com), use that with /api prefix
+    // This works for reverse proxy setups where frontend and API share the same domain
+    const frontendUrl = process.env.FRONTEND_URL;
+    if (frontendUrl && !frontendUrl.includes('localhost')) {
+      redirectUri = `${frontendUrl}/api/xero/callback`;
+    } else {
+      // Fallback to BACKEND_URL for direct backend access
+      const backendUrl = process.env.BACKEND_URL || 'http://localhost:3001';
+      redirectUri = `${backendUrl}/api/xero/callback`;
+    }
   }
+  
+  console.log('[Xero] Using redirect URI:', redirectUri);
   
   return { clientId, clientSecret, redirectUri };
 }

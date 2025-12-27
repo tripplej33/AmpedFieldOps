@@ -19,13 +19,15 @@ This is **critical** - Xero will reject any redirect URI that's not pre-configur
 
 ### For Local Development:
 ```
-http://localhost:3001/api/xero/callback
+http://localhost:5173/api/xero/callback
 ```
 
-### For Production/Deployed App:
+### For Production/Deployed App (with reverse proxy):
 ```
-https://your-backend-domain.com/api/xero/callback
+https://admin.ampedlogix.com/api/xero/callback
 ```
+
+**Important:** If you're using a reverse proxy (nginx) that routes `/api` requests to the backend, use your **frontend domain** with `/api/xero/callback` path.
 
 **How to add:**
 1. In your Xero app dashboard, go to **Configuration**

@@ -350,7 +350,7 @@ export default function Settings() {
                   In your Xero app settings, add this exact redirect URI:
                 </p>
                 <code className="text-xs bg-background px-2 py-1 rounded border border-border block font-mono break-all">
-                  {window.location.origin.replace(/:\d+/, ':3001')}/api/xero/callback
+                  {window.location.origin}/api/xero/callback
                 </code>
                 <p className="text-xs text-muted-foreground mt-2">
                   Go to <strong>Configuration → OAuth 2.0 redirect URIs</strong> in your Xero app
@@ -486,7 +486,7 @@ export default function Settings() {
                   In your Xero app settings, add this exact redirect URI:
                 </p>
                 <code className="text-xs bg-background px-2 py-1 rounded border border-border block font-mono break-all">
-                  {window.location.origin.replace(/:\d+/, ':3001')}/api/xero/callback
+                  {window.location.origin}/api/xero/callback
                 </code>
                 <p className="text-xs text-muted-foreground mt-2">
                   Go to <strong>Configuration → OAuth 2.0 redirect URIs</strong> in your Xero app
