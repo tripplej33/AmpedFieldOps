@@ -97,11 +97,24 @@ router.get('/callback', async (req, res) => {
       return res.redirect(`${frontendUrl}/settings?xero_error=token_exchange_failed`);
     }
 
-    const tokens = await tokenResponse.json();
+    interface XeroTokenResponse {
+      access_token: string;
+      refresh_token: string;
+      id_token?: string;
+      token_type: string;
+      expires_in: number;
+    }
+    
+    interface XeroConnection {
+      tenantId: string;
+      tenantName: string;
+    }
+
+    const tokens = await tokenResponse.json() as XeroTokenResponse;
     const expiresAt = new Date(Date.now() + tokens.expires_in * 1000);
 
     // Get tenant info (organization connected)
-    let tenantId = null;
+    let tenantId: string | null = null;
     let tenantName = 'Connected Organization';
     
     try {
@@ -113,7 +126,7 @@ router.get('/callback', async (req, res) => {
       });
       
       if (connectionsResponse.ok) {
-        const connections = await connectionsResponse.json();
+        const connections = await connectionsResponse.json() as XeroConnection[];
         if (connections && connections.length > 0) {
           tenantId = connections[0].tenantId;
           tenantName = connections[0].tenantName;
