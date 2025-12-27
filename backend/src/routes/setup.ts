@@ -33,27 +33,17 @@ router.get('/status', async (req, res) => {
       });
     }
 
-    // Check if company details are set
-    const companyName = await query(
-      `SELECT value FROM settings WHERE key = 'company_name' AND user_id IS NULL`
+    // Mark setup as completed after admin is created (company name prompt removed)
+    // Company name can be changed later in Settings
+    await query(
+      `INSERT INTO settings (key, value, user_id)
+       VALUES ('setup_completed', 'true', NULL)
+       ON CONFLICT (key, user_id) DO UPDATE SET value = 'true', updated_at = CURRENT_TIMESTAMP`
     );
 
-    if (!companyName.rows[0]?.value || companyName.rows[0].value === 'AmpedFieldOps') {
-      return res.json({ 
-        completed: false, 
-        step: 2,
-        message: 'Configure company details'
-      });
-    }
-
-    // Check Xero connection (optional)
-    const xeroToken = await query(`SELECT id FROM xero_tokens LIMIT 1`);
-    
     return res.json({ 
-      completed: false, 
-      step: 3,
-      xero_connected: xeroToken.rows.length > 0,
-      message: 'Xero integration (optional)'
+      completed: true,
+      step: null
     });
 
   } catch (error) {
@@ -135,10 +125,17 @@ router.post('/admin',
         { expiresIn: '7d' }
       );
 
+      // Auto-complete setup after admin creation
+      await query(
+        `INSERT INTO settings (key, value, user_id)
+         VALUES ('setup_completed', 'true', NULL)
+         ON CONFLICT (key, user_id) DO UPDATE SET value = 'true', updated_at = CURRENT_TIMESTAMP`
+      );
+
       res.status(201).json({
         user: { ...user, permissions: adminPermissions },
         token,
-        step: 2
+        completed: true
       });
     } catch (error) {
       console.error('Admin creation error:', error);

@@ -61,11 +61,16 @@ export default function CostCenters() {
   }, []);
 
   const loadCostCenters = async () => {
+    setIsLoading(true);
     try {
       const data = await api.getCostCenters();
-      setCostCenters(data);
-    } catch (error) {
-      toast.error('Failed to load cost centers');
+      setCostCenters(Array.isArray(data) ? data : []);
+    } catch (error: any) {
+      console.error('Failed to load cost centers:', error);
+      if (error?.message !== 'Failed to fetch') {
+        toast.error('Failed to load cost centers');
+      }
+      setCostCenters([]);
     } finally {
       setIsLoading(false);
     }
@@ -74,9 +79,10 @@ export default function CostCenters() {
   const loadProjects = async () => {
     try {
       const data = await api.getProjects();
-      setProjects(data);
+      setProjects(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Failed to load projects:', error);
+      setProjects([]);
     }
   };
 
