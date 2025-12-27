@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Project, TimesheetEntry, Client, ProjectStatus } from '@/types';
+import { Project, TimesheetEntry, Client, ProjectStatus, CostCenter } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
@@ -17,7 +17,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card } from '@/components/ui/card';
 import { api } from '@/lib/api';
-import { DollarSign, Clock, Calendar, Send, TrendingUp, Wrench, Loader2, Pencil } from 'lucide-react';
+import { DollarSign, Clock, Calendar, Send, TrendingUp, Wrench, Loader2, Pencil, Plus, FolderOpen, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -35,6 +35,15 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [clients, setClients] = useState<Client[]>([]);
+  const [costCenters, setCostCenters] = useState<CostCenter[]>([]);
+  
+  // Cost Center form
+  const [showCostCenterForm, setShowCostCenterForm] = useState(false);
+  const [ccFormCode, setCcFormCode] = useState('');
+  const [ccFormName, setCcFormName] = useState('');
+  const [ccFormDescription, setCcFormDescription] = useState('');
+  const [ccFormBudget, setCcFormBudget] = useState('');
+  const [isSavingCostCenter, setIsSavingCostCenter] = useState(false);
 
   // Edit form state
   const [editForm, setEditForm] = useState({
@@ -49,6 +58,7 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
     if (project && open) {
       loadProjectTimesheets();
       loadClients();
+      loadCostCenters();
       // Reset edit form when project changes
       setEditForm({
         name: project.name,
@@ -58,6 +68,7 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
         status: project.status,
       });
       setIsEditing(false);
+      setShowCostCenterForm(false);
     }
   }, [project, open]);
 
@@ -80,6 +91,61 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
       setClients(data);
     } catch (error) {
       console.error('Failed to load clients:', error);
+    }
+  };
+
+  const loadCostCenters = async () => {
+    if (!project) return;
+    try {
+      const data = await api.getCostCenters(false, project.id);
+      setCostCenters(data);
+    } catch (error) {
+      console.error('Failed to load cost centers:', error);
+    }
+  };
+
+  const resetCostCenterForm = () => {
+    setCcFormCode('');
+    setCcFormName('');
+    setCcFormDescription('');
+    setCcFormBudget('');
+    setShowCostCenterForm(false);
+  };
+
+  const handleAddCostCenter = async () => {
+    if (!project || !ccFormCode.trim() || !ccFormName.trim()) {
+      toast.error('Please enter code and name');
+      return;
+    }
+
+    setIsSavingCostCenter(true);
+    try {
+      await api.createCostCenter({
+        code: ccFormCode,
+        name: ccFormName,
+        description: ccFormDescription,
+        budget: parseFloat(ccFormBudget) || 0,
+        project_id: project.id,
+      });
+      toast.success('Cost center added to project');
+      resetCostCenterForm();
+      loadCostCenters();
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to create cost center');
+    } finally {
+      setIsSavingCostCenter(false);
+    }
+  };
+
+  const handleDeleteCostCenter = async (cc: CostCenter) => {
+    if (!confirm(`Delete cost center "${cc.name}"?`)) return;
+    
+    try {
+      await api.deleteCostCenter(cc.id);
+      toast.success('Cost center deleted');
+      loadCostCenters();
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to delete');
     }
   };
 
@@ -207,12 +273,144 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
           </Card>
 
           {/* Tabs */}
-          <Tabs defaultValue="breakdown" className="w-full">
-            <TabsList className="grid w-full grid-cols-3">
-              <TabsTrigger value="breakdown">Cost Breakdown</TabsTrigger>
+          <Tabs defaultValue="costcenters" className="w-full">
+            <TabsList className="grid w-full grid-cols-4">
+              <TabsTrigger value="costcenters">Cost Centers</TabsTrigger>
+              <TabsTrigger value="breakdown">Breakdown</TabsTrigger>
               <TabsTrigger value="timesheets">Timesheets</TabsTrigger>
               <TabsTrigger value="details">Details</TabsTrigger>
             </TabsList>
+
+            {/* Cost Centers Tab */}
+            <TabsContent value="costcenters" className="space-y-4 mt-4">
+              <div className="flex items-center justify-between">
+                <h4 className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
+                  Project Cost Centers ({costCenters.length})
+                </h4>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setShowCostCenterForm(!showCostCenterForm)}
+                >
+                  <Plus className="w-4 h-4 mr-1" />
+                  Add Cost Center
+                </Button>
+              </div>
+
+              {/* Add Cost Center Form */}
+              {showCostCenterForm && (
+                <Card className="p-4 bg-muted/30 border-electric">
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <Label className="text-xs">Code *</Label>
+                        <Input
+                          value={ccFormCode}
+                          onChange={(e) => setCcFormCode(e.target.value.toUpperCase())}
+                          placeholder="CC001"
+                          className="mt-1 font-mono"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-xs">Budget ($)</Label>
+                        <Input
+                          type="number"
+                          value={ccFormBudget}
+                          onChange={(e) => setCcFormBudget(e.target.value)}
+                          placeholder="5000"
+                          className="mt-1"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <Label className="text-xs">Name *</Label>
+                      <Input
+                        value={ccFormName}
+                        onChange={(e) => setCcFormName(e.target.value)}
+                        placeholder="Electrical Work"
+                        className="mt-1"
+                      />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Description</Label>
+                      <Textarea
+                        value={ccFormDescription}
+                        onChange={(e) => setCcFormDescription(e.target.value)}
+                        placeholder="Description..."
+                        className="mt-1 h-16"
+                      />
+                    </div>
+                    <div className="flex justify-end gap-2">
+                      <Button variant="outline" size="sm" onClick={resetCostCenterForm}>
+                        Cancel
+                      </Button>
+                      <Button size="sm" onClick={handleAddCostCenter} disabled={isSavingCostCenter} className="bg-electric text-background hover:bg-electric/90">
+                        {isSavingCostCenter ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Add'}
+                      </Button>
+                    </div>
+                  </div>
+                </Card>
+              )}
+
+              {/* Cost Centers List */}
+              {costCenters.length === 0 ? (
+                <Card className="p-6 bg-card border-border text-center">
+                  <FolderOpen className="w-8 h-8 mx-auto text-muted-foreground mb-2" />
+                  <p className="text-sm text-muted-foreground">
+                    No cost centers for this project yet
+                  </p>
+                </Card>
+              ) : (
+                <div className="space-y-3">
+                  {costCenters.map((cc) => {
+                    const used = cc.actual_cost || cc.total_cost || 0;
+                    const pct = cc.budget > 0 ? (used / cc.budget) * 100 : 0;
+                    return (
+                      <Card key={cc.id} className="p-4 bg-card border-border">
+                        <div className="flex items-start justify-between mb-2">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <Badge variant="outline" className="font-mono text-xs">{cc.code}</Badge>
+                              <span className="font-semibold">{cc.name}</span>
+                            </div>
+                            {cc.description && (
+                              <p className="text-xs text-muted-foreground mt-1">{cc.description}</p>
+                            )}
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-destructive hover:text-destructive"
+                            onClick={() => handleDeleteCostCenter(cc)}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                        {cc.budget > 0 && (
+                          <div className="space-y-1">
+                            <div className="flex justify-between text-xs">
+                              <span className="text-muted-foreground">Budget: ${cc.budget.toLocaleString()}</span>
+                              <span className={cn("font-mono", pct > 100 ? "text-warning" : "text-voltage")}>
+                                ${(cc.budget - used).toLocaleString()} remaining
+                              </span>
+                            </div>
+                            <Progress value={Math.min(pct, 100)} className={cn("h-1.5", pct > 100 && "[&>div]:bg-warning")} />
+                          </div>
+                        )}
+                        <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
+                          <span className="flex items-center gap-1">
+                            <Clock className="w-3 h-3" /> {cc.total_hours?.toFixed(1) || 0}h
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <DollarSign className="w-3 h-3" /> ${used.toLocaleString()}
+                          </span>
+                        </div>
+                      </Card>
+                    );
+                  })}
+                </div>
+              )}
+            </TabsContent>
 
             {/* Cost Breakdown */}
             <TabsContent value="breakdown" className="space-y-4 mt-4">

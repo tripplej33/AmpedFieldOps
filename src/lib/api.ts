@@ -322,8 +322,11 @@ class ApiClient {
   }
 
   // Cost Centers
-  async getCostCenters(activeOnly = false) {
-    return this.request<any[]>(`/api/cost-centers?active_only=${activeOnly}`);
+  async getCostCenters(activeOnly = false, projectId?: string) {
+    const params = new URLSearchParams();
+    if (activeOnly) params.append('active_only', 'true');
+    if (projectId) params.append('project_id', projectId);
+    return this.request<any[]>(`/api/cost-centers?${params}`);
   }
 
   async getCostCenter(id: string) {

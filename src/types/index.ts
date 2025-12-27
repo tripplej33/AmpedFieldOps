@@ -28,6 +28,8 @@ export interface CostCenter {
   name: string;
   description: string;
   budget: number;
+  project_id?: string; // Job-specific cost center
+  project_name?: string;
   xero_tracking_category_id?: string;
   is_active: boolean;
   created_at: string;
@@ -36,6 +38,8 @@ export interface CostCenter {
   project_count?: number;
   total_hours?: number;
   total_cost?: number;
+  actual_cost?: number;
+  remaining_budget?: number;
 }
 
 export interface ActivityType {
