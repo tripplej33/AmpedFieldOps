@@ -4,8 +4,13 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { api } from '@/lib/api';
-import { XeroInvoice, XeroQuote } from '@/types';
+import { XeroInvoice, XeroQuote, Client, Project } from '@/types';
 import { 
   DollarSign, 
   FileText, 
@@ -16,10 +21,19 @@ import {
   Download,
   CheckCircle,
   AlertCircle,
-  ArrowRight
+  ArrowRight,
+  Trash2,
+  Loader2
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+
+interface LineItem {
+  description: string;
+  quantity: number;
+  unit_price: number;
+  amount: number;
+}
 
 export default function Financials() {
   const [invoices, setInvoices] = useState<XeroInvoice[]>([]);
@@ -27,26 +41,138 @@ export default function Financials() {
   const [summary, setSummary] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
+  
+  // Create Invoice Modal state
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+  const [clients, setClients] = useState<Client[]>([]);
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [invoiceForm, setInvoiceForm] = useState({
+    client_id: '',
+    project_id: '',
+    due_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+    reference: '',
+    line_items: [{ description: '', quantity: 1, unit_price: 0, amount: 0 }] as LineItem[]
+  });
 
   useEffect(() => {
     loadData();
+    loadClients();
   }, []);
 
   const loadData = async () => {
     setIsLoading(true);
     try {
       const [invoicesData, quotesData, summaryData] = await Promise.all([
-        api.getXeroInvoices(),
-        api.getXeroQuotes(),
-        api.getXeroFinancialSummary()
+        api.getXeroInvoices().catch(() => []),
+        api.getXeroQuotes().catch(() => []),
+        api.getXeroFinancialSummary().catch(() => null)
       ]);
-      setInvoices(invoicesData);
-      setQuotes(quotesData);
-      setSummary(summaryData);
+      setInvoices(Array.isArray(invoicesData) ? invoicesData : []);
+      setQuotes(Array.isArray(quotesData) ? quotesData : []);
+      setSummary(summaryData || {
+        outstanding_invoices: 0,
+        paid_this_month: 0,
+        pending_quotes: { total: 0, count: 0 },
+        revenue_by_month: []
+      });
     } catch (error) {
-      toast.error('Failed to load financial data');
+      console.error('Failed to load financial data:', error);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const loadClients = async () => {
+    try {
+      const data = await api.getClients();
+      setClients(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error('Failed to load clients:', error);
+    }
+  };
+
+  const loadProjects = async (clientId: string) => {
+    if (!clientId) {
+      setProjects([]);
+      return;
+    }
+    try {
+      const data = await api.getProjects({ client_id: clientId });
+      setProjects(Array.isArray(data) ? data : []);
+    } catch (error) {
+      console.error('Failed to load projects:', error);
+      setProjects([]);
+    }
+  };
+
+  const handleClientChange = (clientId: string) => {
+    setInvoiceForm(prev => ({ ...prev, client_id: clientId, project_id: '' }));
+    loadProjects(clientId);
+  };
+
+  const addLineItem = () => {
+    setInvoiceForm(prev => ({
+      ...prev,
+      line_items: [...prev.line_items, { description: '', quantity: 1, unit_price: 0, amount: 0 }]
+    }));
+  };
+
+  const removeLineItem = (index: number) => {
+    setInvoiceForm(prev => ({
+      ...prev,
+      line_items: prev.line_items.filter((_, i) => i !== index)
+    }));
+  };
+
+  const updateLineItem = (index: number, field: keyof LineItem, value: string | number) => {
+    setInvoiceForm(prev => {
+      const newItems = [...prev.line_items];
+      newItems[index] = { ...newItems[index], [field]: value };
+      // Auto-calculate amount
+      if (field === 'quantity' || field === 'unit_price') {
+        newItems[index].amount = newItems[index].quantity * newItems[index].unit_price;
+      }
+      return { ...prev, line_items: newItems };
+    });
+  };
+
+  const calculateTotal = () => {
+    return invoiceForm.line_items.reduce((sum, item) => sum + (item.amount || 0), 0);
+  };
+
+  const handleCreateInvoice = async () => {
+    if (!invoiceForm.client_id) {
+      toast.error('Please select a client');
+      return;
+    }
+    if (invoiceForm.line_items.every(item => !item.description)) {
+      toast.error('Please add at least one line item');
+      return;
+    }
+
+    setIsCreating(true);
+    try {
+      await api.createXeroInvoice({
+        client_id: invoiceForm.client_id,
+        project_id: invoiceForm.project_id || undefined,
+        due_date: invoiceForm.due_date,
+        line_items: invoiceForm.line_items.filter(item => item.description)
+      });
+      toast.success('Invoice created successfully');
+      setIsCreateModalOpen(false);
+      setInvoiceForm({
+        client_id: '',
+        project_id: '',
+        due_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+        reference: '',
+        line_items: [{ description: '', quantity: 1, unit_price: 0, amount: 0 }]
+      });
+      loadData();
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to create invoice');
+    } finally {
+      setIsCreating(false);
     }
   };
 
@@ -182,7 +308,10 @@ export default function Financials() {
               <Download className="w-4 h-4 mr-2" />
               Export
             </Button>
-            <Button className="bg-electric text-background hover:bg-electric/90">
+            <Button 
+              className="bg-electric text-background hover:bg-electric/90"
+              onClick={() => setIsCreateModalOpen(true)}
+            >
               <Plus className="w-4 h-4 mr-2" />
               New Invoice
             </Button>
@@ -362,6 +491,188 @@ export default function Financials() {
           </Card>
         )}
       </div>
+
+      {/* Create Invoice Modal */}
+      <Dialog open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold">Create New Invoice</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-6 py-4">
+            {/* Client & Project Selection */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label className="font-mono text-xs uppercase tracking-wider">Client *</Label>
+                <Select
+                  value={invoiceForm.client_id}
+                  onValueChange={handleClientChange}
+                >
+                  <SelectTrigger className="mt-2">
+                    <SelectValue placeholder="Select client" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {clients.map(client => (
+                      <SelectItem key={client.id} value={client.id}>
+                        {client.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label className="font-mono text-xs uppercase tracking-wider">Project (Optional)</Label>
+                <Select
+                  value={invoiceForm.project_id}
+                  onValueChange={(value) => setInvoiceForm(prev => ({ ...prev, project_id: value }))}
+                  disabled={!invoiceForm.client_id}
+                >
+                  <SelectTrigger className="mt-2">
+                    <SelectValue placeholder="Select project" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {projects.map(project => (
+                      <SelectItem key={project.id} value={project.id}>
+                        {project.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Due Date */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label className="font-mono text-xs uppercase tracking-wider">Due Date</Label>
+                <Input
+                  type="date"
+                  value={invoiceForm.due_date}
+                  onChange={(e) => setInvoiceForm(prev => ({ ...prev, due_date: e.target.value }))}
+                  className="mt-2"
+                />
+              </div>
+              <div>
+                <Label className="font-mono text-xs uppercase tracking-wider">Reference</Label>
+                <Input
+                  value={invoiceForm.reference}
+                  onChange={(e) => setInvoiceForm(prev => ({ ...prev, reference: e.target.value }))}
+                  placeholder="PO number, etc."
+                  className="mt-2"
+                />
+              </div>
+            </div>
+
+            {/* Line Items */}
+            <div>
+              <div className="flex items-center justify-between mb-3">
+                <Label className="font-mono text-xs uppercase tracking-wider">Line Items</Label>
+                <Button variant="outline" size="sm" onClick={addLineItem}>
+                  <Plus className="w-3 h-3 mr-1" />
+                  Add Line
+                </Button>
+              </div>
+
+              <div className="space-y-3">
+                <div className="grid grid-cols-12 gap-2 text-xs font-mono uppercase text-muted-foreground">
+                  <div className="col-span-5">Description</div>
+                  <div className="col-span-2 text-right">Qty</div>
+                  <div className="col-span-2 text-right">Unit Price</div>
+                  <div className="col-span-2 text-right">Amount</div>
+                  <div className="col-span-1"></div>
+                </div>
+
+                {invoiceForm.line_items.map((item, index) => (
+                  <div key={index} className="grid grid-cols-12 gap-2 items-center">
+                    <div className="col-span-5">
+                      <Input
+                        value={item.description}
+                        onChange={(e) => updateLineItem(index, 'description', e.target.value)}
+                        placeholder="Service description"
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.5"
+                        value={item.quantity}
+                        onChange={(e) => updateLineItem(index, 'quantity', parseFloat(e.target.value) || 0)}
+                        className="text-right"
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <Input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={item.unit_price}
+                        onChange={(e) => updateLineItem(index, 'unit_price', parseFloat(e.target.value) || 0)}
+                        className="text-right"
+                      />
+                    </div>
+                    <div className="col-span-2">
+                      <Input
+                        type="number"
+                        value={item.amount.toFixed(2)}
+                        readOnly
+                        className="text-right bg-muted/50"
+                      />
+                    </div>
+                    <div className="col-span-1 flex justify-center">
+                      {invoiceForm.line_items.length > 1 && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => removeLineItem(index)}
+                          className="text-destructive hover:text-destructive"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+
+                {/* Total */}
+                <div className="grid grid-cols-12 gap-2 pt-3 border-t border-border">
+                  <div className="col-span-7"></div>
+                  <div className="col-span-2 text-right font-mono text-sm font-bold">TOTAL</div>
+                  <div className="col-span-2 text-right font-mono text-lg font-bold text-electric">
+                    ${calculateTotal().toFixed(2)}
+                  </div>
+                  <div className="col-span-1"></div>
+                </div>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center justify-end gap-3 pt-4 border-t border-border">
+              <Button variant="outline" onClick={() => setIsCreateModalOpen(false)}>
+                Cancel
+              </Button>
+              <Button 
+                className="bg-electric text-background hover:bg-electric/90"
+                onClick={handleCreateInvoice}
+                disabled={isCreating}
+              >
+                {isCreating ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Creating...
+                  </>
+                ) : (
+                  <>
+                    <FileText className="w-4 h-4 mr-2" />
+                    Create Invoice
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

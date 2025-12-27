@@ -7,15 +7,31 @@ const router = Router();
 // Note: In production, use the xero-node package for actual Xero API integration
 // This is a placeholder implementation showing the structure
 
+// Helper to get Xero credentials from settings or env
+async function getXeroCredentials() {
+  // First try database settings
+  const clientIdResult = await query(
+    `SELECT value FROM settings WHERE key = 'xero_client_id' AND user_id IS NULL`
+  );
+  const clientSecretResult = await query(
+    `SELECT value FROM settings WHERE key = 'xero_client_secret' AND user_id IS NULL`
+  );
+  
+  const clientId = clientIdResult.rows[0]?.value || process.env.XERO_CLIENT_ID;
+  const clientSecret = clientSecretResult.rows[0]?.value || process.env.XERO_CLIENT_SECRET;
+  const redirectUri = process.env.XERO_REDIRECT_URI || `${process.env.BACKEND_URL || 'http://localhost:3001'}/api/xero/callback`;
+  
+  return { clientId, clientSecret, redirectUri };
+}
+
 // Get Xero authorization URL
 router.get('/auth/url', authenticate, requirePermission('can_sync_xero'), async (req: AuthRequest, res: Response) => {
   try {
-    const clientId = process.env.XERO_CLIENT_ID;
-    const redirectUri = process.env.XERO_REDIRECT_URI;
+    const { clientId, clientSecret, redirectUri } = await getXeroCredentials();
     
-    if (!clientId || !redirectUri) {
+    if (!clientId || !clientSecret) {
       return res.status(400).json({ 
-        error: 'Xero credentials not configured',
+        error: 'Xero credentials not configured. Please add your Client ID and Client Secret in Settings.',
         configured: false
       });
     }
@@ -39,6 +55,7 @@ router.get('/auth/url', authenticate, requirePermission('can_sync_xero'), async 
 
     res.json({ url: authUrl, configured: true });
   } catch (error) {
+    console.error('Failed to generate Xero auth URL:', error);
     res.status(500).json({ error: 'Failed to generate auth URL' });
   }
 });
@@ -46,51 +63,87 @@ router.get('/auth/url', authenticate, requirePermission('can_sync_xero'), async 
 // Handle Xero OAuth callback
 router.get('/callback', async (req, res) => {
   const { code, state } = req.query;
+  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
 
   try {
     if (!code) {
-      return res.redirect(`${process.env.FRONTEND_URL}/settings?xero_error=no_code`);
+      return res.redirect(`${frontendUrl}/settings?xero_error=no_code`);
     }
 
-    // Exchange code for tokens (in production, use xero-node)
-    // This is a placeholder - implement actual token exchange
-    const clientId = process.env.XERO_CLIENT_ID;
-    const clientSecret = process.env.XERO_CLIENT_SECRET;
-    const redirectUri = process.env.XERO_REDIRECT_URI;
+    // Get credentials from database settings
+    const { clientId, clientSecret, redirectUri } = await getXeroCredentials();
 
-    // Simulate token storage
-    // In production, make actual API call to Xero
-    const mockTokenResponse = {
-      access_token: 'mock_access_token',
-      refresh_token: 'mock_refresh_token',
-      id_token: 'mock_id_token',
-      expires_in: 1800,
-      token_type: 'Bearer'
-    };
+    if (!clientId || !clientSecret) {
+      return res.redirect(`${frontendUrl}/settings?xero_error=credentials_missing`);
+    }
 
-    const expiresAt = new Date(Date.now() + mockTokenResponse.expires_in * 1000);
+    // Exchange code for tokens using actual Xero API
+    const tokenResponse = await fetch('https://identity.xero.com/connect/token', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Authorization': 'Basic ' + Buffer.from(`${clientId}:${clientSecret}`).toString('base64')
+      },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        code: code as string,
+        redirect_uri: redirectUri
+      })
+    });
 
-    // Store tokens
+    if (!tokenResponse.ok) {
+      const errorText = await tokenResponse.text();
+      console.error('Xero token exchange failed:', errorText);
+      return res.redirect(`${frontendUrl}/settings?xero_error=token_exchange_failed`);
+    }
+
+    const tokens = await tokenResponse.json();
+    const expiresAt = new Date(Date.now() + tokens.expires_in * 1000);
+
+    // Get tenant info (organization connected)
+    let tenantId = null;
+    let tenantName = 'Connected Organization';
+    
+    try {
+      const connectionsResponse = await fetch('https://api.xero.com/connections', {
+        headers: {
+          'Authorization': `Bearer ${tokens.access_token}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      
+      if (connectionsResponse.ok) {
+        const connections = await connectionsResponse.json();
+        if (connections && connections.length > 0) {
+          tenantId = connections[0].tenantId;
+          tenantName = connections[0].tenantName;
+        }
+      }
+    } catch (e) {
+      console.error('Failed to get Xero connections:', e);
+    }
+
+    // Store tokens (replace any existing)
+    await query('DELETE FROM xero_tokens');
+    
     await query(
-      `INSERT INTO xero_tokens (access_token, refresh_token, id_token, token_type, expires_at)
-       VALUES ($1, $2, $3, $4, $5)
-       ON CONFLICT DO NOTHING`,
+      `INSERT INTO xero_tokens (access_token, refresh_token, id_token, token_type, expires_at, tenant_id, tenant_name)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
       [
-        mockTokenResponse.access_token,
-        mockTokenResponse.refresh_token,
-        mockTokenResponse.id_token,
-        mockTokenResponse.token_type,
-        expiresAt
+        tokens.access_token,
+        tokens.refresh_token,
+        tokens.id_token || null,
+        tokens.token_type,
+        expiresAt,
+        tenantId,
+        tenantName
       ]
     );
 
-    // Update last xero token (keep only one)
-    await query(`DELETE FROM xero_tokens WHERE id NOT IN (SELECT id FROM xero_tokens ORDER BY created_at DESC LIMIT 1)`);
-
-    res.redirect(`${process.env.FRONTEND_URL}/settings?xero_connected=true`);
+    res.redirect(`${frontendUrl}/settings?xero_connected=true`);
   } catch (error) {
     console.error('Xero callback error:', error);
-    res.redirect(`${process.env.FRONTEND_URL}/settings?xero_error=callback_failed`);
+    res.redirect(`${frontendUrl}/settings?xero_error=callback_failed`);
   }
 });
 
@@ -101,10 +154,14 @@ router.get('/status', authenticate, async (req: AuthRequest, res: Response) => {
       `SELECT tenant_id, tenant_name, expires_at, updated_at FROM xero_tokens ORDER BY created_at DESC LIMIT 1`
     );
 
+    // Check if credentials are configured
+    const { clientId, clientSecret } = await getXeroCredentials();
+    const isConfigured = !!(clientId && clientSecret);
+
     if (result.rows.length === 0) {
       return res.json({ 
         connected: false,
-        configured: !!(process.env.XERO_CLIENT_ID && process.env.XERO_CLIENT_SECRET)
+        configured: isConfigured
       });
     }
 
@@ -113,7 +170,7 @@ router.get('/status', authenticate, async (req: AuthRequest, res: Response) => {
 
     res.json({
       connected: true,
-      configured: true,
+      configured: isConfigured,
       tenant_name: token.tenant_name,
       expires_at: token.expires_at,
       last_sync: token.updated_at,
@@ -245,18 +302,39 @@ router.post('/invoices', authenticate, requirePermission('can_sync_xero'), async
   try {
     const { client_id, project_id, line_items, due_date } = req.body;
 
-    // In production, create invoice via Xero API
-    // This is a placeholder
+    if (!client_id) {
+      return res.status(400).json({ error: 'Client is required' });
+    }
+
+    // Calculate total from line items
+    const total = Array.isArray(line_items) 
+      ? line_items.reduce((sum: number, item: any) => sum + (item.amount || 0), 0)
+      : 0;
+
+    // Generate invoice number
+    const countResult = await query('SELECT COUNT(*) as count FROM xero_invoices');
+    const invoiceNumber = `INV-${String(parseInt(countResult.rows[0].count) + 1).padStart(5, '0')}`;
+
+    // In production, create invoice via Xero API and get xero_invoice_id
+    // This is a placeholder that stores locally first
 
     const result = await query(
-      `INSERT INTO xero_invoices (xero_invoice_id, client_id, project_id, status, line_items, due_date, synced_at)
-       VALUES ($1, $2, $3, 'DRAFT', $4, $5, CURRENT_TIMESTAMP)
+      `INSERT INTO xero_invoices (xero_invoice_id, invoice_number, client_id, project_id, status, line_items, total, amount_due, due_date, issue_date, synced_at)
+       VALUES ($1, $2, $3, $4, 'DRAFT', $5, $6, $6, $7, CURRENT_DATE, CURRENT_TIMESTAMP)
        RETURNING *`,
-      [`INV-${Date.now()}`, client_id, project_id, JSON.stringify(line_items), due_date]
+      [invoiceNumber, invoiceNumber, client_id, project_id || null, JSON.stringify(line_items), total, due_date || null]
+    );
+
+    // Log activity
+    await query(
+      `INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) 
+       VALUES ($1, $2, $3, $4, $5)`,
+      [req.user!.id, 'create', 'invoice', result.rows[0].id, JSON.stringify({ invoice_number: invoiceNumber, total })]
     );
 
     res.status(201).json(result.rows[0]);
   } catch (error) {
+    console.error('Failed to create invoice:', error);
     res.status(500).json({ error: 'Failed to create invoice' });
   }
 });

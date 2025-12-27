@@ -49,18 +49,26 @@ export default function Settings() {
   const handleXeroConnect = async () => {
     // Validate credentials are entered
     if (!settings.xero_client_id || !settings.xero_client_secret) {
-      toast.error('Please enter your Xero credentials first');
+      toast.error('Please enter your Xero Client ID and Client Secret first');
       return;
     }
 
     try {
-      const { url } = await api.getXeroAuthUrl();
-      if (url) {
-        window.location.href = url;
+      // First ensure credentials are saved to the database
+      await api.updateSetting('xero_client_id', settings.xero_client_id, true);
+      await api.updateSetting('xero_client_secret', settings.xero_client_secret, true);
+      
+      // Now request the auth URL
+      const response = await api.getXeroAuthUrl();
+      if (response.url) {
+        window.location.href = response.url;
+      } else if (!response.configured) {
+        toast.error('Xero credentials not configured. Please save your credentials and try again.');
       } else {
         toast.error('Failed to generate Xero authorization URL');
       }
     } catch (error: any) {
+      console.error('Xero connect error:', error);
       toast.error(error.message || 'Failed to connect to Xero');
     }
   };
