@@ -86,9 +86,6 @@ while [ -z "$ADMIN_NAME" ]; do
     read -p "Enter admin name: " ADMIN_NAME
 done
 
-read -p "Enter company name [AmpedFieldOps]: " COMPANY_NAME
-COMPANY_NAME=${COMPANY_NAME:-AmpedFieldOps}
-
 # Create database if it doesn't exist
 echo ""
 echo -e "${YELLOW}Setting up database...${NC}"
@@ -177,8 +174,7 @@ RESPONSE=$(curl -s -X POST http://localhost:3001/api/setup/admin \
     -d "{
         \"email\": \"$ADMIN_EMAIL\",
         \"password\": \"$ADMIN_PASSWORD\",
-        \"name\": \"$ADMIN_NAME\",
-        \"company_name\": \"$COMPANY_NAME\"
+        \"name\": \"$ADMIN_NAME\"
     }")
 
 if echo "$RESPONSE" | grep -q "error"; then

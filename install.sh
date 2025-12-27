@@ -52,14 +52,6 @@ else
     echo -e "${YELLOW}✓ .env file already exists${NC}"
 fi
 
-# Get company name
-echo ""
-echo -e "${YELLOW}Company Configuration${NC}"
-echo "---------------------"
-
-read -p "Enter company name [AmpedFieldOps]: " COMPANY_NAME
-COMPANY_NAME=${COMPANY_NAME:-AmpedFieldOps}
-
 echo ""
 echo -e "${YELLOW}Network Configuration${NC}"
 echo "---------------------"
