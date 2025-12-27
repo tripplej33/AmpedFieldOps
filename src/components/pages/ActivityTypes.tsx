@@ -179,7 +179,15 @@ export default function ActivityTypes() {
           </Button>
         </div>
 
+        {/* Loading State */}
+        {isLoading && (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="w-8 h-8 animate-spin text-electric" />
+          </div>
+        )}
+
         {/* Activity Types Grid */}
+        {!isLoading && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {activityTypes.map((type) => (
             <Card 
@@ -241,6 +249,7 @@ export default function ActivityTypes() {
             </Card>
           ))}
         </div>
+        )}
 
         {activityTypes.length === 0 && !isLoading && (
           <Card className="p-12 text-center bg-card border-border">

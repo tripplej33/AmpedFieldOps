@@ -1,8 +1,12 @@
 import { useState, useEffect } from 'react';
-import { Project, TimesheetEntry } from '@/types';
+import { Project, TimesheetEntry, Client, ProjectStatus } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   Dialog,
   DialogContent,
@@ -13,23 +17,47 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card } from '@/components/ui/card';
 import { api } from '@/lib/api';
-import { DollarSign, Clock, Calendar, Send, TrendingUp, Wrench, Loader2 } from 'lucide-react';
+import { DollarSign, Clock, Calendar, Send, TrendingUp, Wrench, Loader2, Pencil } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
 
 interface ProjectDetailModalProps {
   project: Project | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onProjectUpdated?: () => void;
 }
 
-export default function ProjectDetailModal({ project, open, onOpenChange }: ProjectDetailModalProps) {
+export default function ProjectDetailModal({ project, open, onOpenChange, onProjectUpdated }: ProjectDetailModalProps) {
   const [isSyncing, setIsSyncing] = useState(false);
   const [projectEntries, setProjectEntries] = useState<TimesheetEntry[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [clients, setClients] = useState<Client[]>([]);
+
+  // Edit form state
+  const [editForm, setEditForm] = useState({
+    name: '',
+    client_id: '',
+    description: '',
+    budget: '',
+    status: 'quoted' as ProjectStatus,
+  });
 
   useEffect(() => {
     if (project && open) {
       loadProjectTimesheets();
+      loadClients();
+      // Reset edit form when project changes
+      setEditForm({
+        name: project.name,
+        client_id: project.client_id || '',
+        description: project.description || '',
+        budget: project.budget?.toString() || '',
+        status: project.status,
+      });
+      setIsEditing(false);
     }
   }, [project, open]);
 
@@ -43,6 +71,40 @@ export default function ProjectDetailModal({ project, open, onOpenChange }: Proj
       console.error('Failed to load project timesheets:', error);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const loadClients = async () => {
+    try {
+      const data = await api.getClients();
+      setClients(data);
+    } catch (error) {
+      console.error('Failed to load clients:', error);
+    }
+  };
+
+  const handleSaveEdit = async () => {
+    if (!project || !editForm.name || !editForm.client_id) {
+      toast.error('Please fill in required fields');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      await api.updateProject(project.id, {
+        name: editForm.name,
+        client_id: editForm.client_id,
+        description: editForm.description,
+        budget: parseFloat(editForm.budget) || 0,
+        status: editForm.status,
+      });
+      toast.success('Project updated successfully');
+      setIsEditing(false);
+      onProjectUpdated?.();
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to update project');
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -274,11 +336,97 @@ export default function ProjectDetailModal({ project, open, onOpenChange }: Proj
             </TabsContent>
           </Tabs>
 
+          {/* Edit Form */}
+          {isEditing && (
+            <Card className="p-4 bg-muted/30 border-electric">
+              <h4 className="font-bold mb-4 flex items-center gap-2">
+                <Pencil className="w-4 h-4" />
+                Edit Project
+              </h4>
+              <div className="space-y-4">
+                <div>
+                  <Label className="font-mono text-xs uppercase tracking-wider">Project Name *</Label>
+                  <Input
+                    value={editForm.name}
+                    onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
+                    className="mt-2"
+                  />
+                </div>
+
+                <div>
+                  <Label className="font-mono text-xs uppercase tracking-wider">Client *</Label>
+                  <Select 
+                    value={editForm.client_id} 
+                    onValueChange={(value) => setEditForm({ ...editForm, client_id: value })}
+                  >
+                    <SelectTrigger className="mt-2">
+                      <SelectValue placeholder="Select a client" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {clients.map((client) => (
+                        <SelectItem key={client.id} value={client.id.toString()}>
+                          {client.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <Label className="font-mono text-xs uppercase tracking-wider">Description</Label>
+                  <Textarea
+                    value={editForm.description}
+                    onChange={(e) => setEditForm({ ...editForm, description: e.target.value })}
+                    className="mt-2"
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <Label className="font-mono text-xs uppercase tracking-wider">Budget ($)</Label>
+                    <Input
+                      type="number"
+                      value={editForm.budget}
+                      onChange={(e) => setEditForm({ ...editForm, budget: e.target.value })}
+                      className="mt-2"
+                    />
+                  </div>
+                  <div>
+                    <Label className="font-mono text-xs uppercase tracking-wider">Status</Label>
+                    <Select 
+                      value={editForm.status} 
+                      onValueChange={(value) => setEditForm({ ...editForm, status: value as ProjectStatus })}
+                    >
+                      <SelectTrigger className="mt-2">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="quoted">Quoted</SelectItem>
+                        <SelectItem value="in-progress">In Progress</SelectItem>
+                        <SelectItem value="completed">Completed</SelectItem>
+                        <SelectItem value="invoiced">Invoiced</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                <div className="flex justify-end gap-2 pt-2">
+                  <Button variant="outline" onClick={() => setIsEditing(false)} disabled={isSaving}>
+                    Cancel
+                  </Button>
+                  <Button onClick={handleSaveEdit} disabled={isSaving} className="bg-electric text-background hover:bg-electric/90">
+                    {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Save Changes'}
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          )}
+
           {/* Actions */}
           <div className="flex gap-3 pt-4 border-t border-border">
             <Button
               onClick={handleSendToXero}
-              disabled={isSyncing}
+              disabled={isSyncing || isEditing}
               className="flex-1 bg-electric text-background hover:bg-electric/90 glow-primary"
             >
               {isSyncing ? (
@@ -293,8 +441,14 @@ export default function ProjectDetailModal({ project, open, onOpenChange }: Proj
                 </>
               )}
             </Button>
-            <Button variant="outline" className="flex-1">
-              Edit Project
+            <Button 
+              variant="outline" 
+              className="flex-1"
+              onClick={() => setIsEditing(!isEditing)}
+              disabled={isSaving}
+            >
+              <Pencil className="w-4 h-4 mr-2" />
+              {isEditing ? 'Cancel Edit' : 'Edit Project'}
             </Button>
           </div>
         </div>

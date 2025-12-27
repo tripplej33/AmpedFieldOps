@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import Header from '@/components/layout/Header';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -9,15 +10,20 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { api } from '@/lib/api';
 import { Client } from '@/types';
-import { Search, Plus, Phone, Mail, MapPin, Clock, Briefcase, Loader2 } from 'lucide-react';
+import { Search, Plus, Phone, Mail, MapPin, Clock, Briefcase, Loader2, Users } from 'lucide-react';
 import { toast } from 'sonner';
+import ClientDetailModal from '@/components/modals/ClientDetailModal';
 
 export default function Clients() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [clients, setClients] = useState<Client[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [createModalOpen, setCreateModalOpen] = useState(false);
   const [editModalOpen, setEditModalOpen] = useState(false);
+  const [detailModalOpen, setDetailModalOpen] = useState(false);
+  const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -34,6 +40,21 @@ export default function Clients() {
   useEffect(() => {
     loadClients();
   }, []);
+
+  // Handle URL parameters for opening specific client
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const clientId = params.get('id');
+    if (clientId && clients.length > 0) {
+      const client = clients.find(c => c.id === clientId);
+      if (client) {
+        setSelectedClient(client);
+        setDetailModalOpen(true);
+        // Clear the URL param
+        navigate('/clients', { replace: true });
+      }
+    }
+  }, [location.search, clients, navigate]);
 
   const loadClients = async () => {
     try {
@@ -176,6 +197,10 @@ export default function Clients() {
             <Card
               key={client.id}
               className="p-6 bg-card border-border hover:border-electric transition-all cursor-pointer group"
+              onClick={() => {
+                setSelectedClient(client);
+                setDetailModalOpen(true);
+              }}
             >
               <div className="flex items-start justify-between mb-4">
                 <div>
@@ -240,7 +265,22 @@ export default function Clients() {
                   variant="outline" 
                   size="sm" 
                   className="flex-1 text-xs"
-                  onClick={() => handleEdit(client)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setSelectedClient(client);
+                    setDetailModalOpen(true);
+                  }}
+                >
+                  View Profile
+                </Button>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="flex-1 text-xs"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleEdit(client);
+                  }}
                 >
                   Edit
                 </Button>
@@ -248,7 +288,10 @@ export default function Clients() {
                   variant="outline" 
                   size="sm" 
                   className="flex-1 text-xs text-destructive hover:text-destructive"
-                  onClick={() => handleDelete(client)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleDelete(client);
+                  }}
                 >
                   Delete
                 </Button>
@@ -259,7 +302,21 @@ export default function Clients() {
 
         {filteredClients.length === 0 && (
           <Card className="p-12 text-center bg-card border-border">
-            <p className="text-muted-foreground">No clients found matching your search.</p>
+            {clients.length === 0 ? (
+              <>
+                <Users className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+                <p className="text-muted-foreground mb-4">No clients yet. Add your first client to get started.</p>
+                <Button 
+                  className="bg-electric text-background hover:bg-electric/90"
+                  onClick={handleCreateClient}
+                >
+                  <Plus className="w-4 h-4 mr-2" />
+                  Add First Client
+                </Button>
+              </>
+            ) : (
+              <p className="text-muted-foreground">No clients found matching your search.</p>
+            )}
           </Card>
         )}
       </div>
@@ -483,6 +540,14 @@ export default function Clients() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Client Detail Modal */}
+      <ClientDetailModal 
+        client={selectedClient} 
+        open={detailModalOpen} 
+        onOpenChange={setDetailModalOpen} 
+        onClientUpdated={loadClients}
+      />
     </>
   );
 }

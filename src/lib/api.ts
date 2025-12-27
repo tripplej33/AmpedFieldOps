@@ -228,11 +228,19 @@ class ApiClient {
   async getTimesheets(params?: { 
     user_id?: string; 
     project_id?: string; 
+    client_id?: string;
     date_from?: string; 
     date_to?: string;
     cost_center_id?: string;
   }) {
-    const searchParams = new URLSearchParams(params as Record<string, string>);
+    const searchParams = new URLSearchParams();
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== '') {
+          searchParams.append(key, value);
+        }
+      });
+    }
     return this.request<any[]>(`/api/timesheets?${searchParams}`);
   }
 

@@ -131,7 +131,7 @@ export default function Header({ title, subtitle }: HeaderProps) {
                           <button
                             key={client.id}
                             onClick={() => {
-                              navigate('/clients');
+                              navigate(`/clients?id=${client.id}`);
                               handleClearSearch();
                             }}
                             className="w-full flex items-center gap-3 px-2 py-2 rounded hover:bg-muted/50 text-left"
@@ -154,7 +154,7 @@ export default function Header({ title, subtitle }: HeaderProps) {
                           <button
                             key={project.id}
                             onClick={() => {
-                              navigate('/projects');
+                              navigate(`/projects?id=${project.id}`);
                               handleClearSearch();
                             }}
                             className="w-full flex items-center gap-3 px-2 py-2 rounded hover:bg-muted/50 text-left"
@@ -177,7 +177,7 @@ export default function Header({ title, subtitle }: HeaderProps) {
                           <button
                             key={entry.id}
                             onClick={() => {
-                              navigate('/timesheets');
+                              navigate(`/timesheets?id=${entry.id}`);
                               handleClearSearch();
                             }}
                             className="w-full flex items-center gap-3 px-2 py-2 rounded hover:bg-muted/50 text-left"

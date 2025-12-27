@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import Header from '@/components/layout/Header';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -16,6 +17,8 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
 export default function Timesheets() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [entries, setEntries] = useState<TimesheetEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [createModalOpen, setCreateModalOpen] = useState(false);
@@ -34,6 +37,7 @@ export default function Timesheets() {
   const [costCenters, setCostCenters] = useState<CostCenter[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
+  const [userHours, setUserHours] = useState<Record<string, string>>({}); // Individual hours per user
   const [imageFiles, setImageFiles] = useState<File[]>([]);
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
 
@@ -55,6 +59,20 @@ export default function Timesheets() {
     loadFormData();
     loadUsers();
   }, []);
+
+  // Handle URL parameters for opening specific timesheet
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const entryId = params.get('id');
+    if (entryId && entries.length > 0) {
+      const entry = entries.find(e => e.id === entryId);
+      if (entry) {
+        handleEdit(entry);
+        // Clear the URL param
+        navigate('/timesheets', { replace: true });
+      }
+    }
+  }, [location.search, entries, navigate]);
 
   const loadTimesheets = async () => {
     try {
@@ -117,6 +135,7 @@ export default function Timesheets() {
     });
     setEditingEntry(null);
     setSelectedUserIds([]);
+    setUserHours({});
     setImageFiles([]);
     setImagePreviews([]);
   };
@@ -174,25 +193,63 @@ export default function Timesheets() {
 
   // User toggle for multi-select
   const toggleUserSelection = (userId: string) => {
-    setSelectedUserIds(prev => 
-      prev.includes(userId) 
-        ? prev.filter(id => id !== userId)
-        : [...prev, userId]
-    );
+    setSelectedUserIds(prev => {
+      if (prev.includes(userId)) {
+        // Remove user and their hours
+        const newUserHours = { ...userHours };
+        delete newUserHours[userId];
+        setUserHours(newUserHours);
+        return prev.filter(id => id !== userId);
+      } else {
+        // Add user with default hours from form
+        setUserHours(h => ({ ...h, [userId]: formData.hours || '' }));
+        return [...prev, userId];
+      }
+    });
+  };
+
+  // Update individual user's hours
+  const updateUserHours = (userId: string, hours: string) => {
+    setUserHours(prev => ({ ...prev, [userId]: hours }));
   };
 
   const handleCreate = async () => {
-    if (!formData.project_id || !formData.activity_type_id || !formData.cost_center_id || !formData.hours) {
+    // Validate base required fields
+    if (!formData.project_id || !formData.activity_type_id || !formData.cost_center_id) {
       toast.error('Please fill in all required fields');
+      return;
+    }
+
+    // If users are selected, validate each has hours; otherwise validate default hours
+    if (selectedUserIds.length > 0) {
+      const missingHours = selectedUserIds.filter(id => !userHours[id] || parseFloat(userHours[id]) <= 0);
+      if (missingHours.length > 0) {
+        toast.error('Please enter hours for all selected users');
+        return;
+      }
+    } else if (!formData.hours || parseFloat(formData.hours) <= 0) {
+      toast.error('Please enter hours');
       return;
     }
 
     setIsSubmitting(true);
     try {
-      // Create entry for each selected user or current user if none selected
-      const userIdsToCreate = selectedUserIds.length > 0 ? selectedUserIds : ['current'];
-      
-      for (const userId of userIdsToCreate) {
+      // Create entry for each selected user with their individual hours, or current user if none selected
+      if (selectedUserIds.length > 0) {
+        for (const userId of selectedUserIds) {
+          await api.createTimesheet({
+            project_id: formData.project_id,
+            activity_type_id: formData.activity_type_id,
+            cost_center_id: formData.cost_center_id,
+            date: formData.date,
+            hours: parseFloat(userHours[userId]),
+            notes: formData.notes,
+            user_id: userId,
+            image_files: imageFiles,
+          });
+        }
+        toast.success(`Timesheet entries created for ${selectedUserIds.length} users`);
+      } else {
         await api.createTimesheet({
           project_id: formData.project_id,
           activity_type_id: formData.activity_type_id,
@@ -200,14 +257,11 @@ export default function Timesheets() {
           date: formData.date,
           hours: parseFloat(formData.hours),
           notes: formData.notes,
-          user_id: userId !== 'current' ? userId : undefined,
           image_files: imageFiles,
         });
+        toast.success('Timesheet entry created');
       }
       
-      toast.success(userIdsToCreate.length > 1 
-        ? `Timesheet entries created for ${userIdsToCreate.length} users` 
-        : 'Timesheet entry created');
       setCreateModalOpen(false);
       resetForm();
       loadTimesheets();
@@ -580,6 +634,8 @@ export default function Timesheets() {
             users={users}
             selectedUserIds={selectedUserIds}
             toggleUserSelection={toggleUserSelection}
+            userHours={userHours}
+            updateUserHours={updateUserHours}
             imagePreviews={imagePreviews}
             removeImage={removeImage}
             fileInputRef={fileInputRef}
@@ -613,6 +669,8 @@ export default function Timesheets() {
             users={users}
             selectedUserIds={selectedUserIds}
             toggleUserSelection={toggleUserSelection}
+            userHours={userHours}
+            updateUserHours={updateUserHours}
             imagePreviews={imagePreviews}
             removeImage={removeImage}
             fileInputRef={fileInputRef}
@@ -642,6 +700,8 @@ function TimesheetForm({
   users,
   selectedUserIds,
   toggleUserSelection,
+  userHours,
+  updateUserHours,
   imagePreviews,
   removeImage,
   fileInputRef,
@@ -663,6 +723,8 @@ function TimesheetForm({
   users: User[];
   selectedUserIds: string[];
   toggleUserSelection: (id: string) => void;
+  userHours: Record<string, string>;
+  updateUserHours: (userId: string, hours: string) => void;
   imagePreviews: string[];
   removeImage: (index: number) => void;
   fileInputRef: React.RefObject<HTMLInputElement | null>;
@@ -684,28 +746,59 @@ function TimesheetForm({
             Assign to Technicians
           </Label>
           <p className="text-xs text-muted-foreground mb-2">
-            Select users to create timesheet for (leave empty for yourself)
+            Select users and set individual hours for each (leave empty to log for yourself)
           </p>
-          <div className="flex flex-wrap gap-2 mt-2 p-3 rounded-lg border border-border bg-muted/20">
-            {users.map((user) => (
-              <div
-                key={user.id}
-                className={cn(
-                  "flex items-center gap-2 px-3 py-1.5 rounded-full border cursor-pointer transition-all text-sm",
-                  selectedUserIds.includes(user.id)
-                    ? "bg-electric text-background border-electric"
-                    : "border-border hover:border-electric"
-                )}
-                onClick={() => toggleUserSelection(user.id)}
-              >
-                <Checkbox 
-                  checked={selectedUserIds.includes(user.id)} 
-                  className="pointer-events-none"
-                />
-                <span>{user.name}</span>
-              </div>
-            ))}
+          <div className="space-y-2 mt-2 p-3 rounded-lg border border-border bg-muted/20">
+            {users.map((user) => {
+              const isSelected = selectedUserIds.includes(user.id);
+              return (
+                <div
+                  key={user.id}
+                  className={cn(
+                    "flex items-center gap-3 p-2 rounded-lg border transition-all",
+                    isSelected
+                      ? "bg-electric/10 border-electric"
+                      : "border-border hover:border-electric/50"
+                  )}
+                >
+                  <div 
+                    className="flex items-center gap-2 cursor-pointer flex-1"
+                    onClick={() => toggleUserSelection(user.id)}
+                  >
+                    <Checkbox 
+                      checked={isSelected} 
+                      className="pointer-events-none"
+                    />
+                    <span className={cn(
+                      "font-medium text-sm",
+                      isSelected ? "text-electric" : ""
+                    )}>{user.name}</span>
+                  </div>
+                  {isSelected && (
+                    <div className="flex items-center gap-2">
+                      <Label className="text-xs text-muted-foreground">Hours:</Label>
+                      <Input
+                        type="number"
+                        step="0.5"
+                        min="0"
+                        max="24"
+                        value={userHours[user.id] || ''}
+                        onChange={(e) => updateUserHours(user.id, e.target.value)}
+                        placeholder="8"
+                        className="w-20 h-8 text-sm"
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
+          {selectedUserIds.length > 0 && (
+            <p className="text-xs text-electric mt-2 font-mono">
+              {selectedUserIds.length} user{selectedUserIds.length > 1 ? 's' : ''} selected
+            </p>
+          )}
         </div>
       )}
 
@@ -785,7 +878,7 @@ function TimesheetForm({
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className={cn("grid gap-4", selectedUserIds.length === 0 && showUserSelect ? "grid-cols-2" : "grid-cols-1")}>
         <div>
           <Label className="font-mono text-xs uppercase tracking-wider">Date *</Label>
           <Input
@@ -796,19 +889,22 @@ function TimesheetForm({
           />
         </div>
 
-        <div>
-          <Label className="font-mono text-xs uppercase tracking-wider">Hours *</Label>
-          <Input
-            type="number"
-            step="0.5"
-            min="0"
-            max="24"
-            value={formData.hours}
-            onChange={(e) => setFormData({ ...formData, hours: e.target.value })}
-            placeholder="8"
-            className="mt-2"
-          />
-        </div>
+        {/* Only show default hours field if no users are selected or not in multi-user mode */}
+        {(selectedUserIds.length === 0 || !showUserSelect) && (
+          <div>
+            <Label className="font-mono text-xs uppercase tracking-wider">Hours *</Label>
+            <Input
+              type="number"
+              step="0.5"
+              min="0"
+              max="24"
+              value={formData.hours}
+              onChange={(e) => setFormData({ ...formData, hours: e.target.value })}
+              placeholder="8"
+              className="mt-2"
+            />
+          </div>
+        )}
       </div>
 
       <div>

@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import Header from '@/components/layout/Header';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -131,6 +132,8 @@ function ProjectCard({
 }
 
 export default function Projects() {
+  const location = useLocation();
+  const navigate = useNavigate();
   const [projects, setProjects] = useState<Project[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
@@ -152,6 +155,21 @@ export default function Projects() {
     loadProjects();
     loadClients();
   }, []);
+
+  // Handle URL parameters for opening specific project
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const projectId = params.get('id');
+    if (projectId && projects.length > 0) {
+      const project = projects.find(p => p.id === projectId);
+      if (project) {
+        setSelectedProject(project);
+        setDetailModalOpen(true);
+        // Clear the URL param
+        navigate('/projects', { replace: true });
+      }
+    }
+  }, [location.search, projects, navigate]);
 
   const loadProjects = async () => {
     try {
@@ -300,7 +318,7 @@ export default function Projects() {
         </div>
       </div>
 
-      <ProjectDetailModal project={selectedProject} open={detailModalOpen} onOpenChange={setDetailModalOpen} />
+      <ProjectDetailModal project={selectedProject} open={detailModalOpen} onOpenChange={setDetailModalOpen} onProjectUpdated={loadProjects} />
 
       {/* Create Project Modal */}
       <Dialog open={createModalOpen} onOpenChange={setCreateModalOpen}>
