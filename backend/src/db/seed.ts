@@ -75,7 +75,7 @@ async function seed() {
     
     try {
       await client.query(
-        `INSERT INTO users (email, password, name, role, is_active) 
+        `INSERT INTO users (email, password_hash, name, role, is_active) 
          VALUES ($1, $2, $3, $4, $5)
          ON CONFLICT (email) DO NOTHING`,
         ['admin@ampedfieldops.com', hashedPassword, 'Admin User', 'admin', true]

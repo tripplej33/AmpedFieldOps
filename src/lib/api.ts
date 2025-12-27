@@ -1,5 +1,6 @@
-// Use relative path for API calls - nginx will proxy to backend
-const API_URL = '/api';
+// Use empty string as API_URL since endpoints already include /api prefix
+// Nginx will proxy /api requests to backend
+const API_URL = '';
 
 interface ApiOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
