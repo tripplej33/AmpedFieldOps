@@ -75,11 +75,16 @@ export default function Timesheets() {
   }, [location.search, entries, navigate]);
 
   const loadTimesheets = async () => {
+    setIsLoading(true);
     try {
       const data = await api.getTimesheets();
-      setEntries(data);
-    } catch (error) {
+      setEntries(Array.isArray(data) ? data : []);
+    } catch (error: any) {
       console.error('Failed to load timesheets:', error);
+      if (error?.message !== 'Failed to fetch') {
+        toast.error('Failed to load timesheets');
+      }
+      setEntries([]);
     } finally {
       setIsLoading(false);
     }
@@ -88,24 +93,28 @@ export default function Timesheets() {
   const loadUsers = async () => {
     try {
       const data = await api.getUsers();
-      setUsers(data);
+      setUsers(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Failed to load users:', error);
+      setUsers([]);
     }
   };
 
   const loadFormData = async () => {
     try {
       const [clientsData, activityData, costCenterData] = await Promise.all([
-        api.getClients(),
-        api.getActivityTypes(true),
-        api.getCostCenters(true),
+        api.getClients().catch(() => []),
+        api.getActivityTypes(true).catch(() => []),
+        api.getCostCenters(true).catch(() => []),
       ]);
-      setClients(clientsData);
-      setActivityTypes(activityData);
-      setCostCenters(costCenterData);
+      setClients(Array.isArray(clientsData) ? clientsData : []);
+      setActivityTypes(Array.isArray(activityData) ? activityData : []);
+      setCostCenters(Array.isArray(costCenterData) ? costCenterData : []);
     } catch (error) {
       console.error('Failed to load form data:', error);
+      setClients([]);
+      setActivityTypes([]);
+      setCostCenters([]);
     }
   };
 
@@ -114,7 +123,7 @@ export default function Timesheets() {
     if (clientId) {
       try {
         const projectsData = await api.getProjects({ client_id: clientId });
-        setProjects(projectsData);
+        setProjects(Array.isArray(projectsData) ? projectsData : []);
       } catch (error) {
         setProjects([]);
       }

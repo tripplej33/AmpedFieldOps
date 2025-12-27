@@ -60,11 +60,16 @@ export default function Users() {
   }, []);
 
   const loadUsers = async () => {
+    setIsLoading(true);
     try {
       const data = await api.getUsers();
-      setUsers(data);
-    } catch (error) {
-      toast.error('Failed to load users');
+      setUsers(Array.isArray(data) ? data : []);
+    } catch (error: any) {
+      console.error('Failed to load users:', error);
+      if (error?.message !== 'Failed to fetch') {
+        toast.error('Failed to load users');
+      }
+      setUsers([]);
     } finally {
       setIsLoading(false);
     }

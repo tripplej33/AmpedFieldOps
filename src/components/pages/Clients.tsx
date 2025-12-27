@@ -45,7 +45,7 @@ export default function Clients() {
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const clientId = params.get('id');
-    if (clientId && clients.length > 0) {
+    if (clientId && clients.length > 0 && !isLoading) {
       const client = clients.find(c => c.id === clientId);
       if (client) {
         setSelectedClient(client);
@@ -54,14 +54,20 @@ export default function Clients() {
         navigate('/clients', { replace: true });
       }
     }
-  }, [location.search, clients, navigate]);
+  }, [location.search, clients, navigate, isLoading]);
 
   const loadClients = async () => {
+    setIsLoading(true);
     try {
-      const data = await api.getClients({ search: searchQuery || undefined });
-      setClients(data);
-    } catch (error) {
+      const data = await api.getClients(searchQuery ? { search: searchQuery } : undefined);
+      console.log('Clients loaded:', data);
+      setClients(Array.isArray(data) ? data : []);
+    } catch (error: any) {
       console.error('Failed to load clients:', error);
+      if (error?.message !== 'Failed to fetch') {
+        toast.error('Failed to load clients');
+      }
+      setClients([]);
     } finally {
       setIsLoading(false);
     }

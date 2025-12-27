@@ -65,13 +65,13 @@ export default function CostCenters() {
     try {
       const data = await api.getCostCenters();
       setCostCenters(Array.isArray(data) ? data : []);
+      setIsLoading(false);
     } catch (error: any) {
       console.error('Failed to load cost centers:', error);
       if (error?.message !== 'Failed to fetch') {
         toast.error('Failed to load cost centers');
       }
       setCostCenters([]);
-    } finally {
       setIsLoading(false);
     }
   };

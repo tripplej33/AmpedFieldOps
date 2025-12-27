@@ -64,6 +64,7 @@ export default function ActivityTypes() {
     try {
       const data = await api.getActivityTypes();
       setActivityTypes(Array.isArray(data) ? data : []);
+      setIsLoading(false);
     } catch (error: any) {
       console.error('Failed to load activity types:', error);
       // Only show toast if it's not a network error during development
@@ -71,7 +72,6 @@ export default function ActivityTypes() {
         toast.error('Failed to load activity types');
       }
       setActivityTypes([]);
-    } finally {
       setIsLoading(false);
     }
   };

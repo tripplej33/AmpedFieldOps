@@ -172,11 +172,16 @@ export default function Projects() {
   }, [location.search, projects, navigate]);
 
   const loadProjects = async () => {
+    setIsLoading(true);
     try {
       const data = await api.getProjects();
-      setProjects(data);
-    } catch (error) {
+      setProjects(Array.isArray(data) ? data : []);
+    } catch (error: any) {
       console.error('Failed to load projects:', error);
+      if (error?.message !== 'Failed to fetch') {
+        toast.error('Failed to load projects');
+      }
+      setProjects([]);
     } finally {
       setIsLoading(false);
     }
@@ -185,9 +190,10 @@ export default function Projects() {
   const loadClients = async () => {
     try {
       const data = await api.getClients();
-      setClients(data);
+      setClients(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Failed to load clients:', error);
+      setClients([]);
     }
   };
 

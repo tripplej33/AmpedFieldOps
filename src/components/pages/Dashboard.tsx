@@ -20,17 +20,36 @@ export default function Dashboard() {
   const loadDashboardData = async () => {
     try {
       const [metricsData, statsData, timesheetsData, projectsData] = await Promise.all([
-        api.getDashboardMetrics(),
-        api.getQuickStats(),
-        api.getRecentTimesheets(5),
-        api.getActiveProjects(5)
+        api.getDashboardMetrics().catch(() => null),
+        api.getQuickStats().catch(() => null),
+        api.getRecentTimesheets(5).catch(() => []),
+        api.getActiveProjects(5).catch(() => [])
       ]);
-      setMetrics(metricsData);
+      setMetrics(metricsData || {
+        total_revenue: 0,
+        total_hours: 0,
+        active_projects: 0,
+        pending_invoices: 0,
+        revenue_trend: 0,
+        hours_trend: 0,
+        projects_trend: 0,
+        invoices_trend: 0
+      });
       setQuickStats(statsData);
-      setRecentTimesheets(timesheetsData);
-      setActiveProjects(projectsData);
+      setRecentTimesheets(Array.isArray(timesheetsData) ? timesheetsData : []);
+      setActiveProjects(Array.isArray(projectsData) ? projectsData : []);
     } catch (error) {
       console.error('Failed to load dashboard data:', error);
+      setMetrics({
+        total_revenue: 0,
+        total_hours: 0,
+        active_projects: 0,
+        pending_invoices: 0,
+        revenue_trend: 0,
+        hours_trend: 0,
+        projects_trend: 0,
+        invoices_trend: 0
+      });
     } finally {
       setIsLoading(false);
     }

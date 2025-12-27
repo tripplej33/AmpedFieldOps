@@ -77,10 +77,12 @@ export default function ClientDetailModal({ client, open, onOpenChange, onClient
         api.getProjects({ client_id: client.id }),
         api.getTimesheets({ client_id: client.id }),
       ]);
-      setProjects(projectsData);
-      setTimesheets(timesheetsData);
+      setProjects(Array.isArray(projectsData) ? projectsData : []);
+      setTimesheets(Array.isArray(timesheetsData) ? timesheetsData : []);
     } catch (error) {
       console.error('Failed to load client data:', error);
+      setProjects([]);
+      setTimesheets([]);
     } finally {
       setIsLoading(false);
     }
