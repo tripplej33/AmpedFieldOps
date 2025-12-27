@@ -224,6 +224,56 @@ export default function Settings() {
               />
             </div>
 
+            <Separator />
+
+            {/* Xero Credentials */}
+            <div className="space-y-4 p-4 rounded-lg bg-muted/20 border border-border">
+              <h4 className="text-sm font-bold font-mono uppercase tracking-wider">Xero Credentials</h4>
+              
+              <div>
+                <Label className="font-mono text-xs uppercase tracking-wider">
+                  Client ID
+                </Label>
+                <Input
+                  value={settings.xero_client_id || ''}
+                  onChange={(e) => handleSettingChange('xero_client_id', e.target.value)}
+                  placeholder="Enter Xero Client ID"
+                  className="mt-2 font-mono text-sm"
+                />
+              </div>
+
+              <div>
+                <Label className="font-mono text-xs uppercase tracking-wider">
+                  Client Secret
+                </Label>
+                <Input
+                  type="password"
+                  value={settings.xero_client_secret || ''}
+                  onChange={(e) => handleSettingChange('xero_client_secret', e.target.value)}
+                  placeholder="Enter Xero Client Secret"
+                  className="mt-2 font-mono text-sm"
+                />
+              </div>
+
+              <div>
+                <Label className="font-mono text-xs uppercase tracking-wider">
+                  Redirect URI
+                </Label>
+                <Input
+                  value={settings.xero_redirect_uri || `${window.location.origin}/api/xero/callback`}
+                  onChange={(e) => handleSettingChange('xero_redirect_uri', e.target.value)}
+                  placeholder="https://your-domain.com/api/xero/callback"
+                  className="mt-2 font-mono text-sm"
+                />
+              </div>
+
+              <p className="text-xs text-muted-foreground">
+                Get your credentials from the <a href="https://developer.xero.com/myapps" target="_blank" rel="noopener noreferrer" className="text-electric hover:underline">Xero Developer Portal</a>
+              </p>
+            </div>
+
+            <Separator />
+
             <div className="grid grid-cols-2 gap-4">
               <div>
                 <p className="text-sm font-mono text-muted-foreground mb-1">Last Sync</p>
@@ -267,23 +317,71 @@ export default function Settings() {
             </div>
           </div>
           ) : (
-          <div className="text-center py-6">
-            <Link2 className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-            <p className="text-sm text-muted-foreground mb-4">
-              Connect your Xero account to sync invoices, quotes, and contacts
-            </p>
-            <Button 
-              onClick={handleXeroConnect}
-              className="bg-electric text-background hover:bg-electric/90"
-              disabled={!xeroStatus?.configured}
-            >
-              Connect to Xero
-            </Button>
-            {!xeroStatus?.configured && (
-              <p className="text-xs text-warning mt-2">
-                Xero credentials not configured. Add XERO_CLIENT_ID and XERO_CLIENT_SECRET to environment.
+          <div>
+            {/* Xero Credentials */}
+            <div className="space-y-4 p-4 rounded-lg bg-muted/20 border border-border mb-6">
+              <h4 className="text-sm font-bold font-mono uppercase tracking-wider">Xero Credentials</h4>
+              
+              <div>
+                <Label className="font-mono text-xs uppercase tracking-wider">
+                  Client ID *
+                </Label>
+                <Input
+                  value={settings.xero_client_id || ''}
+                  onChange={(e) => handleSettingChange('xero_client_id', e.target.value)}
+                  placeholder="Enter Xero Client ID"
+                  className="mt-2 font-mono text-sm"
+                />
+              </div>
+
+              <div>
+                <Label className="font-mono text-xs uppercase tracking-wider">
+                  Client Secret *
+                </Label>
+                <Input
+                  type="password"
+                  value={settings.xero_client_secret || ''}
+                  onChange={(e) => handleSettingChange('xero_client_secret', e.target.value)}
+                  placeholder="Enter Xero Client Secret"
+                  className="mt-2 font-mono text-sm"
+                />
+              </div>
+
+              <div>
+                <Label className="font-mono text-xs uppercase tracking-wider">
+                  Redirect URI
+                </Label>
+                <Input
+                  value={settings.xero_redirect_uri || `${window.location.origin}/api/xero/callback`}
+                  onChange={(e) => handleSettingChange('xero_redirect_uri', e.target.value)}
+                  placeholder="https://your-domain.com/api/xero/callback"
+                  className="mt-2 font-mono text-sm"
+                />
+              </div>
+
+              <p className="text-xs text-muted-foreground">
+                Get your credentials from the <a href="https://developer.xero.com/myapps" target="_blank" rel="noopener noreferrer" className="text-electric hover:underline">Xero Developer Portal</a>
               </p>
-            )}
+            </div>
+
+            <div className="text-center py-6">
+              <Link2 className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
+              <p className="text-sm text-muted-foreground mb-4">
+                Connect your Xero account to sync invoices, quotes, and contacts
+              </p>
+              <Button 
+                onClick={handleXeroConnect}
+                className="bg-electric text-background hover:bg-electric/90"
+                disabled={!settings.xero_client_id || !settings.xero_client_secret}
+              >
+                Connect to Xero
+              </Button>
+              {(!settings.xero_client_id || !settings.xero_client_secret) && (
+                <p className="text-xs text-warning mt-2">
+                  Please enter your Xero credentials above before connecting
+                </p>
+              )}
+            </div>
           </div>
           )}
         </Card>

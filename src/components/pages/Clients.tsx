@@ -3,15 +3,31 @@ import Header from '@/components/layout/Header';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { api } from '@/lib/api';
 import { Client } from '@/types';
 import { Search, Plus, Phone, Mail, MapPin, Clock, Briefcase, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 
 export default function Clients() {
   const [clients, setClients] = useState<Client[]>([]);
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(true);
+  const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Form state
+  const [formData, setFormData] = useState({
+    name: '',
+    contact_name: '',
+    email: '',
+    phone: '',
+    location: '',
+    notes: '',
+  });
 
   useEffect(() => {
     loadClients();
@@ -25,6 +41,37 @@ export default function Clients() {
       console.error('Failed to load clients:', error);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleCreateClient = () => {
+    setCreateModalOpen(true);
+  };
+
+  const handleSubmit = async () => {
+    if (!formData.name || !formData.email) {
+      toast.error('Please fill in required fields');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      await api.createClient(formData);
+      toast.success('Client created successfully');
+      setCreateModalOpen(false);
+      setFormData({
+        name: '',
+        contact_name: '',
+        email: '',
+        phone: '',
+        location: '',
+        notes: '',
+      });
+      loadClients();
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to create client');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -61,7 +108,10 @@ export default function Clients() {
               className="pl-9 bg-muted/50 border-border focus:border-electric focus:glow-primary"
             />
           </div>
-          <Button className="bg-electric text-background hover:bg-electric/90 glow-primary">
+          <Button 
+            className="bg-electric text-background hover:bg-electric/90 glow-primary"
+            onClick={handleCreateClient}
+          >
             <Plus className="w-4 h-4 mr-2" />
             New Client
           </Button>
@@ -150,6 +200,116 @@ export default function Clients() {
           </Card>
         )}
       </div>
+
+      {/* Create Client Modal */}
+      <Dialog open={createModalOpen} onOpenChange={setCreateModalOpen}>
+        <DialogContent className="sm:max-w-[600px] bg-card border-border">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold">Create New Client</DialogTitle>
+            <DialogDescription>Add a new client to your directory</DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 py-4">
+            <div>
+              <Label htmlFor="client_name" className="font-mono text-xs uppercase tracking-wider">
+                Company Name *
+              </Label>
+              <Input
+                id="client_name"
+                value={formData.name}
+                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                placeholder="ABC Construction Ltd"
+                className="mt-2"
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="contact_name" className="font-mono text-xs uppercase tracking-wider">
+                Contact Name
+              </Label>
+              <Input
+                id="contact_name"
+                value={formData.contact_name}
+                onChange={(e) => setFormData({ ...formData, contact_name: e.target.value })}
+                placeholder="John Smith"
+                className="mt-2"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="email" className="font-mono text-xs uppercase tracking-wider">
+                  Email *
+                </Label>
+                <Input
+                  id="email"
+                  type="email"
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  placeholder="contact@company.com"
+                  className="mt-2"
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="phone" className="font-mono text-xs uppercase tracking-wider">
+                  Phone
+                </Label>
+                <Input
+                  id="phone"
+                  value={formData.phone}
+                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                  placeholder="555-1234"
+                  className="mt-2"
+                />
+              </div>
+            </div>
+
+            <div>
+              <Label htmlFor="location" className="font-mono text-xs uppercase tracking-wider">
+                Location
+              </Label>
+              <Input
+                id="location"
+                value={formData.location}
+                onChange={(e) => setFormData({ ...formData, location: e.target.value })}
+                placeholder="Auckland, New Zealand"
+                className="mt-2"
+              />
+            </div>
+
+            <div>
+              <Label htmlFor="notes" className="font-mono text-xs uppercase tracking-wider">
+                Notes
+              </Label>
+              <Textarea
+                id="notes"
+                value={formData.notes || ''}
+                onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                placeholder="Additional information..."
+                className="mt-2 min-h-[100px]"
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-3">
+            <Button 
+              variant="outline" 
+              onClick={() => setCreateModalOpen(false)}
+              disabled={isSubmitting}
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleSubmit}
+              disabled={isSubmitting}
+              className="bg-electric text-background hover:bg-electric/90"
+            >
+              {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Create Client'}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }
