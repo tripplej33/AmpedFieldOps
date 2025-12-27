@@ -122,6 +122,12 @@ echo -e "${YELLOW}Seeding default data...${NC}"
 $COMPOSE_CMD exec -T backend node dist/db/seed.js
 echo -e "${GREEN}✓ Default data seeded (including admin user)${NC}"
 
+# Mark setup as complete
+echo -e "${YELLOW}Completing setup...${NC}"
+sleep 2
+curl -s -X POST http://localhost:3001/api/setup/complete > /dev/null
+echo -e "${GREEN}✓ Setup marked complete${NC}"
+
 echo ""
 echo -e "${GREEN}╔═══════════════════════════════════════════════════════════╗"
 echo "║              Installation Complete! 🎉                     ║"
