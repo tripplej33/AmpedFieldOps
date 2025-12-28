@@ -122,22 +122,27 @@ router.get('/callback', async (req, res) => {
   try {
     // Check for OAuth errors from Xero
     if (error) {
+      const errorStr = Array.isArray(error) ? error[0] : String(error);
+      const errorDescStr = error_description 
+        ? (Array.isArray(error_description) ? error_description[0] : String(error_description))
+        : undefined;
+      
       console.error('[Xero] OAuth error from Xero:', {
-        error,
-        error_description,
+        error: errorStr,
+        error_description: errorDescStr,
         query: req.query
       });
       
       let errorMessage = 'Authentication failed';
-      if (error === 'unauthorized_client') {
+      if (errorStr === 'unauthorized_client') {
         errorMessage = 'Client ID or Secret is incorrect, or redirect URI does not match Xero app settings. Please verify your credentials and redirect URI in Settings.';
-      } else if (error === 'access_denied') {
+      } else if (errorStr === 'access_denied') {
         errorMessage = 'Connection was cancelled by user';
-      } else if (error_description) {
-        errorMessage = String(error_description);
+      } else if (errorDescStr) {
+        errorMessage = errorDescStr;
       }
       
-      return res.redirect(`${frontendUrl}/settings?xero_error=${encodeURIComponent(error)}&xero_error_msg=${encodeURIComponent(errorMessage)}`);
+      return res.redirect(`${frontendUrl}/settings?xero_error=${encodeURIComponent(errorStr)}&xero_error_msg=${encodeURIComponent(errorMessage)}`);
     }
 
     if (!code) {
