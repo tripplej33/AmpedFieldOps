@@ -53,10 +53,23 @@ router.get('/auth/url', authenticate, requirePermission('can_sync_xero'), async 
     const { clientId, clientSecret, redirectUri } = await getXeroCredentials();
     
     if (!clientId || !clientSecret) {
+      console.error('[Xero] Missing credentials:', { 
+        hasClientId: !!clientId, 
+        hasClientSecret: !!clientSecret 
+      });
       return res.status(400).json({ 
         error: 'Xero credentials not configured. Please add your Client ID and Client Secret in Settings.',
-        configured: false
+        configured: false,
+        details: {
+          clientId: clientId ? 'Set' : 'Missing',
+          clientSecret: clientSecret ? 'Set' : 'Missing'
+        }
       });
+    }
+
+    // Validate Client ID format (Xero Client IDs are typically 32 characters)
+    if (clientId.length !== 32) {
+      console.warn('[Xero] Client ID length unusual:', clientId.length);
     }
 
     const scopes = [
@@ -76,29 +89,76 @@ router.get('/auth/url', authenticate, requirePermission('can_sync_xero'), async 
       `scope=${encodeURIComponent(scopes)}&` +
       `state=${req.user!.id}`;
 
-    res.json({ url: authUrl, configured: true });
-  } catch (error) {
-    console.error('Failed to generate Xero auth URL:', error);
-    res.status(500).json({ error: 'Failed to generate auth URL' });
+    console.log('[Xero] Generated auth URL with:', {
+      clientId: `${clientId.substring(0, 8)}...`,
+      redirectUri,
+      scopes: scopes.split(' ').length + ' scopes',
+      state: req.user!.id
+    });
+
+    res.json({ 
+      url: authUrl, 
+      configured: true,
+      redirectUri, // Return redirect URI so frontend can verify
+      clientIdPrefix: clientId.substring(0, 8) // For verification
+    });
+  } catch (error: any) {
+    console.error('[Xero] Failed to generate auth URL:', {
+      error: error.message,
+      stack: error.stack
+    });
+    res.status(500).json({ 
+      error: 'Failed to generate auth URL',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 });
 
 // Handle Xero OAuth callback
 router.get('/callback', async (req, res) => {
-  const { code, state } = req.query;
+  const { code, state, error, error_description } = req.query;
   const frontendUrl = env.FRONTEND_URL;
 
   try {
+    // Check for OAuth errors from Xero
+    if (error) {
+      console.error('[Xero] OAuth error from Xero:', {
+        error,
+        error_description,
+        query: req.query
+      });
+      
+      let errorMessage = 'Authentication failed';
+      if (error === 'unauthorized_client') {
+        errorMessage = 'Client ID or Secret is incorrect, or redirect URI does not match Xero app settings. Please verify your credentials and redirect URI in Settings.';
+      } else if (error === 'access_denied') {
+        errorMessage = 'Connection was cancelled by user';
+      } else if (error_description) {
+        errorMessage = String(error_description);
+      }
+      
+      return res.redirect(`${frontendUrl}/settings?xero_error=${encodeURIComponent(error)}&xero_error_msg=${encodeURIComponent(errorMessage)}`);
+    }
+
     if (!code) {
-      return res.redirect(`${frontendUrl}/settings?xero_error=no_code`);
+      console.error('[Xero] No authorization code received:', { query: req.query });
+      return res.redirect(`${frontendUrl}/settings?xero_error=no_code&xero_error_msg=${encodeURIComponent('No authorization code received from Xero')}`);
     }
 
     // Get credentials from database settings
     const { clientId, clientSecret, redirectUri } = await getXeroCredentials();
 
     if (!clientId || !clientSecret) {
-      return res.redirect(`${frontendUrl}/settings?xero_error=credentials_missing`);
+      console.error('[Xero] Missing credentials in callback');
+      return res.redirect(`${frontendUrl}/settings?xero_error=credentials_missing&xero_error_msg=${encodeURIComponent('Xero credentials not found. Please configure them in Settings.')}`);
     }
+
+    console.log('[Xero] Exchanging code for tokens:', {
+      hasCode: !!code,
+      codeLength: String(code).length,
+      redirectUri,
+      clientIdPrefix: clientId.substring(0, 8)
+    });
 
     // Exchange code for tokens using actual Xero API
     const tokenResponse = await fetch('https://identity.xero.com/connect/token', {
@@ -116,8 +176,31 @@ router.get('/callback', async (req, res) => {
 
     if (!tokenResponse.ok) {
       const errorText = await tokenResponse.text();
-      console.error('Xero token exchange failed:', errorText);
-      return res.redirect(`${frontendUrl}/settings?xero_error=token_exchange_failed`);
+      let errorData;
+      try {
+        errorData = JSON.parse(errorText);
+      } catch {
+        errorData = { error: errorText };
+      }
+      
+      console.error('[Xero] Token exchange failed:', {
+        status: tokenResponse.status,
+        statusText: tokenResponse.statusText,
+        error: errorData,
+        redirectUri,
+        clientIdPrefix: clientId.substring(0, 8)
+      });
+      
+      let errorMsg = 'Token exchange failed';
+      if (errorData.error === 'invalid_client') {
+        errorMsg = 'Invalid Client ID or Client Secret. Please verify your credentials in Settings match your Xero app.';
+      } else if (errorData.error === 'invalid_grant') {
+        errorMsg = 'Authorization code expired or invalid. Please try connecting again.';
+      } else if (errorData.error_description) {
+        errorMsg = errorData.error_description;
+      }
+      
+      return res.redirect(`${frontendUrl}/settings?xero_error=token_exchange_failed&xero_error_msg=${encodeURIComponent(errorMsg)}`);
     }
 
     interface XeroTokenResponse {

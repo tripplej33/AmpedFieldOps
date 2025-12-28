@@ -25,6 +25,32 @@ export default function Settings() {
   useEffect(() => {
     loadSettings();
 
+    // Check for Xero OAuth errors in URL params
+    const urlParams = new URLSearchParams(window.location.search);
+    const xeroError = urlParams.get('xero_error');
+    const xeroErrorMsg = urlParams.get('xero_error_msg');
+    
+    if (xeroError) {
+      const errorMessages: Record<string, string> = {
+        'no_code': 'No authorization code received from Xero',
+        'credentials_missing': 'Xero credentials not configured',
+        'token_exchange_failed': 'Failed to exchange authorization code for tokens',
+        'unauthorized_client': 'Client ID or Secret is incorrect, or redirect URI does not match Xero app settings',
+        'access_denied': 'Connection was cancelled'
+      };
+      
+      const message = xeroErrorMsg || errorMessages[xeroError] || 'Xero connection failed';
+      toast.error(message, {
+        duration: 8000,
+        description: xeroError === 'unauthorized_client' 
+          ? 'Please verify your Client ID, Client Secret, and Redirect URI match your Xero app settings exactly.'
+          : undefined
+      });
+      
+      // Clean up URL
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+
     // Listen for Xero OAuth popup messages
     const handleMessage = (event: MessageEvent) => {
       if (event.data?.type === 'XERO_CONNECTED') {
