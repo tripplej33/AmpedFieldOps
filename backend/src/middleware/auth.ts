@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { query } from '../db';
+import { env } from '../config/env';
 
 export interface AuthRequest extends Request {
   user?: {
@@ -22,7 +23,7 @@ export const authenticate = async (req: AuthRequest, res: Response, next: NextFu
     
     const token = authHeader.split(' ')[1];
     
-    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as {
+    const decoded = jwt.verify(token, env.JWT_SECRET) as {
       id: string;
       email: string;
       name: string;
@@ -95,7 +96,7 @@ export const optionalAuth = async (req: AuthRequest, res: Response, next: NextFu
     
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.split(' ')[1];
-      const decoded = jwt.verify(token, process.env.JWT_SECRET!) as {
+      const decoded = jwt.verify(token, env.JWT_SECRET) as {
         id: string;
         email: string;
         name: string;

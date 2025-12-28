@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import { body, validationResult } from 'express-validator';
 import { query } from '../db';
 import { logoUpload } from '../middleware/upload';
+import { env } from '../config/env';
 
 const router = Router();
 
@@ -121,7 +122,7 @@ router.post('/admin',
       // Generate token
       const token = jwt.sign(
         { id: user.id, email: user.email, name: user.name, role: user.role },
-        process.env.JWT_SECRET!,
+        env.JWT_SECRET,
         { expiresIn: '7d' }
       );
 
