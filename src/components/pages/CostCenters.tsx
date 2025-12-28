@@ -529,7 +529,7 @@ function CostCenterCard({
       <div className="grid grid-cols-2 gap-4 text-sm">
         <div className="flex items-center gap-2">
           <Clock className="w-4 h-4 text-muted-foreground" />
-          <span>{costCenter.total_hours?.toFixed(1) || 0}h logged</span>
+          <span>{(Number(costCenter.total_hours) || 0).toFixed(1)}h logged</span>
         </div>
         <div className="flex items-center gap-2">
           <DollarSign className="w-4 h-4 text-muted-foreground" />
