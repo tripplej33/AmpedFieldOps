@@ -103,7 +103,6 @@ export default function Settings() {
     }
 
     // Check if we're returning from a successful Xero connection
-    const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('xero_connected') === 'true') {
       toast.success('Successfully connected to Xero!');
       loadSettings();
