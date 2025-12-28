@@ -195,3 +195,31 @@ export interface ActivityLog {
   ip_address?: string;
   created_at: string;
 }
+
+export type NotificationType = 'info' | 'success' | 'warning' | 'error';
+
+export interface AppNotification {
+  id: string;
+  type: NotificationType;
+  title: string;
+  message: string;
+  action?: {
+    label: string;
+    href?: string;
+    onClick?: () => void;
+  };
+  read: boolean;
+  created_at: string;
+}
+
+export interface ErrorLogEntry {
+  id: string;
+  type: 'api' | 'client' | 'auth' | 'network' | 'unknown';
+  message: string;
+  details?: string;
+  stack?: string;
+  endpoint?: string;
+  user_id?: string;
+  user_name?: string;
+  created_at: string;
+}

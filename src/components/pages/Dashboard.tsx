@@ -1,10 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import Header from '@/components/layout/Header';
 import { Card } from '@/components/ui/card';
 import { api } from '@/lib/api';
 import { DashboardMetrics, QuickStats, TimesheetEntry, Project } from '@/types';
 import { TrendingUp, TrendingDown, Briefcase, Clock, DollarSign, Activity, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useNotifications } from '@/contexts/NotificationContext';
+import { useAuth } from '@/contexts/AuthContext';
 
 export default function Dashboard() {
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
@@ -12,10 +14,31 @@ export default function Dashboard() {
   const [recentTimesheets, setRecentTimesheets] = useState<any[]>([]);
   const [activeProjects, setActiveProjects] = useState<any[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const { notifyInfo } = useNotifications();
+  const { user } = useAuth();
+  const welcomeShownRef = useRef(false);
 
   useEffect(() => {
     loadDashboardData();
   }, []);
+
+  // Show welcome notification once per session
+  useEffect(() => {
+    if (user && !welcomeShownRef.current) {
+      welcomeShownRef.current = true;
+      const lastVisit = localStorage.getItem('last_dashboard_visit');
+      const now = new Date().toISOString();
+      localStorage.setItem('last_dashboard_visit', now);
+      
+      // Only show if it's been more than 4 hours since last visit
+      if (!lastVisit || new Date(now).getTime() - new Date(lastVisit).getTime() > 4 * 60 * 60 * 1000) {
+        notifyInfo(
+          `Welcome back, ${user.name?.split(' ')[0] || 'User'}!`,
+          'Your dashboard is ready. Check your notifications for any updates.',
+        );
+      }
+    }
+  }, [user, notifyInfo]);
 
   const loadDashboardData = async () => {
     try {

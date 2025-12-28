@@ -78,9 +78,10 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
     setIsLoading(true);
     try {
       const timesheets = await api.getTimesheets({ project_id: project.id });
-      setProjectEntries(timesheets);
+      setProjectEntries(Array.isArray(timesheets) ? timesheets : []);
     } catch (error) {
-      console.error('Failed to load project timesheets:', error);
+      console.error('Failed to load timesheets:', error);
+      setProjectEntries([]);
     } finally {
       setIsLoading(false);
     }
@@ -89,9 +90,10 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
   const loadClients = async () => {
     try {
       const data = await api.getClients();
-      setClients(data);
+      setClients(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Failed to load clients:', error);
+      setClients([]);
     }
   };
 
@@ -99,9 +101,10 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
     if (!project) return;
     try {
       const data = await api.getCostCenters(false, project.id);
-      setCostCenters(data);
+      setCostCenters(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Failed to load cost centers:', error);
+      setCostCenters([]);
     }
   };
 
@@ -222,6 +225,10 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
       alert('Project sent to Xero successfully!');
     }, 2000);
   };
+
+  if (!project) {
+    return null;
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

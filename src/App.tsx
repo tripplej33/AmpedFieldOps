@@ -1,7 +1,9 @@
 import { Suspense } from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
+import { NotificationProvider } from "./contexts/NotificationContext";
 import { Toaster } from "./components/ui/sonner";
+import ErrorBoundary from "./components/ErrorBoundary";
 import DashboardLayout from "./components/layout/DashboardLayout";
 import Dashboard from "./components/pages/Dashboard";
 import Projects from "./components/pages/Projects";
@@ -87,10 +89,14 @@ function AppRoutes() {
 
 function App() {
   return (
-    <AuthProvider>
-      <AppRoutes />
-      <Toaster position="bottom-right" />
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <NotificationProvider>
+          <AppRoutes />
+          <Toaster position="bottom-right" />
+        </NotificationProvider>
+      </AuthProvider>
+    </ErrorBoundary>
   );
 }
 

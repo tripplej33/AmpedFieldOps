@@ -15,10 +15,12 @@ import { TimesheetEntry, Client, Project, ActivityType, CostCenter, User } from 
 import { Plus, Calendar, Clock, Wrench, Pencil, Trash2, Loader2, Camera, Image, X, ChevronLeft, ChevronRight, Users } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { useNotifications } from '@/contexts/NotificationContext';
 
 export default function Timesheets() {
   const location = useLocation();
   const navigate = useNavigate();
+  const { notifySuccess, logError } = useNotifications();
   const [entries, setEntries] = useState<TimesheetEntry[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [createModalOpen, setCreateModalOpen] = useState(false);

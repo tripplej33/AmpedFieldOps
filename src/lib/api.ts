@@ -8,11 +8,53 @@ interface ApiOptions {
   headers?: Record<string, string>;
 }
 
+// Error logging callback type
+type ErrorLogCallback = (error: {
+  type: 'api' | 'client' | 'auth' | 'network' | 'unknown';
+  message: string;
+  details?: string;
+  stack?: string;
+  endpoint?: string;
+  user_id?: string;
+  user_name?: string;
+}) => void;
+
+// Global error logger reference (set by NotificationContext)
+let errorLogCallback: ErrorLogCallback | null = null;
+
+export function setErrorLogCallback(callback: ErrorLogCallback | null) {
+  errorLogCallback = callback;
+}
+
 class ApiClient {
   private token: string | null = null;
 
   constructor() {
     this.token = localStorage.getItem('auth_token');
+  }
+
+  private logApiError(endpoint: string, error: Error, type: 'api' | 'auth' | 'network' = 'api') {
+    if (errorLogCallback) {
+      const user = this.getCurrentUserFromStorage();
+      errorLogCallback({
+        type,
+        message: error.message,
+        details: `Endpoint: ${endpoint}`,
+        stack: error.stack,
+        endpoint,
+        user_id: user?.id,
+        user_name: user?.name,
+      });
+    }
+  }
+
+  private getCurrentUserFromStorage() {
+    try {
+      const stored = localStorage.getItem('current_user');
+      return stored ? JSON.parse(stored) : null;
+    } catch {
+      return null;
+    }
   }
 
   setToken(token: string | null) {
@@ -47,38 +89,64 @@ class ApiClient {
       config.body = JSON.stringify(body);
     }
 
-    const response = await fetch(`${API_URL}${endpoint}`, config);
+    try {
+      const response = await fetch(`${API_URL}${endpoint}`, config);
 
-    if (response.status === 401) {
-      this.setToken(null);
-      window.location.href = '/login';
-      throw new Error('Unauthorized');
+      if (response.status === 401) {
+        this.setToken(null);
+        const error = new Error('Unauthorized - session expired');
+        this.logApiError(endpoint, error, 'auth');
+        window.location.href = '/login';
+        throw error;
+      }
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Request failed' }));
+        const error = new Error(errorData.error || errorData.message || 'Request failed');
+        this.logApiError(endpoint, error, 'api');
+        throw error;
+      }
+
+      return response.json();
+    } catch (error: any) {
+      // Network errors (fetch throws)
+      if (error.name === 'TypeError' && error.message.includes('fetch')) {
+        const networkError = new Error('Network error - please check your connection');
+        this.logApiError(endpoint, networkError, 'network');
+        throw networkError;
+      }
+      // Re-throw already handled errors
+      throw error;
     }
-
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: 'Request failed' }));
-      throw new Error(error.error || error.message || 'Request failed');
-    }
-
-    return response.json();
   }
 
   async uploadFile(endpoint: string, file: File, fieldName = 'file'): Promise<any> {
     const formData = new FormData();
     formData.append(fieldName, file);
 
-    const response = await fetch(`${API_URL}${endpoint}`, {
-      method: 'POST',
-      headers: this.token ? { Authorization: `Bearer ${this.token}` } : {},
-      body: formData,
-    });
+    try {
+      const response = await fetch(`${API_URL}${endpoint}`, {
+        method: 'POST',
+        headers: this.token ? { Authorization: `Bearer ${this.token}` } : {},
+        body: formData,
+      });
 
-    if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: 'Upload failed' }));
-      throw new Error(error.error || 'Upload failed');
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Upload failed' }));
+        const error = new Error(errorData.error || 'Upload failed');
+        this.logApiError(endpoint, error, 'api');
+        throw error;
+      }
+
+      return response.json();
+    } catch (error: any) {
+      if (error.name === 'TypeError' && error.message.includes('fetch')) {
+        const networkError = new Error('Network error during file upload');
+        this.logApiError(endpoint, networkError, 'network');
+        throw networkError;
+      }
+      throw error;
     }
-
-    return response.json();
   }
 
   // Auth

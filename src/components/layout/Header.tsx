@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, Search, User, X, Briefcase, Users, Clock, Loader2 } from 'lucide-react';
+import { Search, User, X, Briefcase, Users, Clock, Loader2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -15,6 +15,8 @@ import {
 import { useAuth } from '@/contexts/AuthContext';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
+import NotificationsPanel from '@/components/modals/NotificationsPanel';
+import ErrorLogPanel from '@/components/modals/ErrorLogPanel';
 
 interface HeaderProps {
   title: string;
@@ -200,10 +202,10 @@ export default function Header({ title, subtitle }: HeaderProps) {
           </div>
 
           {/* Notifications */}
-          <Button variant="ghost" size="icon" className="relative">
-            <Bell className="w-5 h-5" />
-            <span className="absolute top-1 right-1 w-2 h-2 bg-warning rounded-full"></span>
-          </Button>
+          <NotificationsPanel />
+
+          {/* Error Logs (Admin only) */}
+          {user?.role === 'admin' && <ErrorLogPanel />}
 
           {/* User Menu */}
           <DropdownMenu>
