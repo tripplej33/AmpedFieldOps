@@ -103,7 +103,11 @@ class ApiClient {
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({ error: 'Request failed' }));
         const error = new Error(errorData.error || errorData.message || 'Request failed');
-        this.logApiError(endpoint, error, 'api');
+        // Don't log "User not found" on auth/me endpoint - expected when session expires
+        const isExpectedAuthError = endpoint.includes('/auth/me') && error.message.includes('not found');
+        if (!isExpectedAuthError) {
+          this.logApiError(endpoint, error, 'api');
+        }
         throw error;
       }
 
