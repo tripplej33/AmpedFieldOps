@@ -33,16 +33,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const token = api.getToken();
       if (token) {
         try {
-          const userData = await api.getCurrentUser();
+          // Add timeout to prevent hanging (3 second timeout)
+          const userData = await Promise.race([
+            api.getCurrentUser(),
+            new Promise<User>((_, reject) => 
+              setTimeout(() => reject(new Error('Auth check timeout')), 3000)
+            )
+          ]);
           setUser(userData);
         } catch (error) {
+          console.error('Auth check failed:', error);
+          // Clear invalid token
           api.setToken(null);
+          setUser(null);
         }
       }
+      // Always set loading to false, even if auth check fails or times out
+      // This prevents the page from being stuck in loading state
       setIsLoading(false);
     };
 
-    initAuth();
+    // Ensure loading state is cleared even if initAuth throws
+    initAuth().catch(() => {
+      setIsLoading(false);
+    });
   }, []);
 
   const login = async (email: string, password: string) => {
