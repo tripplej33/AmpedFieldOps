@@ -154,9 +154,9 @@ export default function Settings() {
   };
 
   const handleXeroConnect = async () => {
-    // Validate credentials are entered
+    // Check if credentials are saved in database
     if (!settings.xero_client_id || !settings.xero_client_secret) {
-      toast.error('Please enter your Xero Client ID and Client Secret first');
+      toast.error('Please save your Xero credentials first using the "Save Credentials" button above.');
       return;
     }
 
@@ -166,43 +166,29 @@ export default function Settings() {
     }
 
     try {
-      // Always use the current origin for redirect URI (auto-updates on domain change)
-      const redirectUri = `${window.location.origin}/api/xero/callback`;
+      // Always use current origin for redirect URI (never localhost in production)
+      const currentRedirectUri = `${window.location.origin}/api/xero/callback`;
+      const savedRedirectUri = settings.xero_redirect_uri;
       
-      // Validate Client ID format before saving
+      // Use current origin if saved URI is localhost but we're on production
+      let redirectUri = savedRedirectUri || currentRedirectUri;
+      if (redirectUri.includes('localhost') && !window.location.hostname.includes('localhost')) {
+        redirectUri = currentRedirectUri;
+        console.warn('[Xero] Saved redirect URI is localhost but we\'re on production. Updating to current origin.');
+        // Update in database
+        await api.updateSetting('xero_redirect_uri', redirectUri, true);
+        setSettings((prev: any) => ({ ...prev, xero_redirect_uri: redirectUri }));
+        toast.info('Redirect URI updated to match current domain', {
+          description: `Updated to ${redirectUri}`,
+          duration: 5000
+        });
+      }
+      
+      // Use saved credentials from database
       const clientId = settings.xero_client_id.trim();
       const clientSecret = settings.xero_client_secret.trim();
       
-      // Check if Client ID looks like an email address
-      if (clientId.includes('@')) {
-        toast.error('Invalid Client ID: Email addresses cannot be used as Client IDs. Please enter your 32-character Xero Client ID from the Xero Developer Portal.');
-        return;
-      }
-      
-      if (clientId.length !== 32) {
-        toast.error(`Invalid Client ID format. Xero Client IDs must be exactly 32 characters (you entered ${clientId.length}). Please check your Xero Developer Portal.`);
-        return;
-      }
-      
-      // Validate it's hexadecimal (Xero Client IDs are hex)
-      if (!/^[0-9A-Fa-f]{32}$/.test(clientId)) {
-        toast.warning('Client ID should contain only hexadecimal characters (0-9, A-F). Please verify it matches your Xero app.');
-      }
-      
-      console.log('[Xero] Saving credentials:', {
-        clientId: `${clientId.substring(0, 8)}...`,
-        clientIdLength: clientId.length,
-        hasClientSecret: !!clientSecret,
-        redirectUri
-      });
-      
-      // Credentials should already be saved, but ensure redirect URI is up to date
-      if (settings.xero_redirect_uri !== redirectUri) {
-        await api.updateSetting('xero_redirect_uri', redirectUri, true);
-        setSettings((prev: any) => ({ ...prev, xero_redirect_uri: redirectUri }));
-      }
-      
-      console.log('[Xero] Using saved credentials:', {
+      console.log('[Xero] Connecting with credentials:', {
         clientId: `${clientId.substring(0, 8)}...`,
         redirectUri
       });
@@ -377,17 +363,33 @@ export default function Settings() {
     
     setIsSavingCredentials(true);
     try {
+      // Always use current origin for redirect URI (never use localhost in production)
+      const currentRedirectUri = redirectUri.trim() || `${window.location.origin}/api/xero/callback`;
+      
+      // Warn if redirect URI contains localhost in production
+      if (currentRedirectUri.includes('localhost') && !window.location.hostname.includes('localhost')) {
+        toast.warning('Redirect URI contains localhost. Make sure this matches your Xero app settings.', {
+          duration: 8000
+        });
+      }
+      
       // Save all credentials at once
       await api.updateSetting('xero_client_id', clientId.trim(), true);
       await api.updateSetting('xero_client_secret', clientSecret.trim(), true);
-      await api.updateSetting('xero_redirect_uri', redirectUri.trim() || `${window.location.origin}/api/xero/callback`, true);
+      await api.updateSetting('xero_redirect_uri', currentRedirectUri, true);
       
       // Update settings state
       setSettings((prev: any) => ({
         ...prev,
         xero_client_id: clientId.trim(),
         xero_client_secret: clientSecret.trim(),
-        xero_redirect_uri: redirectUri.trim() || `${window.location.origin}/api/xero/callback`
+        xero_redirect_uri: currentRedirectUri
+      }));
+      
+      // Update local credentials state to match
+      setXeroCredentials(prev => ({
+        ...prev,
+        redirectUri: currentRedirectUri
       }));
       
       toast.success('Xero credentials saved successfully!', {
