@@ -360,7 +360,7 @@ export default function Projects() {
                   <SelectValue placeholder="Select a client" />
                 </SelectTrigger>
                 <SelectContent>
-                  {clients.map((client) => (
+                  {clients.filter(client => client.id).map((client) => (
                     <SelectItem key={client.id} value={client.id.toString()}>
                       {client.name}
                     </SelectItem>

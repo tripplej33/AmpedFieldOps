@@ -177,7 +177,7 @@ export default function Reports() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Cost Centers</SelectItem>
-                {allCostCenters.map((cc) => (
+                {allCostCenters.filter(cc => cc.id).map((cc) => (
                   <SelectItem key={cc.id} value={cc.id}>
                     {cc.code} - {cc.name}
                   </SelectItem>
@@ -191,7 +191,7 @@ export default function Reports() {
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Team Members</SelectItem>
-                {users.map((user) => (
+                {users.filter(user => user.id).map((user) => (
                   <SelectItem key={user.id} value={user.id}>
                     {user.name}
                   </SelectItem>

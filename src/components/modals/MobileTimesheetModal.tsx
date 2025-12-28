@@ -300,7 +300,7 @@ export default function MobileTimesheetModal({ open, onOpenChange }: MobileTimes
                 <SelectValue placeholder="Select client" />
               </SelectTrigger>
               <SelectContent>
-                {clients.map((client) => (
+                {clients.filter(client => client.id).map((client) => (
                   <SelectItem key={client.id} value={client.id}>
                     {client.name}
                   </SelectItem>
@@ -323,7 +323,7 @@ export default function MobileTimesheetModal({ open, onOpenChange }: MobileTimes
                 <SelectValue placeholder="Select project" />
               </SelectTrigger>
               <SelectContent>
-                {filteredProjects.map((project) => (
+                {filteredProjects.filter(project => project.id).map((project) => (
                   <SelectItem key={project.id} value={project.id}>
                     {project.name}
                   </SelectItem>
@@ -347,10 +347,10 @@ export default function MobileTimesheetModal({ open, onOpenChange }: MobileTimes
               </SelectTrigger>
               <SelectContent>
                 {costCenters.length === 0 ? (
-                  <SelectItem value="" disabled>No cost centers for this project</SelectItem>
+                  <SelectItem value="__none__" disabled>No cost centers for this project</SelectItem>
                 ) : (
                   costCenters.map((cc) => (
-                    <SelectItem key={cc.id} value={cc.id}>
+                    <SelectItem key={cc.id} value={cc.id || `cc-${cc.code}`}>
                       <span className="font-mono">{cc.code}</span> - {cc.name}
                     </SelectItem>
                   ))

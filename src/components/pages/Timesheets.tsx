@@ -858,7 +858,7 @@ function TimesheetForm({
             <SelectValue placeholder="Select project" />
           </SelectTrigger>
           <SelectContent>
-            {projects.map((project) => (
+            {projects.filter(project => project.id).map((project) => (
               <SelectItem key={project.id} value={project.id.toString()}>
                 {project.name}
               </SelectItem>
@@ -878,7 +878,7 @@ function TimesheetForm({
               <SelectValue placeholder="Select activity" />
             </SelectTrigger>
             <SelectContent>
-              {activityTypes.map((type) => (
+              {activityTypes.filter(type => type.id).map((type) => (
                 <SelectItem key={type.id} value={type.id.toString()}>
                   {type.name}
                 </SelectItem>
@@ -899,9 +899,9 @@ function TimesheetForm({
             </SelectTrigger>
             <SelectContent>
               {costCenters.length === 0 ? (
-                <SelectItem value="" disabled>No cost centers for this project</SelectItem>
+                <SelectItem value="__none__" disabled>No cost centers for this project</SelectItem>
               ) : (
-                costCenters.map((cc) => (
+                costCenters.filter(cc => cc.id).map((cc) => (
                   <SelectItem key={cc.id} value={cc.id.toString()}>
                     {cc.code} - {cc.name}
                   </SelectItem>
