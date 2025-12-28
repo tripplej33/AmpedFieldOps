@@ -576,12 +576,8 @@ router.get('/callback', async (req, res) => {
             <p>This window will close automatically...</p>
           </div>
           <script>
-            if (window.opener) {
-              window.opener.postMessage({ type: 'XERO_CONNECTED', success: true }, '*');
-              setTimeout(() => window.close(), 1500);
-            } else {
-              window.location.href = '${frontendUrl}/settings?xero_connected=true';
-            }
+            // Redirect back to settings page
+            window.location.href = '${frontendUrl}/settings?xero_connected=true';
           </script>
         </body>
       </html>

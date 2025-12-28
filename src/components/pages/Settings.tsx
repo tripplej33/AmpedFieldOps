@@ -102,20 +102,14 @@ export default function Settings() {
       window.history.replaceState({}, '', window.location.pathname);
     }
 
-    // Listen for Xero OAuth popup messages
-    const handleMessage = (event: MessageEvent) => {
-      if (event.data?.type === 'XERO_CONNECTED') {
-        if (event.data.success) {
-          toast.success('Successfully connected to Xero!');
-          loadSettings();
-        } else {
-          toast.error('Failed to connect to Xero');
-        }
-      }
-    };
-
-    window.addEventListener('message', handleMessage);
-    return () => window.removeEventListener('message', handleMessage);
+    // Check if we're returning from a successful Xero connection
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('xero_connected') === 'true') {
+      toast.success('Successfully connected to Xero!');
+      loadSettings();
+      // Clean up URL
+      window.history.replaceState({}, '', window.location.pathname);
+    }
   }, []);
 
   const loadSettings = async () => {
@@ -268,31 +262,8 @@ export default function Settings() {
           });
         }
         
-        // Open popup window for Xero OAuth
-        const width = 600;
-        const height = 700;
-        const left = window.screenX + (window.outerWidth - width) / 2;
-        const top = window.screenY + (window.outerHeight - height) / 2;
-        
-        const popup = window.open(
-          response.url,
-          'xero-auth',
-          `width=${width},height=${height},left=${left},top=${top},scrollbars=yes,resizable=yes`
-        );
-
-        if (!popup) {
-          toast.error('Popup blocked. Please allow popups for this site and try again.');
-          return;
-        }
-
-        // Listen for the popup to close or redirect
-        const checkPopup = setInterval(() => {
-          if (popup?.closed) {
-            clearInterval(checkPopup);
-            // Reload settings to check if connection was successful
-            loadSettings();
-          }
-        }, 500);
+        // Redirect to Xero OAuth in the same window
+        window.location.href = response.url;
       } else if (!response.configured) {
         toast.error('Xero credentials not configured. Please save your credentials and try again.');
       } else {
