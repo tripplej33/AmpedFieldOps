@@ -540,14 +540,9 @@ router.get('/callback', async (req, res) => {
                 <strong>Error:</strong> ${dbError.message || 'Database error'}
               </div>
               <script>
-                if (window.opener) {
-                  window.opener.postMessage({ type: 'XERO_CONNECTED', success: false, error: 'Storage failed' }, '*');
-                  setTimeout(() => window.close(), 5000);
-                } else {
-                  setTimeout(() => {
-                    window.location.href = '${frontendUrl}/settings?xero_error=storage_failed&xero_error_msg=${encodeURIComponent('Connection successful but failed to save. Please try reconnecting.')}';
-                  }, 3000);
-                }
+                setTimeout(() => {
+                  window.location.href = '${frontendUrl}/settings?xero_error=storage_failed&xero_error_msg=${encodeURIComponent('Connection successful but failed to save. Please try reconnecting.')}';
+                }, 3000);
               </script>
             </div>
           </body>
