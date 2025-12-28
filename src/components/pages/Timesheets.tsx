@@ -102,14 +102,13 @@ export default function Timesheets() {
 
   const loadFormData = async () => {
     try {
-      const [clientsData, activityData, costCenterData] = await Promise.all([
+      const [clientsData, activityData] = await Promise.all([
         api.getClients().catch(() => []),
         api.getActivityTypes(true).catch(() => []),
-        api.getCostCenters(true).catch(() => []),
       ]);
       setClients(Array.isArray(clientsData) ? clientsData : []);
       setActivityTypes(Array.isArray(activityData) ? activityData : []);
-      setCostCenters(Array.isArray(costCenterData) ? costCenterData : []);
+      setCostCenters([]); // Cost centers are now loaded per-project
     } catch (error) {
       console.error('Failed to load form data:', error);
       setClients([]);
@@ -119,7 +118,8 @@ export default function Timesheets() {
   };
 
   const handleClientChange = async (clientId: string) => {
-    setFormData({ ...formData, client_id: clientId, project_id: '' });
+    setFormData({ ...formData, client_id: clientId, project_id: '', cost_center_id: '' });
+    setCostCenters([]); // Reset cost centers when client changes
     if (clientId) {
       try {
         const projectsData = await api.getProjects({ client_id: clientId });
@@ -129,6 +129,20 @@ export default function Timesheets() {
       }
     } else {
       setProjects([]);
+    }
+  };
+
+  const handleProjectChange = async (projectId: string) => {
+    setFormData({ ...formData, project_id: projectId, cost_center_id: '' });
+    if (projectId) {
+      try {
+        const costCenterData = await api.getCostCenters(true, projectId);
+        setCostCenters(Array.isArray(costCenterData) ? costCenterData : []);
+      } catch (error) {
+        setCostCenters([]);
+      }
+    } else {
+      setCostCenters([]);
     }
   };
 
@@ -651,6 +665,7 @@ export default function Timesheets() {
             cameraInputRef={cameraInputRef}
             handleFileSelect={handleFileSelect}
             handleClientChange={handleClientChange}
+            handleProjectChange={handleProjectChange}
             onSubmit={handleCreate}
             onCancel={() => { setCreateModalOpen(false); resetForm(); }}
             isSubmitting={isSubmitting}
@@ -686,6 +701,7 @@ export default function Timesheets() {
             cameraInputRef={cameraInputRef}
             handleFileSelect={handleFileSelect}
             handleClientChange={handleClientChange}
+            handleProjectChange={handleProjectChange}
             onSubmit={handleUpdate}
             onCancel={() => { setEditModalOpen(false); resetForm(); }}
             isSubmitting={isSubmitting}
@@ -717,6 +733,7 @@ function TimesheetForm({
   cameraInputRef,
   handleFileSelect,
   handleClientChange,
+  handleProjectChange,
   onSubmit,
   onCancel,
   isSubmitting,
@@ -740,6 +757,7 @@ function TimesheetForm({
   cameraInputRef: React.RefObject<HTMLInputElement | null>;
   handleFileSelect: (e: React.ChangeEvent<HTMLInputElement>) => void;
   handleClientChange: (id: string) => void;
+  handleProjectChange: (id: string) => void;
   onSubmit: () => void;
   onCancel: () => void;
   isSubmitting: boolean;
@@ -831,7 +849,7 @@ function TimesheetForm({
         <Label className="font-mono text-xs uppercase tracking-wider">Project *</Label>
         <Select
           value={formData.project_id}
-          onValueChange={(value) => setFormData({ ...formData, project_id: value })}
+          onValueChange={handleProjectChange}
           disabled={!formData.client_id}
         >
           <SelectTrigger className="mt-2">
@@ -872,16 +890,21 @@ function TimesheetForm({
           <Select
             value={formData.cost_center_id}
             onValueChange={(value) => setFormData({ ...formData, cost_center_id: value })}
+            disabled={!formData.project_id || costCenters.length === 0}
           >
             <SelectTrigger className="mt-2">
-              <SelectValue placeholder="Select cost center" />
+              <SelectValue placeholder={costCenters.length === 0 ? "Select project first" : "Select cost center"} />
             </SelectTrigger>
             <SelectContent>
-              {costCenters.map((cc) => (
-                <SelectItem key={cc.id} value={cc.id.toString()}>
-                  {cc.code} - {cc.name}
-                </SelectItem>
-              ))}
+              {costCenters.length === 0 ? (
+                <SelectItem value="" disabled>No cost centers for this project</SelectItem>
+              ) : (
+                costCenters.map((cc) => (
+                  <SelectItem key={cc.id} value={cc.id.toString()}>
+                    {cc.code} - {cc.name}
+                  </SelectItem>
+                ))
+              )}
             </SelectContent>
           </Select>
         </div>

@@ -39,6 +39,7 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
   
   // Cost Center form
   const [showCostCenterForm, setShowCostCenterForm] = useState(false);
+  const [editingCostCenter, setEditingCostCenter] = useState<CostCenter | null>(null);
   const [ccFormCode, setCcFormCode] = useState('');
   const [ccFormName, setCcFormName] = useState('');
   const [ccFormDescription, setCcFormDescription] = useState('');
@@ -110,9 +111,19 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
     setCcFormDescription('');
     setCcFormBudget('');
     setShowCostCenterForm(false);
+    setEditingCostCenter(null);
   };
 
-  const handleAddCostCenter = async () => {
+  const startEditCostCenter = (cc: CostCenter) => {
+    setEditingCostCenter(cc);
+    setCcFormCode(cc.code);
+    setCcFormName(cc.name);
+    setCcFormDescription(cc.description || '');
+    setCcFormBudget(cc.budget?.toString() || '');
+    setShowCostCenterForm(true);
+  };
+
+  const handleSaveCostCenter = async () => {
     if (!project || !ccFormCode.trim() || !ccFormName.trim()) {
       toast.error('Please enter code and name');
       return;
@@ -120,18 +131,30 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
 
     setIsSavingCostCenter(true);
     try {
-      await api.createCostCenter({
-        code: ccFormCode,
-        name: ccFormName,
-        description: ccFormDescription,
-        budget: parseFloat(ccFormBudget) || 0,
-        project_id: project.id,
-      });
-      toast.success('Cost center added to project');
+      if (editingCostCenter) {
+        // Update existing
+        await api.updateCostCenter(editingCostCenter.id, {
+          code: ccFormCode,
+          name: ccFormName,
+          description: ccFormDescription,
+          budget: parseFloat(ccFormBudget) || 0,
+        });
+        toast.success('Cost center updated');
+      } else {
+        // Create new
+        await api.createCostCenter({
+          code: ccFormCode,
+          name: ccFormName,
+          description: ccFormDescription,
+          budget: parseFloat(ccFormBudget) || 0,
+          project_id: project.id,
+        });
+        toast.success('Cost center added to project');
+      }
       resetCostCenterForm();
       loadCostCenters();
     } catch (error: any) {
-      toast.error(error.message || 'Failed to create cost center');
+      toast.error(error.message || 'Failed to save cost center');
     } finally {
       setIsSavingCostCenter(false);
     }
@@ -283,23 +306,37 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
 
             {/* Cost Centers Tab */}
             <TabsContent value="costcenters" className="space-y-4 mt-4">
+              {/* Info message for locked cost centers */}
+              {project.status !== 'quoted' && project.status !== 'in-progress' && (
+                <div className="bg-warning/10 border border-warning/30 rounded-lg p-3">
+                  <p className="text-sm text-warning">
+                    Cost centers are locked for projects that are completed or invoiced.
+                  </p>
+                </div>
+              )}
+              
               <div className="flex items-center justify-between">
                 <h4 className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
                   Project Cost Centers ({costCenters.length})
                 </h4>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setShowCostCenterForm(!showCostCenterForm)}
-                >
-                  <Plus className="w-4 h-4 mr-1" />
-                  Add Cost Center
-                </Button>
+                {(project.status === 'quoted' || project.status === 'in-progress') && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowCostCenterForm(!showCostCenterForm)}
+                  >
+                    <Plus className="w-4 h-4 mr-1" />
+                    Add Cost Center
+                  </Button>
+                )}
               </div>
 
-              {/* Add Cost Center Form */}
+              {/* Add/Edit Cost Center Form */}
               {showCostCenterForm && (
                 <Card className="p-4 bg-muted/30 border-electric">
+                  <h5 className="font-mono text-sm font-semibold mb-3">
+                    {editingCostCenter ? 'Edit Cost Center' : 'Add Cost Center'}
+                  </h5>
                   <div className="space-y-3">
                     <div className="grid grid-cols-2 gap-3">
                       <div>
@@ -344,8 +381,8 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
                       <Button variant="outline" size="sm" onClick={resetCostCenterForm}>
                         Cancel
                       </Button>
-                      <Button size="sm" onClick={handleAddCostCenter} disabled={isSavingCostCenter} className="bg-electric text-background hover:bg-electric/90">
-                        {isSavingCostCenter ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Add'}
+                      <Button size="sm" onClick={handleSaveCostCenter} disabled={isSavingCostCenter} className="bg-electric text-background hover:bg-electric/90">
+                        {isSavingCostCenter ? <Loader2 className="w-4 h-4 animate-spin" /> : (editingCostCenter ? 'Update' : 'Add')}
                       </Button>
                     </div>
                   </div>
@@ -377,14 +414,25 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
                               <p className="text-xs text-muted-foreground mt-1">{cc.description}</p>
                             )}
                           </div>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-destructive hover:text-destructive"
-                            onClick={() => handleDeleteCostCenter(cc)}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
+                          {(project.status === 'quoted' || project.status === 'in-progress') && (
+                            <div className="flex gap-1">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => startEditCostCenter(cc)}
+                              >
+                                <Pencil className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-destructive hover:text-destructive"
+                                onClick={() => handleDeleteCostCenter(cc)}
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          )}
                         </div>
                         {cc.budget > 0 && (
                           <div className="space-y-1">

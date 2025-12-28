@@ -66,14 +66,13 @@ export default function MobileTimesheetModal({ open, onOpenChange }: MobileTimes
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const [clientsData, activityData, costCenterData] = await Promise.all([
+      const [clientsData, activityData] = await Promise.all([
         api.getClients({ status: 'active' }),
         api.getActivityTypes(true),
-        api.getCostCenters(true)
       ]);
       setClients(clientsData);
       setActivityTypes(activityData);
-      setCostCenters(costCenterData);
+      setCostCenters([]); // Cost centers are now loaded per-project
     } catch (error) {
       toast.error('Failed to load form data');
     } finally {
@@ -84,6 +83,8 @@ export default function MobileTimesheetModal({ open, onOpenChange }: MobileTimes
   const handleClientChange = async (clientId: string) => {
     setSelectedClient(clientId);
     setSelectedProject('');
+    setSelectedCostCenter('');
+    setCostCenters([]);
     
     if (clientId) {
       try {
@@ -94,6 +95,22 @@ export default function MobileTimesheetModal({ open, onOpenChange }: MobileTimes
       }
     } else {
       setProjects([]);
+    }
+  };
+
+  const handleProjectChange = async (projectId: string) => {
+    setSelectedProject(projectId);
+    setSelectedCostCenter('');
+    
+    if (projectId) {
+      try {
+        const costCenterData = await api.getCostCenters(true, projectId);
+        setCostCenters(costCenterData);
+      } catch (error) {
+        setCostCenters([]);
+      }
+    } else {
+      setCostCenters([]);
     }
   };
 
@@ -299,7 +316,7 @@ export default function MobileTimesheetModal({ open, onOpenChange }: MobileTimes
             </Label>
             <Select 
               value={selectedProject} 
-              onValueChange={setSelectedProject}
+              onValueChange={handleProjectChange}
               disabled={!selectedClient}
             >
               <SelectTrigger className="mt-2 focus:border-electric focus:glow-primary">
@@ -320,16 +337,24 @@ export default function MobileTimesheetModal({ open, onOpenChange }: MobileTimes
             <Label htmlFor="costCenter" className="font-mono text-xs uppercase tracking-wider">
               Cost Center *
             </Label>
-            <Select value={selectedCostCenter} onValueChange={setSelectedCostCenter}>
+            <Select 
+              value={selectedCostCenter} 
+              onValueChange={setSelectedCostCenter}
+              disabled={!selectedProject || costCenters.length === 0}
+            >
               <SelectTrigger className="mt-2 focus:border-electric focus:glow-primary">
-                <SelectValue placeholder="Select cost center" />
+                <SelectValue placeholder={costCenters.length === 0 ? "Select project first" : "Select cost center"} />
               </SelectTrigger>
               <SelectContent>
-                {costCenters.map((cc) => (
-                  <SelectItem key={cc.id} value={cc.id}>
-                    <span className="font-mono">{cc.code}</span> - {cc.name}
-                  </SelectItem>
-                ))}
+                {costCenters.length === 0 ? (
+                  <SelectItem value="" disabled>No cost centers for this project</SelectItem>
+                ) : (
+                  costCenters.map((cc) => (
+                    <SelectItem key={cc.id} value={cc.id}>
+                      <span className="font-mono">{cc.code}</span> - {cc.name}
+                    </SelectItem>
+                  ))
+                )}
               </SelectContent>
             </Select>
           </div>

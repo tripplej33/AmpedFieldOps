@@ -12,8 +12,7 @@ import {
   DollarSign,
   UserCog,
   Activity,
-  LogOut,
-  FolderOpen
+  LogOut
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState, useEffect } from 'react';
@@ -41,7 +40,6 @@ const mainNavigation: NavItem[] = [
 const adminNavigation: NavItem[] = [
   { name: 'Users', href: '/users', icon: UserCog, permission: 'can_manage_users' },
   { name: 'Activity Types', href: '/activity-types', icon: Activity, permission: 'can_edit_activity_types' },
-  { name: 'Cost Centers', href: '/cost-centers', icon: FolderOpen, permission: 'can_manage_cost_centers' },
   { name: 'Settings', href: '/settings', icon: Settings },
 ];
 

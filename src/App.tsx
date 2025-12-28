@@ -13,7 +13,6 @@ import Login from "./components/pages/Login";
 import Financials from "./components/pages/Financials";
 import Users from "./components/pages/Users";
 import ActivityTypes from "./components/pages/ActivityTypes";
-import CostCenters from "./components/pages/CostCenters";
 
 // Protected route wrapper
 function ProtectedRoute({ children, permission }: { children: React.ReactNode; permission?: string }) {
@@ -75,11 +74,6 @@ function AppRoutes() {
           <Route path="activity-types" element={
             <ProtectedRoute permission="can_edit_activity_types">
               <ActivityTypes />
-            </ProtectedRoute>
-          } />
-          <Route path="cost-centers" element={
-            <ProtectedRoute permission="can_manage_cost_centers">
-              <CostCenters />
             </ProtectedRoute>
           } />
         </Route>
