@@ -49,14 +49,15 @@ export default function Dashboard() {
         api.getActiveProjects(5).catch(() => [])
       ]);
       setMetrics(metricsData || {
-        total_revenue: 0,
-        total_hours: 0,
-        active_projects: 0,
-        pending_invoices: 0,
-        revenue_trend: 0,
-        hours_trend: 0,
-        projects_trend: 0,
-        invoices_trend: 0
+        totalProjects: 0,
+        activeProjects: 0,
+        totalHours: 0,
+        totalRevenue: 0,
+        projectsTrend: 0,
+        hoursTrend: 0,
+        revenueTrend: 0,
+        activeTeam: 0,
+        recentActivity: []
       });
       setQuickStats(statsData);
       setRecentTimesheets(Array.isArray(timesheetsData) ? timesheetsData : []);
@@ -64,9 +65,16 @@ export default function Dashboard() {
     } catch (error) {
       console.error('Failed to load dashboard data:', error);
       setMetrics({
-        total_revenue: 0,
-        total_hours: 0,
-        active_projects: 0,
+        totalProjects: 0,
+        activeProjects: 0,
+        totalHours: 0,
+        totalRevenue: 0,
+        projectsTrend: 0,
+        hoursTrend: 0,
+        revenueTrend: 0,
+        activeTeam: 0,
+        recentActivity: []
+      });
         pending_invoices: 0,
         revenue_trend: 0,
         hours_trend: 0,

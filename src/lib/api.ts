@@ -506,7 +506,18 @@ class ApiClient {
 
   // Xero
   async getXeroAuthUrl() {
-    return this.request<{ url: string; configured: boolean }>('/api/xero/auth/url');
+    return this.request<{ 
+      url: string; 
+      configured: boolean;
+      redirectUri?: string;
+      clientId?: string;
+      clientIdPrefix?: string;
+      verification?: {
+        redirectUriMatch?: string;
+        clientIdMatch?: string;
+        xeroAppUrl?: string;
+      };
+    }>('/api/xero/auth/url');
   }
 
   async getXeroStatus() {

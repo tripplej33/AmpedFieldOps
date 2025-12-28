@@ -20,6 +20,7 @@ export interface Client {
   active_projects?: number;
   total_hours?: number;
   last_contact?: string;
+  last_activity?: string;
 }
 
 export interface CostCenter {
