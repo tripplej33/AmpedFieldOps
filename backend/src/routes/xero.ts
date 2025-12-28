@@ -364,12 +364,26 @@ router.get('/callback', async (req, res) => {
       clientSecretSet: !!trimmedClientSecret
     });
 
+    // Prepare Basic Auth header
+    const basicAuth = Buffer.from(`${trimmedClientId}:${trimmedClientSecret}`).toString('base64');
+    
+    console.log('[Xero] Token exchange request details:', {
+      url: 'https://identity.xero.com/connect/token',
+      clientIdLength: trimmedClientId.length,
+      clientSecretLength: trimmedClientSecret.length,
+      basicAuthLength: basicAuth.length,
+      basicAuthPreview: `${basicAuth.substring(0, 10)}...`,
+      redirectUri: trimmedRedirectUri,
+      grantType: 'authorization_code',
+      codeLength: codeStr.length
+    });
+    
     // Exchange code for tokens using actual Xero API
     const tokenResponse = await fetch('https://identity.xero.com/connect/token', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
-        'Authorization': 'Basic ' + Buffer.from(`${trimmedClientId}:${trimmedClientSecret}`).toString('base64')
+        'Authorization': `Basic ${basicAuth}`
       },
       body: new URLSearchParams({
         grant_type: 'authorization_code',
