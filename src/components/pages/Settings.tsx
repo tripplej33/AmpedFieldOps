@@ -743,7 +743,7 @@ export default function Settings() {
               </Button>
               {(!settings.xero_client_id || !settings.xero_client_secret) && (
                 <p className="text-xs text-warning mt-2">
-                  Please enter your Xero credentials above before connecting
+                  Please save your Xero credentials above before connecting
                 </p>
               )}
             </div>
