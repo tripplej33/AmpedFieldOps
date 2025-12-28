@@ -6,7 +6,8 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Zap, Eye, EyeOff, Loader2 } from 'lucide-react';
+import { Zap, Eye, EyeOff, Loader2, Database, Link2, CheckCircle2, XCircle } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -20,6 +21,10 @@ export default function Login() {
     company_name: 'AmpedFieldOps',
     company_logo: null
   });
+  const [healthStatus, setHealthStatus] = useState<{
+    database: { healthy: boolean; status: string };
+    xero: { configured: boolean; connected: boolean; status: string };
+  } | null>(null);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -37,6 +42,22 @@ export default function Login() {
       }
     };
     loadBranding();
+  }, []);
+
+  useEffect(() => {
+    const loadHealthStatus = async () => {
+      try {
+        const status = await api.getHealthStatus();
+        setHealthStatus(status);
+      } catch (error) {
+        // Health check failed, show as unhealthy
+        setHealthStatus({
+          database: { healthy: false, status: 'unknown' },
+          xero: { configured: false, connected: false, status: 'unknown' }
+        });
+      }
+    };
+    loadHealthStatus();
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -147,8 +168,59 @@ export default function Login() {
           </Button>
         </form>
 
+        {/* Status Indicators */}
+        {healthStatus && (
+          <div className="mt-6 pt-6 border-t border-border">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2">
+                  <Database className="w-3 h-3" />
+                  <span className="font-mono uppercase tracking-wider">Database</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {healthStatus.database.healthy ? (
+                    <>
+                      <CheckCircle2 className="w-3 h-3 text-voltage" />
+                      <span className="text-voltage font-mono">Connected</span>
+                    </>
+                  ) : (
+                    <>
+                      <XCircle className="w-3 h-3 text-destructive" />
+                      <span className="text-destructive font-mono">Disconnected</span>
+                    </>
+                  )}
+                </div>
+              </div>
+              <div className="flex items-center justify-between text-xs">
+                <div className="flex items-center gap-2">
+                  <Link2 className="w-3 h-3" />
+                  <span className="font-mono uppercase tracking-wider">Xero</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  {healthStatus.xero.status === 'connected' ? (
+                    <>
+                      <CheckCircle2 className="w-3 h-3 text-voltage" />
+                      <span className="text-voltage font-mono">Connected</span>
+                    </>
+                  ) : healthStatus.xero.status === 'not_connected' ? (
+                    <>
+                      <XCircle className="w-3 h-3 text-warning" />
+                      <span className="text-warning font-mono">Not Connected</span>
+                    </>
+                  ) : (
+                    <>
+                      <XCircle className="w-3 h-3 text-muted-foreground" />
+                      <span className="text-muted-foreground font-mono">Not Configured</span>
+                    </>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Version */}
-        <p className="mt-8 text-center text-xs font-mono text-muted-foreground">
+        <p className="mt-6 text-center text-xs font-mono text-muted-foreground">
           v2.0.0
         </p>
       </Card>

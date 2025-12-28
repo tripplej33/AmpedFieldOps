@@ -17,6 +17,7 @@ import setupRoutes from './routes/setup';
 import xeroRoutes from './routes/xero';
 import settingsRoutes from './routes/settings';
 import dashboardRoutes from './routes/dashboard';
+import healthRoutes from './routes/health';
 
 const app = express();
 
@@ -45,15 +46,7 @@ app.use('/api/setup', setupRoutes);
 app.use('/api/xero', xeroRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/dashboard', dashboardRoutes);
-
-// Health check
-app.get('/api/health', (req, res) => {
-  res.json({ 
-    status: 'ok', 
-    timestamp: new Date().toISOString(),
-    environment: env.NODE_ENV
-  });
-});
+app.use('/api/health', healthRoutes);
 
 // Error handling middleware
 app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {

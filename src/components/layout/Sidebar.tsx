@@ -12,7 +12,8 @@ import {
   DollarSign,
   UserCog,
   Activity,
-  LogOut
+  LogOut,
+  User
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState, useEffect } from 'react';
@@ -170,6 +171,19 @@ export default function Sidebar() {
             <p className="text-xs text-muted-foreground truncate">{user.email}</p>
           </div>
         )}
+        <Link
+          to="/user-settings"
+          onClick={() => setMobileOpen(false)}
+          className={cn(
+            'flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all mb-2',
+            location.pathname === '/user-settings'
+              ? 'bg-sidebar-accent text-electric'
+              : 'text-muted-foreground hover:bg-sidebar-accent hover:text-foreground'
+          )}
+        >
+          <User className="w-4 h-4" />
+          User Settings
+        </Link>
         <Button
           variant="ghost"
           size="sm"

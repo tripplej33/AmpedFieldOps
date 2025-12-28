@@ -9,14 +9,12 @@ import { Separator } from '@/components/ui/separator';
 import { RefreshCw, CheckCircle, Link2, Upload, Download, Loader2 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
-import { CostCenter } from '@/types';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
 export default function Settings() {
   const { hasPermission } = useAuth();
   const [xeroStatus, setXeroStatus] = useState<any>(null);
-  const [costCenters, setCostCenters] = useState<CostCenter[]>([]);
   const [settings, setSettings] = useState<any>({});
   const [isLoading, setIsLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
@@ -135,12 +133,8 @@ export default function Settings() {
 
   const loadSettings = async () => {
     try {
-      const [settingsData, costCentersData] = await Promise.all([
-        api.getSettings(),
-        api.getCostCenters()
-      ]);
+      const settingsData = await api.getSettings();
       setSettings(settingsData);
-      setCostCenters(costCentersData);
 
       // Always use current origin for redirect URI (never localhost in production)
       const currentRedirectUri = `${window.location.origin}/api/xero/callback`;
@@ -918,42 +912,6 @@ export default function Settings() {
               </div>
               <Switch />
             </div>
-          </div>
-        </Card>
-
-        {/* Cost Centers */}
-        <Card className="p-6 bg-card border-border">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-bold">Cost Centers</h3>
-            <span className="text-sm text-muted-foreground">{costCenters.length} configured</span>
-          </div>
-
-          <div className="space-y-2">
-            {costCenters.slice(0, 5).map((cc) => (
-              <div
-                key={cc.id}
-                className="flex items-center justify-between p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors"
-              >
-                <div className="flex items-center gap-3">
-                  <CheckCircle className={cn(
-                    "w-4 h-4",
-                    cc.is_active ? "text-voltage" : "text-muted-foreground"
-                  )} />
-                  <div>
-                    <span className="font-mono text-sm text-foreground">{cc.code}</span>
-                    <span className="text-sm text-muted-foreground ml-2">- {cc.name}</span>
-                  </div>
-                </div>
-                <span className="text-sm font-mono text-muted-foreground">
-                  ${cc.budget?.toLocaleString() || 0}
-                </span>
-              </div>
-            ))}
-            {costCenters.length > 5 && (
-              <p className="text-sm text-muted-foreground text-center py-2">
-                +{costCenters.length - 5} more
-              </p>
-            )}
           </div>
         </Card>
 

@@ -520,6 +520,10 @@ class ApiClient {
     }>('/api/xero/auth/url');
   }
 
+  async getHealthStatus() {
+    return this.request('/api/health', { method: 'GET' });
+  }
+
   async getXeroStatus() {
     return this.request<{
       connected: boolean;

@@ -12,6 +12,8 @@ import Timesheets from "./components/pages/Timesheets";
 import Reports from "./components/pages/Reports";
 import Settings from "./components/pages/Settings";
 import Login from "./components/pages/Login";
+import ForgotPassword from "./components/pages/ForgotPassword";
+import UserSettings from "./components/pages/UserSettings";
 import Financials from "./components/pages/Financials";
 import Users from "./components/pages/Users";
 import ActivityTypes from "./components/pages/ActivityTypes";
@@ -50,6 +52,7 @@ function AppRoutes() {
       <Routes>
         {/* Public routes */}
         <Route path="/login" element={<Login />} />
+        <Route path="/forgot-password" element={<ForgotPassword />} />
 
         {/* Protected routes */}
         <Route path="/" element={
@@ -63,6 +66,7 @@ function AppRoutes() {
           <Route path="timesheets" element={<Timesheets />} />
           <Route path="reports" element={<Reports />} />
           <Route path="settings" element={<Settings />} />
+          <Route path="user-settings" element={<UserSettings />} />
           <Route path="financials" element={
             <ProtectedRoute permission="can_view_financials">
               <Financials />
