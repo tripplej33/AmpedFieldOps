@@ -59,18 +59,40 @@ export default function Settings() {
         }
       });
       
+      // Parse the error message (may contain newlines from backend)
+      const errorLines = xeroErrorMsg ? xeroErrorMsg.split('\n').filter(line => line.trim()) : [message];
+      
       // Show full error message with details
       toast.error(message, {
-        duration: 15000, // Longer duration for detailed messages
+        duration: 20000, // Even longer for detailed errors
         description: (
           <div className="space-y-2 text-xs">
-            {xeroError === 'unauthorized_client' && (
-              <>
-                <div className="font-semibold">Current Configuration:</div>
-                <div>Client ID: {settings.xero_client_id || 'NOT SET'}</div>
-                <div>Redirect URI: {settings.xero_redirect_uri || `${window.location.origin}/api/xero/callback`}</div>
-                <div className="mt-2 text-warning">⚠️ These must match your Xero app settings exactly</div>
-              </>
+            {errorLines.map((line, idx) => (
+              <div key={idx} className={idx === 0 ? 'font-semibold' : ''}>
+                {line}
+              </div>
+            ))}
+            {urlParams.get('client_id') && (
+              <div className="mt-2 pt-2 border-t border-border">
+                <div><strong>Client ID used:</strong> <code className="text-xs bg-muted px-1 py-0.5 rounded">{urlParams.get('client_id')}</code></div>
+              </div>
+            )}
+            {urlParams.get('redirect_uri') && (
+              <div>
+                <div><strong>Redirect URI used:</strong> <code className="text-xs bg-muted px-1 py-0.5 rounded break-all">{urlParams.get('redirect_uri')}</code></div>
+              </div>
+            )}
+            {(xeroError === 'token_exchange_failed' || xeroError === 'unauthorized_client' || xeroError === 'invalid_client_id') && (
+              <div className="mt-2 pt-2 border-t border-border">
+                <a 
+                  href="https://developer.xero.com/myapps" 
+                  target="_blank" 
+                  rel="noopener noreferrer" 
+                  className="text-electric hover:underline"
+                >
+                  → Verify your Xero app settings
+                </a>
+              </div>
             )}
           </div>
         )
