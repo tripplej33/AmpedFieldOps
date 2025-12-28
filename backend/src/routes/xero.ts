@@ -122,9 +122,17 @@ router.get('/callback', async (req, res) => {
   try {
     // Check for OAuth errors from Xero
     if (error) {
-      const errorStr = Array.isArray(error) ? error[0] : String(error);
-      const errorDescStr = error_description 
-        ? (Array.isArray(error_description) ? error_description[0] : String(error_description))
+      const errorStr: string = Array.isArray(error) 
+        ? String(error[0]) 
+        : typeof error === 'string' 
+          ? error 
+          : String(error);
+      const errorDescStr: string | undefined = error_description 
+        ? (Array.isArray(error_description) 
+            ? String(error_description[0]) 
+            : typeof error_description === 'string'
+              ? error_description
+              : String(error_description))
         : undefined;
       
       console.error('[Xero] OAuth error from Xero:', {
