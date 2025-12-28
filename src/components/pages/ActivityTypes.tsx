@@ -236,7 +236,7 @@ export default function ActivityTypes() {
                 <div className="flex items-center justify-between text-sm">
                   <span className="text-muted-foreground">Hourly Rate</span>
                   <span className="font-mono font-bold text-electric">
-                    ${type.hourly_rate.toFixed(2)}
+                    ${(Number(type.hourly_rate) || 0).toFixed(2)}
                   </span>
                 </div>
                 <div className="flex items-center justify-between text-sm">

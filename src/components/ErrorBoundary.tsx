@@ -82,8 +82,8 @@ class ErrorBoundary extends Component<Props, State> {
             </div>
 
             <div className="flex gap-2">
-              <Button onClick={this.handleReset} variant="outline" className="flex-1">
-                Try Again
+              <Button onClick={() => window.location.href = '/'} variant="outline" className="flex-1">
+                Go to Dashboard
               </Button>
               <Button onClick={this.handleReload} className="flex-1">
                 <RefreshCw className="w-4 h-4 mr-2" />
