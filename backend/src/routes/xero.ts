@@ -214,7 +214,34 @@ router.get('/auth/url', authenticate, requirePermission('can_sync_xero'), async 
 // Handle Xero OAuth callback
 router.get('/callback', async (req, res) => {
   const { code, state, error, error_description } = req.query;
-  const frontendUrl = env.FRONTEND_URL;
+  
+  // Get credentials first to determine the correct frontend URL
+  // This ensures we use the same domain as the redirect URI
+  let frontendUrl = env.FRONTEND_URL;
+  
+  try {
+    const { redirectUri } = await getXeroCredentials();
+    // Extract frontend URL from redirect URI (remove /api/xero/callback)
+    if (redirectUri) {
+      try {
+        const redirectUrl = new URL(redirectUri);
+        // If redirect URI is like https://admin.ampedlogix.com/api/xero/callback
+        // Extract https://admin.ampedlogix.com
+        frontendUrl = redirectUrl.origin;
+        console.log('[Xero] Using frontend URL from redirect URI:', frontendUrl);
+      } catch (e) {
+        console.warn('[Xero] Could not parse redirect URI for frontend URL:', redirectUri);
+      }
+    }
+  } catch (e) {
+    console.warn('[Xero] Could not get credentials for frontend URL, using env:', e);
+  }
+  
+  // Fallback to env or localhost
+  if (!frontendUrl || frontendUrl.includes('localhost')) {
+    frontendUrl = env.FRONTEND_URL || 'http://localhost:3000';
+    console.log('[Xero] Using frontend URL from env or fallback:', frontendUrl);
+  }
 
   try {
     // Check for OAuth errors from Xero
