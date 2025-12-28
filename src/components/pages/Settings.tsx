@@ -612,23 +612,39 @@ export default function Settings() {
                 />
               </div>
               
-              <Button
-                onClick={handleSaveXeroCredentials}
-                disabled={isSavingCredentials || !xeroCredentials.clientId || !xeroCredentials.clientSecret}
-                className="w-full bg-electric text-background hover:bg-electric/90"
-              >
-                {isSavingCredentials ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Saving...
-                  </>
-                ) : (
-                  <>
-                    <CheckCircle className="w-4 h-4 mr-2" />
-                    Save Credentials
-                  </>
-                )}
-              </Button>
+              {showSaveButton && (
+                <>
+                  <Button
+                    onClick={handleSaveXeroCredentials}
+                    disabled={isSavingCredentials || !xeroCredentials.clientId || !xeroCredentials.clientSecret}
+                    className="w-full bg-electric text-background hover:bg-electric/90"
+                  >
+                    {isSavingCredentials ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Saving...
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle className="w-4 h-4 mr-2" />
+                        {credentialsChanged ? 'Save Changes' : 'Save Credentials'}
+                      </>
+                    )}
+                  </Button>
+                  
+                  {credentialsChanged && (
+                    <p className="text-xs text-warning text-center">
+                      ⚠️ Credentials have been modified. Click "Save Changes" to update.
+                    </p>
+                  )}
+                </>
+              )}
+              
+              {!showSaveButton && !credentialsChanged && (
+                <p className="text-xs text-muted-foreground text-center">
+                  ✓ Credentials saved and connected. Edit credentials above to make changes.
+                </p>
+              )}
               
               {(!xeroCredentials.clientId || !xeroCredentials.clientSecret) && (
                 <p className="text-xs text-muted-foreground text-center">
