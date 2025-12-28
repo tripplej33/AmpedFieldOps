@@ -352,6 +352,60 @@ export default function Settings() {
     }
   };
 
+  const handleSaveXeroCredentials = async () => {
+    const { clientId, clientSecret, redirectUri } = xeroCredentials;
+    
+    // Validate Client ID
+    if (!clientId || !clientSecret) {
+      toast.error('Please enter both Client ID and Client Secret');
+      return;
+    }
+    
+    if (clientId.includes('@')) {
+      toast.error('Invalid Client ID: Email addresses cannot be used. Please enter your 32-character Xero Client ID.');
+      return;
+    }
+    
+    if (clientId.length !== 32) {
+      toast.error(`Invalid Client ID format. Xero Client IDs must be exactly 32 characters (you entered ${clientId.length}).`);
+      return;
+    }
+    
+    if (!/^[0-9A-Fa-f]{32}$/.test(clientId)) {
+      toast.warning('Client ID should contain only hexadecimal characters (0-9, A-F).');
+    }
+    
+    setIsSavingCredentials(true);
+    try {
+      // Save all credentials at once
+      await api.updateSetting('xero_client_id', clientId.trim(), true);
+      await api.updateSetting('xero_client_secret', clientSecret.trim(), true);
+      await api.updateSetting('xero_redirect_uri', redirectUri.trim() || `${window.location.origin}/api/xero/callback`, true);
+      
+      // Update settings state
+      setSettings((prev: any) => ({
+        ...prev,
+        xero_client_id: clientId.trim(),
+        xero_client_secret: clientSecret.trim(),
+        xero_redirect_uri: redirectUri.trim() || `${window.location.origin}/api/xero/callback`
+      }));
+      
+      toast.success('Xero credentials saved successfully!', {
+        description: 'You can now connect to Xero using the "Connect to Xero" button.'
+      });
+      
+      console.log('[Xero] Credentials saved:', {
+        clientId: `${clientId.substring(0, 8)}...`,
+        redirectUri: redirectUri || `${window.location.origin}/api/xero/callback`
+      });
+    } catch (error: any) {
+      console.error('[Xero] Failed to save credentials:', error);
+      toast.error(error.message || 'Failed to save credentials');
+    } finally {
+      setIsSavingCredentials(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <>
