@@ -17,13 +17,16 @@ async function getXeroCredentials() {
   const clientSecretResult = await query(
     `SELECT value FROM settings WHERE key = 'xero_client_secret' AND user_id IS NULL`
   );
+  const redirectUriResult = await query(
+    `SELECT value FROM settings WHERE key = 'xero_redirect_uri' AND user_id IS NULL`
+  );
   
   const clientId = clientIdResult.rows[0]?.value || env.XERO_CLIENT_ID;
   const clientSecret = clientSecretResult.rows[0]?.value || env.XERO_CLIENT_SECRET;
   
   // Construct redirect URI
-  // Priority: XERO_REDIRECT_URI env -> FRONTEND_URL + /api/xero/callback -> BACKEND_URL + /api/xero/callback -> localhost
-  let redirectUri = env.XERO_REDIRECT_URI;
+  // Priority: Database setting -> XERO_REDIRECT_URI env -> FRONTEND_URL + /api/xero/callback -> BACKEND_URL + /api/xero/callback
+  let redirectUri = redirectUriResult.rows[0]?.value || env.XERO_REDIRECT_URI;
   if (!redirectUri) {
     // If FRONTEND_URL is set (e.g., https://admin.ampedlogix.com), use that with /api prefix
     // This works for reverse proxy setups where frontend and API share the same domain
@@ -38,6 +41,8 @@ async function getXeroCredentials() {
   }
   
   console.log('[Xero] Using redirect URI:', redirectUri);
+  console.log('[Xero] Client ID:', clientId ? `${clientId.substring(0, 8)}...` : 'NOT SET');
+  console.log('[Xero] Client Secret:', clientSecret ? 'SET' : 'NOT SET');
   
   return { clientId, clientSecret, redirectUri };
 }
