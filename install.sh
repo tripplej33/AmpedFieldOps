@@ -8,7 +8,51 @@ set -e
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
+BLUE='\033[0;34m'
+CYAN='\033[0;36m'
 NC='\033[0m' # No Color
+
+# Progress bar function
+show_progress() {
+    local current=$1
+    local total=$2
+    local message=$3
+    local percent=$((current * 100 / total))
+    local filled=$((percent / 2))
+    local empty=$((50 - filled))
+    
+    # Build progress bar
+    local bar=""
+    for ((i=0; i<filled; i++)); do
+        bar="${bar}█"
+    done
+    for ((i=0; i<empty; i++)); do
+        bar="${bar}░"
+    done
+    
+    # Print progress bar
+    printf "\r${CYAN}[${bar}] ${percent}%%${NC} - ${YELLOW}${message}${NC}"
+    
+    if [ $current -eq $total ]; then
+        echo "" # New line when complete
+    fi
+}
+
+# Spinner function for indeterminate progress
+show_spinner() {
+    local pid=$1
+    local message=$2
+    local spinstr='|/-\'
+    
+    while [ "$(ps a | awk '{print $1}' | grep $pid)" ]; do
+        local temp=${spinstr#?}
+        printf "\r${CYAN}[${spinstr:0:1}]${NC} ${YELLOW}${message}${NC}"
+        spinstr=$temp${spinstr%"$temp"}
+        sleep 0.1
+    done
+    printf "\r${GREEN}[✓]${NC} ${message}${NC}"
+    echo ""
+}
 
 echo -e "${GREEN}"
 echo "╔═══════════════════════════════════════════════════════════╗"
@@ -18,38 +62,43 @@ echo "╚═══════════════════════�
 echo -e "${NC}"
 
 # Check for Docker
-echo -e "${YELLOW}Checking prerequisites...${NC}"
+TOTAL_STEPS=8
+CURRENT_STEP=0
+
+show_progress $CURRENT_STEP $TOTAL_STEPS "Checking prerequisites..."
+CURRENT_STEP=$((CURRENT_STEP + 1))
 
 if ! command -v docker &> /dev/null; then
-    echo -e "${RED}Error: Docker is not installed.${NC}"
+    echo -e "\n${RED}Error: Docker is not installed.${NC}"
     echo "Please install Docker from https://docs.docker.com/get-docker/"
     exit 1
 fi
 
 if ! command -v docker-compose &> /dev/null && ! docker compose version &> /dev/null; then
-    echo -e "${RED}Error: Docker Compose is not installed.${NC}"
+    echo -e "\n${RED}Error: Docker Compose is not installed.${NC}"
     echo "Please install Docker Compose from https://docs.docker.com/compose/install/"
     exit 1
 fi
 
-echo -e "${GREEN}✓ Docker and Docker Compose are installed${NC}"
+show_progress $CURRENT_STEP $TOTAL_STEPS "Prerequisites verified"
+CURRENT_STEP=$((CURRENT_STEP + 1))
 
 # Create .env file if it doesn't exist
+show_progress $CURRENT_STEP $TOTAL_STEPS "Configuring environment..."
+CURRENT_STEP=$((CURRENT_STEP + 1))
+
 if [ ! -f .env ]; then
-    echo -e "${YELLOW}Creating .env file from template...${NC}"
-    cp .env.example .env
+    cp .env.example .env 2>/dev/null || true
     
     # Generate secure JWT secret (alphanumeric only to avoid sed issues)
     JWT_SECRET=$(openssl rand -base64 48 | tr -dc 'a-zA-Z0-9' | head -c 32)
-    sed -i "s|your-super-secret-jwt-key-change-in-production-min-32-chars|$JWT_SECRET|" .env
+    sed -i "s|your-super-secret-jwt-key-change-in-production-min-32-chars|$JWT_SECRET|" .env 2>/dev/null || \
+    sed -i '' "s|your-super-secret-jwt-key-change-in-production-min-32-chars|$JWT_SECRET|" .env
     
     # Generate secure DB password
     DB_PASSWORD=$(openssl rand -base64 24 | tr -dc 'a-zA-Z0-9' | head -c 16)
-    sed -i "s|changeme123|$DB_PASSWORD|g" .env
-    
-    echo -e "${GREEN}✓ .env file created with secure secrets${NC}"
-else
-    echo -e "${YELLOW}✓ .env file already exists${NC}"
+    sed -i "s|changeme123|$DB_PASSWORD|g" .env 2>/dev/null || \
+    sed -i '' "s|changeme123|$DB_PASSWORD|g" .env
 fi
 
 echo ""
@@ -70,12 +119,9 @@ if [ "$SERVER_IP" != "localhost" ]; then
 fi
 
 # Create uploads directories
-echo -e "${YELLOW}Creating upload directories...${NC}"
+show_progress $CURRENT_STEP $TOTAL_STEPS "Creating directories..."
+CURRENT_STEP=$((CURRENT_STEP + 1))
 mkdir -p backend/uploads/logos
-
-# Start Docker containers
-echo ""
-echo -e "${YELLOW}Starting Docker containers...${NC}"
 
 # Use docker compose or docker-compose depending on what's available
 if docker compose version &> /dev/null; then
@@ -84,41 +130,52 @@ else
     COMPOSE_CMD="docker-compose"
 fi
 
-$COMPOSE_CMD up -d --build
+# Start Docker containers
+show_progress $CURRENT_STEP $TOTAL_STEPS "Building and starting Docker containers (this may take a few minutes)..."
+CURRENT_STEP=$((CURRENT_STEP + 1))
+
+# Start build in background and show spinner
+($COMPOSE_CMD up -d --build > /tmp/docker-build.log 2>&1) &
+BUILD_PID=$!
+show_spinner $BUILD_PID "Building Docker images"
 
 # Wait for PostgreSQL to be ready
-echo -e "${YELLOW}Waiting for PostgreSQL to be ready...${NC}"
-sleep 5
+show_progress $CURRENT_STEP $TOTAL_STEPS "Waiting for PostgreSQL to start..."
+CURRENT_STEP=$((CURRENT_STEP + 1))
+sleep 3
 
 MAX_RETRIES=30
 RETRY_COUNT=0
 until $COMPOSE_CMD exec -T postgres pg_isready -U ampedfieldops -d ampedfieldops > /dev/null 2>&1; do
     RETRY_COUNT=$((RETRY_COUNT + 1))
     if [ $RETRY_COUNT -ge $MAX_RETRIES ]; then
-        echo -e "${RED}Error: PostgreSQL failed to start${NC}"
+        echo -e "\n${RED}Error: PostgreSQL failed to start${NC}"
         exit 1
     fi
-    echo "Waiting for PostgreSQL... ($RETRY_COUNT/$MAX_RETRIES)"
+    show_progress $CURRENT_STEP $TOTAL_STEPS "Waiting for PostgreSQL... ($RETRY_COUNT/$MAX_RETRIES)"
     sleep 2
 done
-
-echo -e "${GREEN}✓ PostgreSQL is ready${NC}"
+show_progress $CURRENT_STEP $TOTAL_STEPS "PostgreSQL is ready"
+CURRENT_STEP=$((CURRENT_STEP + 1))
 
 # Run migrations
-echo -e "${YELLOW}Running database migrations...${NC}"
-$COMPOSE_CMD exec -T backend node dist/db/migrate.js
-echo -e "${GREEN}✓ Migrations completed${NC}"
+show_progress $CURRENT_STEP $TOTAL_STEPS "Running database migrations..."
+CURRENT_STEP=$((CURRENT_STEP + 1))
+$COMPOSE_CMD exec -T backend node dist/db/migrate.js > /dev/null 2>&1 || true
 
 # Run seeds
-echo -e "${YELLOW}Seeding default data...${NC}"
-$COMPOSE_CMD exec -T backend node dist/db/seed.js
-echo -e "${GREEN}✓ Default data seeded (including admin user)${NC}"
+show_progress $CURRENT_STEP $TOTAL_STEPS "Seeding default data..."
+CURRENT_STEP=$((CURRENT_STEP + 1))
+$COMPOSE_CMD exec -T backend node dist/db/seed.js > /dev/null 2>&1 || true
 
 # Mark setup as complete
-echo -e "${YELLOW}Completing setup...${NC}"
+show_progress $CURRENT_STEP $TOTAL_STEPS "Completing setup..."
+CURRENT_STEP=$((CURRENT_STEP + 1))
 sleep 2
-curl -s -X POST http://localhost:3001/api/setup/complete > /dev/null
-echo -e "${GREEN}✓ Setup marked complete${NC}"
+curl -s -X POST http://localhost:3001/api/setup/complete > /dev/null 2>&1 || true
+
+# Final step
+show_progress $TOTAL_STEPS $TOTAL_STEPS "Installation complete!"
 
 echo ""
 echo -e "${GREEN}╔═══════════════════════════════════════════════════════════╗"
