@@ -105,12 +105,25 @@ export default function Settings() {
       setSettings(settingsData);
       setCostCenters(costCentersData);
 
-      // Auto-update redirect URI if domain has changed
+      // Always use current origin for redirect URI (never localhost in production)
       const currentRedirectUri = `${window.location.origin}/api/xero/callback`;
       const savedRedirectUri = settingsData.xero_redirect_uri;
       
-      if (savedRedirectUri && savedRedirectUri !== currentRedirectUri) {
-        // Check if the saved URI is from a different domain
+      // Initialize Xero credentials from saved settings, but use current origin if saved URI is localhost
+      let initialRedirectUri = savedRedirectUri || currentRedirectUri;
+      if (initialRedirectUri.includes('localhost') && !window.location.hostname.includes('localhost')) {
+        // If saved URI is localhost but we're on production, use current origin
+        initialRedirectUri = currentRedirectUri;
+        console.warn('[Xero] Saved redirect URI is localhost but we\'re on production. Using current origin.');
+        // Update in database
+        await api.updateSetting('xero_redirect_uri', currentRedirectUri, true);
+        setSettings((prev: any) => ({ ...prev, xero_redirect_uri: currentRedirectUri }));
+        toast.info('Redirect URI updated to match current domain', {
+          description: `Updated from localhost to ${currentRedirectUri}`,
+          duration: 5000
+        });
+      } else if (savedRedirectUri && savedRedirectUri !== currentRedirectUri) {
+        // Check if the saved URI is from a different domain (but not localhost)
         try {
           const savedUrl = new URL(savedRedirectUri);
           const currentUrl = new URL(currentRedirectUri);
@@ -141,6 +154,12 @@ export default function Settings() {
         await api.updateSetting('xero_redirect_uri', currentRedirectUri, true);
         setSettings((prev: any) => ({ ...prev, xero_redirect_uri: currentRedirectUri }));
       }
+      
+      setXeroCredentials({
+        clientId: settingsData.xero_client_id || '',
+        clientSecret: settingsData.xero_client_secret || '',
+        redirectUri: initialRedirectUri
+      });
 
       if (hasPermission('can_sync_xero')) {
         const xeroData = await api.getXeroStatus();
