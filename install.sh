@@ -12,38 +12,6 @@ BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
-# Spinner function that runs in background (for long operations)
-run_with_spinner() {
-    local message=$1
-    shift
-    local command="$@"
-    
-    # Start spinner in background
-    local spinstr='|/-\'
-    local spinner_pid
-    (
-        while true; do
-            for i in ${spinstr}; do
-                printf "\r${CYAN}[${i}]${NC} ${YELLOW}${message}${NC}  " >&2
-                sleep 0.15
-            done
-        done
-    ) &
-    spinner_pid=$!
-    
-    # Run the command (output goes to stdout/stderr normally)
-    local exit_code=0
-    eval "$command" || exit_code=$?
-    
-    # Stop spinner
-    kill $spinner_pid 2>/dev/null
-    wait $spinner_pid 2>/dev/null
-    
-    # Clear spinner line
-    printf "\r${GREEN}[✓]${NC} ${message}${NC}\n" >&2
-    
-    return $exit_code
-}
 
 # Simple step header
 show_step() {
@@ -136,7 +104,7 @@ echo -e "${YELLOW}Building and starting containers (this may take a few minutes)
 echo ""
 
 # Run docker compose build and start (show all output)
-run_with_spinner "Building Docker images..." "$COMPOSE_CMD up -d --build"
+$COMPOSE_CMD up -d --build
 
 # Wait for PostgreSQL to be ready
 show_step "Step 5: Waiting for PostgreSQL"
