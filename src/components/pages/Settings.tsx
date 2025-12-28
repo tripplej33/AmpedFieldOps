@@ -76,6 +76,43 @@ export default function Settings() {
       setSettings(settingsData);
       setCostCenters(costCentersData);
 
+      // Auto-update redirect URI if domain has changed
+      const currentRedirectUri = `${window.location.origin}/api/xero/callback`;
+      const savedRedirectUri = settingsData.xero_redirect_uri;
+      
+      if (savedRedirectUri && savedRedirectUri !== currentRedirectUri) {
+        // Check if the saved URI is from a different domain
+        try {
+          const savedUrl = new URL(savedRedirectUri);
+          const currentUrl = new URL(currentRedirectUri);
+          
+          if (savedUrl.origin !== currentUrl.origin) {
+            // Domain has changed - automatically update
+            console.log('[Xero] Domain changed, updating redirect URI:', {
+              old: savedRedirectUri,
+              new: currentRedirectUri
+            });
+            
+            await api.updateSetting('xero_redirect_uri', currentRedirectUri, true);
+            setSettings((prev: any) => ({ ...prev, xero_redirect_uri: currentRedirectUri }));
+            
+            toast.info('Redirect URI updated for new domain', {
+              description: `Updated to ${currentRedirectUri}`,
+              duration: 5000
+            });
+          }
+        } catch (e) {
+          // Invalid URL format, use current origin
+          console.warn('[Xero] Invalid redirect URI format, updating:', e);
+          await api.updateSetting('xero_redirect_uri', currentRedirectUri, true);
+          setSettings((prev: any) => ({ ...prev, xero_redirect_uri: currentRedirectUri }));
+        }
+      } else if (!savedRedirectUri) {
+        // No redirect URI saved yet, save the current one
+        await api.updateSetting('xero_redirect_uri', currentRedirectUri, true);
+        setSettings((prev: any) => ({ ...prev, xero_redirect_uri: currentRedirectUri }));
+      }
+
       if (hasPermission('can_sync_xero')) {
         const xeroData = await api.getXeroStatus();
         setXeroStatus(xeroData);
