@@ -454,7 +454,7 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
                         )}
                         <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
                           <span className="flex items-center gap-1">
-                            <Clock className="w-3 h-3" /> {cc.total_hours?.toFixed(1) || 0}h
+                            <Clock className="w-3 h-3" /> {(Number(cc.total_hours) || 0).toFixed(1)}h
                           </span>
                           <span className="flex items-center gap-1">
                             <DollarSign className="w-3 h-3" /> ${used.toLocaleString()}
