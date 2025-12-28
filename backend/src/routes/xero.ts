@@ -26,21 +26,35 @@ async function getXeroCredentials() {
   
   // Construct redirect URI
   // Priority: Database setting -> XERO_REDIRECT_URI env -> FRONTEND_URL + /api/xero/callback -> BACKEND_URL + /api/xero/callback
-  let redirectUri = redirectUriResult.rows[0]?.value || env.XERO_REDIRECT_URI;
-  if (!redirectUri) {
+  const savedRedirectUri = redirectUriResult.rows[0]?.value;
+  let redirectUri = savedRedirectUri || env.XERO_REDIRECT_URI;
+  
+  // Log what we found
+  console.log('[Xero] Redirect URI sources:', {
+    fromDatabase: savedRedirectUri || 'NOT SET',
+    fromEnv: env.XERO_REDIRECT_URI || 'NOT SET',
+    frontendUrl: env.FRONTEND_URL || 'NOT SET',
+    backendUrl: env.BACKEND_URL || 'NOT SET'
+  });
+  
+  if (!redirectUri || redirectUri.trim() === '') {
     // If FRONTEND_URL is set (e.g., https://admin.ampedlogix.com), use that with /api prefix
     // This works for reverse proxy setups where frontend and API share the same domain
     const frontendUrl = env.FRONTEND_URL;
     if (frontendUrl && !frontendUrl.includes('localhost')) {
       redirectUri = `${frontendUrl}/api/xero/callback`;
+      console.log('[Xero] Using redirect URI from FRONTEND_URL');
     } else {
       // Fallback to BACKEND_URL for direct backend access
       const backendUrl = env.BACKEND_URL || 'http://localhost:3001';
       redirectUri = `${backendUrl}/api/xero/callback`;
+      console.log('[Xero] Using redirect URI from BACKEND_URL (fallback)');
     }
+  } else {
+    console.log('[Xero] Using redirect URI from database settings');
   }
   
-  console.log('[Xero] Using redirect URI:', redirectUri);
+  console.log('[Xero] Final redirect URI:', redirectUri);
   console.log('[Xero] Client ID:', clientId ? `${clientId.substring(0, 8)}...` : 'NOT SET');
   console.log('[Xero] Client Secret:', clientSecret ? 'SET' : 'NOT SET');
   
