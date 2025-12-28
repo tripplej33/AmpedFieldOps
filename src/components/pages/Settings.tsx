@@ -137,16 +137,18 @@ export default function Settings() {
     }
 
     try {
-      // Determine the redirect URI to use
-      // Use the value from settings if provided, otherwise use the current origin
-      const redirectUri = settings.xero_redirect_uri || `${window.location.origin}/api/xero/callback`;
+      // Always use the current origin for redirect URI (auto-updates on domain change)
+      const redirectUri = `${window.location.origin}/api/xero/callback`;
       
       // First ensure credentials are saved to the database
       await api.updateSetting('xero_client_id', settings.xero_client_id, true);
       await api.updateSetting('xero_client_secret', settings.xero_client_secret, true);
       
-      // Always save the redirect URI to ensure it's in the database
+      // Always save the current redirect URI (ensures it's up-to-date with current domain)
       await api.updateSetting('xero_redirect_uri', redirectUri, true);
+      
+      // Update local state to reflect the saved value
+      setSettings((prev: any) => ({ ...prev, xero_redirect_uri: redirectUri }));
       
       console.log('[Xero] Saved redirect URI to database:', redirectUri);
       
