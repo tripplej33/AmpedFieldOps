@@ -441,11 +441,19 @@ router.get('/callback', async (req, res) => {
     const tokens = await tokenResponse.json() as XeroTokenResponse;
     const expiresAt = new Date(Date.now() + tokens.expires_in * 1000);
 
+    console.log('[Xero] Token exchange successful:', {
+      hasAccessToken: !!tokens.access_token,
+      hasRefreshToken: !!tokens.refresh_token,
+      expiresIn: tokens.expires_in,
+      expiresAt: expiresAt.toISOString()
+    });
+
     // Get tenant info (organization connected)
     let tenantId: string | null = null;
     let tenantName = 'Connected Organization';
     
     try {
+      console.log('[Xero] Fetching Xero connections...');
       const connectionsResponse = await fetch('https://api.xero.com/connections', {
         headers: {
           'Authorization': `Bearer ${tokens.access_token}`,
@@ -458,28 +466,94 @@ router.get('/callback', async (req, res) => {
         if (connections && connections.length > 0) {
           tenantId = connections[0].tenantId;
           tenantName = connections[0].tenantName;
+          console.log('[Xero] Found connected organization:', { tenantId, tenantName });
+        } else {
+          console.warn('[Xero] No connections found in response');
         }
+      } else {
+        const errorText = await connectionsResponse.text();
+        console.error('[Xero] Failed to get connections:', {
+          status: connectionsResponse.status,
+          statusText: connectionsResponse.statusText,
+          error: errorText
+        });
       }
     } catch (e) {
-      console.error('Failed to get Xero connections:', e);
+      console.error('[Xero] Error fetching connections:', e);
+      // Don't fail the whole process if we can't get tenant info
     }
 
     // Store tokens (replace any existing)
-    await query('DELETE FROM xero_tokens');
-    
-    await query(
-      `INSERT INTO xero_tokens (access_token, refresh_token, id_token, token_type, expires_at, tenant_id, tenant_name)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [
-        tokens.access_token,
-        tokens.refresh_token,
-        tokens.id_token || null,
-        tokens.token_type,
-        expiresAt,
+    try {
+      console.log('[Xero] Storing tokens in database...');
+      await query('DELETE FROM xero_tokens');
+      
+      await query(
+        `INSERT INTO xero_tokens (access_token, refresh_token, id_token, token_type, expires_at, tenant_id, tenant_name)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+        [
+          tokens.access_token,
+          tokens.refresh_token,
+          tokens.id_token || null,
+          tokens.token_type,
+          expiresAt,
+          tenantId,
+          tenantName
+        ]
+      );
+      
+      console.log('[Xero] Tokens stored successfully:', {
         tenantId,
-        tenantName
-      ]
-    );
+        tenantName,
+        expiresAt: expiresAt.toISOString()
+      });
+    } catch (dbError: any) {
+      console.error('[Xero] Failed to store tokens in database:', {
+        error: dbError.message,
+        stack: dbError.stack,
+        code: dbError.code
+      });
+      
+      // Return error page but don't redirect to frontend with error
+      // since Xero connection was successful
+      return res.send(`
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>AmpedFieldOps - Storage Error</title>
+            <style>
+              body { font-family: system-ui, sans-serif; background: #1a1d23; color: #e8eaed; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
+              .container { text-align: center; padding: 40px; max-width: 600px; }
+              .warning { color: #fbbf24; font-size: 48px; margin-bottom: 16px; }
+              h1 { margin: 0 0 8px; }
+              p { color: #9ca3af; margin: 8px 0; }
+              .error-details { background: #2a2d33; padding: 16px; border-radius: 8px; margin-top: 16px; text-align: left; font-size: 12px; }
+            </style>
+          </head>
+          <body>
+            <div class="container">
+              <div class="warning">⚠️</div>
+              <h1>Connection Successful, But Storage Failed</h1>
+              <p>Your Xero connection was successful, but we couldn't save it to the database.</p>
+              <p>Please check the backend logs and try disconnecting and reconnecting.</p>
+              <div class="error-details">
+                <strong>Error:</strong> ${dbError.message || 'Database error'}
+              </div>
+              <script>
+                if (window.opener) {
+                  window.opener.postMessage({ type: 'XERO_CONNECTED', success: false, error: 'Storage failed' }, '*');
+                  setTimeout(() => window.close(), 5000);
+                } else {
+                  setTimeout(() => {
+                    window.location.href = '${frontendUrl}/settings?xero_error=storage_failed&xero_error_msg=${encodeURIComponent('Connection successful but failed to save. Please try reconnecting.')}';
+                  }, 3000);
+                }
+              </script>
+            </div>
+          </body>
+        </html>
+      `);
+    }
 
     // Return HTML that closes the popup and notifies the parent window
     res.send(`
