@@ -21,21 +21,47 @@ async function getXeroCredentials() {
     `SELECT value FROM settings WHERE key = 'xero_redirect_uri' AND user_id IS NULL`
   );
   
-  const clientId = clientIdResult.rows[0]?.value || env.XERO_CLIENT_ID;
-  const clientSecret = clientSecretResult.rows[0]?.value || env.XERO_CLIENT_SECRET;
+  const clientIdFromDb = clientIdResult.rows[0]?.value;
+  const clientSecretFromDb = clientSecretResult.rows[0]?.value;
+  const clientId = clientIdFromDb || env.XERO_CLIENT_ID;
+  const clientSecret = clientSecretFromDb || env.XERO_CLIENT_SECRET;
   
   // Construct redirect URI
   // Priority: Database setting -> XERO_REDIRECT_URI env -> FRONTEND_URL + /api/xero/callback -> BACKEND_URL + /api/xero/callback
   const savedRedirectUri = redirectUriResult.rows[0]?.value;
   let redirectUri = savedRedirectUri || env.XERO_REDIRECT_URI;
   
-  // Log what we found
-  console.log('[Xero] Redirect URI sources:', {
-    fromDatabase: savedRedirectUri || 'NOT SET',
-    fromEnv: env.XERO_REDIRECT_URI || 'NOT SET',
-    frontendUrl: env.FRONTEND_URL || 'NOT SET',
-    backendUrl: env.BACKEND_URL || 'NOT SET'
+  // Log what we found with full details
+  console.log('[Xero] Credential sources:', {
+    clientId: {
+      fromDatabase: clientIdFromDb ? `${String(clientIdFromDb).substring(0, 8)}... (${String(clientIdFromDb).length} chars)` : 'NOT SET',
+      fromEnv: env.XERO_CLIENT_ID ? `${env.XERO_CLIENT_ID.substring(0, 8)}...` : 'NOT SET',
+      final: clientId ? `${String(clientId).substring(0, 8)}... (${String(clientId).length} chars)` : 'NOT SET'
+    },
+    clientSecret: {
+      fromDatabase: clientSecretFromDb ? 'SET' : 'NOT SET',
+      fromEnv: env.XERO_CLIENT_SECRET ? 'SET' : 'NOT SET',
+      final: clientSecret ? 'SET' : 'NOT SET'
+    },
+    redirectUri: {
+      fromDatabase: savedRedirectUri || 'NOT SET',
+      fromEnv: env.XERO_REDIRECT_URI || 'NOT SET',
+      frontendUrl: env.FRONTEND_URL || 'NOT SET',
+      backendUrl: env.BACKEND_URL || 'NOT SET',
+      final: redirectUri || 'NOT SET'
+    }
   });
+  
+  // Validate Client ID format
+  if (clientId && String(clientId).length !== 32 && !String(clientId).includes('@')) {
+    console.warn('[Xero] Client ID length unusual:', String(clientId).length, 'Expected 32 characters');
+  }
+  
+  // Warn if Client ID looks like an email (common mistake)
+  if (clientId && String(clientId).includes('@')) {
+    console.error('[Xero] ERROR: Client ID appears to be an email address:', clientId);
+    console.error('[Xero] Client ID should be a 32-character hexadecimal string, not an email!');
+  }
   
   if (!redirectUri || redirectUri.trim() === '') {
     // If FRONTEND_URL is set (e.g., https://admin.ampedlogix.com), use that with /api prefix

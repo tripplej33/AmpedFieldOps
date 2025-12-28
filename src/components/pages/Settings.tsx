@@ -161,17 +161,43 @@ export default function Settings() {
       // Always use the current origin for redirect URI (auto-updates on domain change)
       const redirectUri = `${window.location.origin}/api/xero/callback`;
       
-      // First ensure credentials are saved to the database
-      await api.updateSetting('xero_client_id', settings.xero_client_id, true);
-      await api.updateSetting('xero_client_secret', settings.xero_client_secret, true);
+      // Validate Client ID format before saving
+      const clientId = settings.xero_client_id.trim();
+      const clientSecret = settings.xero_client_secret.trim();
       
-      // Always save the current redirect URI (ensures it's up-to-date with current domain)
-      await api.updateSetting('xero_redirect_uri', redirectUri, true);
+      if (clientId.length !== 32) {
+        toast.error('Invalid Client ID format. Xero Client IDs must be exactly 32 characters.');
+        return;
+      }
       
-      // Update local state to reflect the saved value
-      setSettings((prev: any) => ({ ...prev, xero_redirect_uri: redirectUri }));
+      console.log('[Xero] Saving credentials:', {
+        clientId: `${clientId.substring(0, 8)}...`,
+        clientIdLength: clientId.length,
+        hasClientSecret: !!clientSecret,
+        redirectUri
+      });
       
-      console.log('[Xero] Saved redirect URI to database:', redirectUri);
+      // First ensure credentials are saved to the database (wait for each to complete)
+      const saveClientId = await api.updateSetting('xero_client_id', clientId, true);
+      const saveClientSecret = await api.updateSetting('xero_client_secret', clientSecret, true);
+      const saveRedirectUri = await api.updateSetting('xero_redirect_uri', redirectUri, true);
+      
+      console.log('[Xero] Settings saved:', {
+        clientId: saveClientId?.value ? `${String(saveClientId.value).substring(0, 8)}...` : 'NOT SAVED',
+        clientSecret: saveClientSecret?.value ? 'SAVED' : 'NOT SAVED',
+        redirectUri: saveRedirectUri?.value || 'NOT SAVED'
+      });
+      
+      // Update local state to reflect the saved values
+      setSettings((prev: any) => ({ 
+        ...prev, 
+        xero_client_id: clientId,
+        xero_client_secret: clientSecret,
+        xero_redirect_uri: redirectUri 
+      }));
+      
+      // Small delay to ensure database write is committed
+      await new Promise(resolve => setTimeout(resolve, 100));
       
       // Now request the auth URL
       const response = await api.getXeroAuthUrl();
