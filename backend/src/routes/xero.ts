@@ -586,8 +586,28 @@ router.get('/callback', async (req, res) => {
         </body>
       </html>
     `);
-  } catch (error) {
-    console.error('Xero callback error:', error);
+  } catch (error: any) {
+    console.error('[Xero] Callback error:', {
+      error: error.message,
+      stack: error.stack,
+      name: error.name
+    });
+    
+    // Log to database error log if available
+    try {
+      await query(
+        `INSERT INTO error_logs (type, message, details, created_at) 
+         VALUES ($1, $2, $3, NOW())`,
+        [
+          'xero_callback',
+          `Xero Callback Error: ${error.message}`,
+          JSON.stringify({ stack: error.stack, name: error.name })
+        ]
+      );
+    } catch (logError) {
+      console.warn('[Xero] Could not log to error_logs table:', logError);
+    }
+    
     // Return HTML for error case too
     res.send(`
       <!DOCTYPE html>
