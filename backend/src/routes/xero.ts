@@ -298,11 +298,34 @@ router.get('/callback', async (req, res) => {
       return res.redirect(`${frontendUrl}/settings?xero_error=credentials_missing&xero_error_msg=${encodeURIComponent('Xero credentials not found. Please configure them in Settings.')}`);
     }
 
+    // Ensure credentials are trimmed and valid
+    const trimmedClientId = String(clientId).trim();
+    const trimmedClientSecret = String(clientSecret).trim();
+    const trimmedRedirectUri = redirectUri.trim();
+    
+    // Validate Client ID format before token exchange
+    if (trimmedClientId.includes('@')) {
+      console.error('[Xero] ERROR: Client ID is an email address during token exchange:', trimmedClientId);
+      return res.redirect(`${frontendUrl}/settings?xero_error=invalid_client_id&xero_error_msg=${encodeURIComponent('Client ID appears to be an email address. Please enter your 32-character Xero Client ID from the Xero Developer Portal.')}`);
+    }
+    
+    if (trimmedClientId.length !== 32) {
+      console.error('[Xero] ERROR: Client ID length incorrect during token exchange:', {
+        length: trimmedClientId.length,
+        expected: 32,
+        clientId: `${trimmedClientId.substring(0, 8)}...`
+      });
+      return res.redirect(`${frontendUrl}/settings?xero_error=invalid_client_id&xero_error_msg=${encodeURIComponent(`Client ID must be exactly 32 characters (currently ${trimmedClientId.length}). Please verify your Client ID in Settings.`)}`);
+    }
+
     console.log('[Xero] Exchanging code for tokens:', {
       hasCode: !!codeStr,
       codeLength: codeStr.length,
-      redirectUri,
-      clientIdPrefix: clientId.substring(0, 8)
+      redirectUri: trimmedRedirectUri,
+      clientId: trimmedClientId, // Log full Client ID for debugging
+      clientIdLength: trimmedClientId.length,
+      clientSecretLength: trimmedClientSecret.length,
+      clientSecretSet: !!trimmedClientSecret
     });
 
     // Exchange code for tokens using actual Xero API
@@ -310,12 +333,12 @@ router.get('/callback', async (req, res) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
-        'Authorization': 'Basic ' + Buffer.from(`${clientId}:${clientSecret}`).toString('base64')
+        'Authorization': 'Basic ' + Buffer.from(`${trimmedClientId}:${trimmedClientSecret}`).toString('base64')
       },
       body: new URLSearchParams({
         grant_type: 'authorization_code',
         code: codeStr,
-        redirect_uri: redirectUri
+        redirect_uri: trimmedRedirectUri
       })
     });
 
@@ -332,20 +355,47 @@ router.get('/callback', async (req, res) => {
         status: tokenResponse.status,
         statusText: tokenResponse.statusText,
         error: errorData,
-        redirectUri,
-        clientIdPrefix: clientId.substring(0, 8)
+        redirectUri: trimmedRedirectUri,
+        clientId: trimmedClientId, // Log full Client ID for debugging
+        clientIdLength: trimmedClientId.length,
+        clientSecretLength: trimmedClientSecret.length,
+        clientSecretSet: !!trimmedClientSecret,
+        redirectUriUsed: trimmedRedirectUri,
+        requestDetails: {
+          grant_type: 'authorization_code',
+          codeLength: codeStr.length,
+          redirect_uri: trimmedRedirectUri
+        }
       });
       
       let errorMsg = 'Token exchange failed';
+      let errorDetails = '';
+      
       if (errorData.error === 'invalid_client') {
-        errorMsg = 'Invalid Client ID or Client Secret. Please verify your credentials in Settings match your Xero app.';
+        errorMsg = 'Invalid Client ID or Client Secret.';
+        errorDetails = `The credentials in your Settings don't match your Xero app.\n\n` +
+          `Client ID used: ${trimmedClientId}\n` +
+          `Client ID length: ${trimmedClientId.length} characters\n` +
+          `Redirect URI used: ${trimmedRedirectUri}\n\n` +
+          `Please verify:\n` +
+          `1. Your Client ID in Settings matches the Client ID in your Xero app (https://developer.xero.com/myapps)\n` +
+          `2. Your Client Secret in Settings matches the Client Secret in your Xero app\n` +
+          `3. The Redirect URI "${trimmedRedirectUri}" is added to your Xero app's OAuth 2.0 redirect URIs`;
       } else if (errorData.error === 'invalid_grant') {
-        errorMsg = 'Authorization code expired or invalid. Please try connecting again.';
+        errorMsg = 'Authorization code expired or invalid.';
+        errorDetails = `The authorization code may have expired or the redirect URI doesn't match.\n\n` +
+          `Redirect URI used: ${trimmedRedirectUri}\n\n` +
+          `Please try connecting again.`;
       } else if (errorData.error_description) {
         errorMsg = errorData.error_description;
+        errorDetails = `Xero error: ${errorData.error || 'Unknown error'}`;
+      } else {
+        errorDetails = `HTTP ${tokenResponse.status}: ${tokenResponse.statusText}`;
       }
       
-      return res.redirect(`${frontendUrl}/settings?xero_error=token_exchange_failed&xero_error_msg=${encodeURIComponent(errorMsg)}`);
+      const fullErrorMessage = errorDetails ? `${errorMsg}\n\n${errorDetails}` : errorMsg;
+      
+      return res.redirect(`${frontendUrl}/settings?xero_error=token_exchange_failed&xero_error_msg=${encodeURIComponent(fullErrorMessage)}&client_id=${encodeURIComponent(trimmedClientId)}&redirect_uri=${encodeURIComponent(trimmedRedirectUri)}`);
     }
 
     interface XeroTokenResponse {
