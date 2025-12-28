@@ -21,6 +21,14 @@ export default function Settings() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  
+  // Local state for Xero credentials (not auto-saving)
+  const [xeroCredentials, setXeroCredentials] = useState({
+    clientId: '',
+    clientSecret: '',
+    redirectUri: ''
+  });
+  const [isSavingCredentials, setIsSavingCredentials] = useState(false);
 
   useEffect(() => {
     loadSettings();
@@ -188,20 +196,16 @@ export default function Settings() {
         redirectUri
       });
       
-      // First ensure credentials are saved to the database (wait for each to complete)
-      await api.updateSetting('xero_client_id', clientId, true);
-      await api.updateSetting('xero_client_secret', clientSecret, true);
-      await api.updateSetting('xero_redirect_uri', redirectUri, true);
+      // Credentials should already be saved, but ensure redirect URI is up to date
+      if (settings.xero_redirect_uri !== redirectUri) {
+        await api.updateSetting('xero_redirect_uri', redirectUri, true);
+        setSettings((prev: any) => ({ ...prev, xero_redirect_uri: redirectUri }));
+      }
       
-      console.log('[Xero] Settings saved successfully');
-      
-      // Update local state to reflect the saved values
-      setSettings((prev: any) => ({ 
-        ...prev, 
-        xero_client_id: clientId,
-        xero_client_secret: clientSecret,
-        xero_redirect_uri: redirectUri 
-      }));
+      console.log('[Xero] Using saved credentials:', {
+        clientId: `${clientId.substring(0, 8)}...`,
+        redirectUri
+      });
       
       // Small delay to ensure database write is committed
       await new Promise(resolve => setTimeout(resolve, 100));
@@ -472,24 +476,29 @@ export default function Settings() {
               
               <div>
                 <Label className="font-mono text-xs uppercase tracking-wider">
-                  Client ID
+                  Client ID *
                 </Label>
                 <Input
-                  value={settings.xero_client_id || ''}
-                  onChange={(e) => handleSettingChange('xero_client_id', e.target.value)}
-                  placeholder="Enter Xero Client ID"
+                  value={xeroCredentials.clientId}
+                  onChange={(e) => setXeroCredentials(prev => ({ ...prev, clientId: e.target.value }))}
+                  placeholder="Enter Xero Client ID (32 characters)"
                   className="mt-2 font-mono text-sm"
                 />
+                {xeroCredentials.clientId && xeroCredentials.clientId.length !== 32 && (
+                  <p className="text-xs text-warning mt-1">
+                    Client ID should be exactly 32 characters (currently {xeroCredentials.clientId.length})
+                  </p>
+                )}
               </div>
 
               <div>
                 <Label className="font-mono text-xs uppercase tracking-wider">
-                  Client Secret
+                  Client Secret *
                 </Label>
                 <Input
                   type="password"
-                  value={settings.xero_client_secret || ''}
-                  onChange={(e) => handleSettingChange('xero_client_secret', e.target.value)}
+                  value={xeroCredentials.clientSecret}
+                  onChange={(e) => setXeroCredentials(prev => ({ ...prev, clientSecret: e.target.value }))}
                   placeholder="Enter Xero Client Secret"
                   className="mt-2 font-mono text-sm"
                 />
@@ -500,12 +509,36 @@ export default function Settings() {
                   Redirect URI
                 </Label>
                 <Input
-                  value={settings.xero_redirect_uri || `${window.location.origin}/api/xero/callback`}
-                  onChange={(e) => handleSettingChange('xero_redirect_uri', e.target.value)}
-                  placeholder="https://your-domain.com/api/xero/callback"
+                  value={xeroCredentials.redirectUri}
+                  onChange={(e) => setXeroCredentials(prev => ({ ...prev, redirectUri: e.target.value }))}
+                  placeholder={`${window.location.origin}/api/xero/callback`}
                   className="mt-2 font-mono text-sm"
                 />
               </div>
+              
+              <Button
+                onClick={handleSaveXeroCredentials}
+                disabled={isSavingCredentials || !xeroCredentials.clientId || !xeroCredentials.clientSecret}
+                className="w-full bg-electric text-background hover:bg-electric/90"
+              >
+                {isSavingCredentials ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle className="w-4 h-4 mr-2" />
+                    Save Credentials
+                  </>
+                )}
+              </Button>
+              
+              {(!xeroCredentials.clientId || !xeroCredentials.clientSecret) && (
+                <p className="text-xs text-muted-foreground text-center">
+                  Enter your credentials above and click "Save Credentials" before connecting
+                </p>
+              )}
 
               <p className="text-xs text-muted-foreground">
                 Get your credentials from the <a href="https://developer.xero.com/myapps" target="_blank" rel="noopener noreferrer" className="text-electric hover:underline">Xero Developer Portal</a>
