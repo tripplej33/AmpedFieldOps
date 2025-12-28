@@ -39,9 +39,9 @@ async function getXeroCredentials() {
       final: clientId ? `${String(clientId).substring(0, 8)}... (${String(clientId).length} chars)` : 'NOT SET'
     },
     clientSecret: {
-      fromDatabase: clientSecretFromDb ? 'SET' : 'NOT SET',
-      fromEnv: env.XERO_CLIENT_SECRET ? 'SET' : 'NOT SET',
-      final: clientSecret ? 'SET' : 'NOT SET'
+      fromDatabase: clientSecretFromDb ? `${String(clientSecretFromDb).length} chars` : 'NOT SET',
+      fromEnv: env.XERO_CLIENT_SECRET ? `${env.XERO_CLIENT_SECRET.length} chars` : 'NOT SET',
+      final: clientSecret ? `${String(clientSecret).length} chars` : 'NOT SET'
     },
     redirectUri: {
       fromDatabase: savedRedirectUri || 'NOT SET',
@@ -345,6 +345,13 @@ router.get('/callback', async (req, res) => {
       return res.redirect(`${frontendUrl}/settings?xero_error=invalid_client_id&xero_error_msg=${encodeURIComponent(`Client ID must be exactly 32 characters (currently ${trimmedClientId.length}). Please verify your Client ID in Settings.`)}`);
     }
 
+    // Log Client Secret info (first 4 and last 4 chars for debugging, but not full secret)
+    const clientSecretPreview = trimmedClientSecret.length > 8 
+      ? `${trimmedClientSecret.substring(0, 4)}...${trimmedClientSecret.substring(trimmedClientSecret.length - 4)}`
+      : trimmedClientSecret.length > 0 
+        ? `${trimmedClientSecret.substring(0, Math.min(4, trimmedClientSecret.length))}...`
+        : 'EMPTY';
+    
     console.log('[Xero] Exchanging code for tokens:', {
       hasCode: !!codeStr,
       codeLength: codeStr.length,
@@ -352,6 +359,8 @@ router.get('/callback', async (req, res) => {
       clientId: trimmedClientId, // Log full Client ID for debugging
       clientIdLength: trimmedClientId.length,
       clientSecretLength: trimmedClientSecret.length,
+      clientSecretPreview: clientSecretPreview,
+      clientSecretHasWhitespace: trimmedClientSecret !== String(clientSecret).trim(),
       clientSecretSet: !!trimmedClientSecret
     });
 
