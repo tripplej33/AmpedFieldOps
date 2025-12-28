@@ -86,6 +86,20 @@ router.get('/auth/url', authenticate, requirePermission('can_sync_xero'), async 
       console.warn('[Xero] Client ID length unusual:', clientId.length);
     }
 
+    // Validate redirect URI format
+    try {
+      const redirectUrl = new URL(redirectUri);
+      if (redirectUrl.protocol !== 'https:' && !redirectUrl.hostname.includes('localhost')) {
+        console.warn('[Xero] Redirect URI should use HTTPS for production:', redirectUri);
+      }
+    } catch (e) {
+      console.error('[Xero] Invalid redirect URI format:', redirectUri);
+      return res.status(400).json({
+        error: 'Invalid redirect URI format',
+        details: 'Redirect URI must be a valid URL'
+      });
+    }
+
     const scopes = [
       'openid',
       'profile',
@@ -105,16 +119,25 @@ router.get('/auth/url', authenticate, requirePermission('can_sync_xero'), async 
 
     console.log('[Xero] Generated auth URL with:', {
       clientId: `${clientId.substring(0, 8)}...`,
+      clientIdFull: clientId, // Log full ID for debugging (remove in production)
       redirectUri,
+      redirectUriEncoded: encodeURIComponent(redirectUri),
       scopes: scopes.split(' ').length + ' scopes',
-      state: req.user!.id
+      state: req.user!.id,
+      authUrlPreview: authUrl.substring(0, 100) + '...'
     });
 
+    // Return detailed info for debugging
     res.json({ 
       url: authUrl, 
       configured: true,
       redirectUri, // Return redirect URI so frontend can verify
-      clientIdPrefix: clientId.substring(0, 8) // For verification
+      clientIdPrefix: clientId.substring(0, 8), // For verification
+      verification: {
+        redirectUriMatch: 'Ensure this exact URI is in your Xero app: ' + redirectUri,
+        clientIdMatch: 'Ensure this Client ID matches your Xero app: ' + clientId.substring(0, 8) + '...',
+        xeroAppUrl: 'https://developer.xero.com/myapps'
+      }
     });
   } catch (error: any) {
     console.error('[Xero] Failed to generate auth URL:', {

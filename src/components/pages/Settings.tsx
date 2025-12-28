@@ -157,14 +157,21 @@ export default function Settings() {
       if (response.url) {
         console.log('[Xero] Opening auth URL:', {
           redirectUri: response.redirectUri,
-          clientIdPrefix: response.clientIdPrefix
+          clientIdPrefix: response.clientIdPrefix,
+          verification: response.verification
         });
         
-        // Show info about redirect URI
-        if (response.redirectUri) {
-          toast.info(`Using redirect URI: ${response.redirectUri}`, {
-            duration: 5000,
-            description: 'Make sure this matches your Xero app settings exactly'
+        // Show detailed info about what needs to match in Xero
+        if (response.redirectUri && response.verification) {
+          toast.info(`Connecting to Xero...`, {
+            duration: 8000,
+            description: (
+              <div className="space-y-1 text-xs">
+                <div><strong>Redirect URI:</strong> {response.redirectUri}</div>
+                <div><strong>Client ID:</strong> {response.clientIdPrefix}...</div>
+                <div className="text-warning mt-1">⚠️ These must match your Xero app settings exactly</div>
+              </div>
+            )
           });
         }
         
