@@ -154,7 +154,13 @@ router.get('/callback', async (req, res) => {
     }
 
     // Ensure code is a string
-    const codeStr = code ? (Array.isArray(code) ? code[0] : String(code)) : null;
+    const codeStr: string | null = code 
+      ? (Array.isArray(code) 
+          ? String(code[0]) 
+          : typeof code === 'string' 
+            ? code 
+            : String(code))
+      : null;
     
     if (!codeStr) {
       console.error('[Xero] No authorization code received:', { query: req.query });
