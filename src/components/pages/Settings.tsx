@@ -94,14 +94,37 @@ export default function Settings() {
       return;
     }
 
+    // Validate Client ID format (Xero Client IDs are typically 32 characters)
+    if (settings.xero_client_id.length !== 32) {
+      toast.warning('Client ID should be 32 characters. Please verify it matches your Xero app.');
+    }
+
     try {
       // First ensure credentials are saved to the database
       await api.updateSetting('xero_client_id', settings.xero_client_id, true);
       await api.updateSetting('xero_client_secret', settings.xero_client_secret, true);
       
+      // Save redirect URI if provided
+      if (settings.xero_redirect_uri) {
+        await api.updateSetting('xero_redirect_uri', settings.xero_redirect_uri, true);
+      }
+      
       // Now request the auth URL
       const response = await api.getXeroAuthUrl();
       if (response.url) {
+        console.log('[Xero] Opening auth URL:', {
+          redirectUri: response.redirectUri,
+          clientIdPrefix: response.clientIdPrefix
+        });
+        
+        // Show info about redirect URI
+        if (response.redirectUri) {
+          toast.info(`Using redirect URI: ${response.redirectUri}`, {
+            duration: 5000,
+            description: 'Make sure this matches your Xero app settings exactly'
+          });
+        }
+        
         // Open popup window for Xero OAuth
         const width = 600;
         const height = 700;
@@ -113,6 +136,11 @@ export default function Settings() {
           'xero-auth',
           `width=${width},height=${height},left=${left},top=${top},scrollbars=yes,resizable=yes`
         );
+
+        if (!popup) {
+          toast.error('Popup blocked. Please allow popups for this site and try again.');
+          return;
+        }
 
         // Listen for the popup to close or redirect
         const checkPopup = setInterval(() => {
@@ -129,7 +157,9 @@ export default function Settings() {
       }
     } catch (error: any) {
       console.error('Xero connect error:', error);
-      toast.error(error.message || 'Failed to connect to Xero');
+      toast.error(error.message || 'Failed to connect to Xero', {
+        description: error.details || 'Please check your credentials and try again'
+      });
     }
   };
 
