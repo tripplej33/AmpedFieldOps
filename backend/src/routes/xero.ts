@@ -109,10 +109,40 @@ router.get('/auth/url', authenticate, requirePermission('can_sync_xero'), async 
         }
       });
     }
-
+    
+    // Validate Client ID is not an email address
+    const clientIdStr = String(clientId);
+    if (clientIdStr.includes('@')) {
+      console.error('[Xero] Invalid Client ID: Email address detected:', clientIdStr);
+      return res.status(400).json({
+        error: 'Invalid Client ID: Email addresses cannot be used. Please enter your 32-character Xero Client ID from the Xero Developer Portal.',
+        configured: false,
+        details: {
+          issue: 'Client ID appears to be an email address',
+          expected: '32-character hexadecimal string',
+          actual: clientIdStr.substring(0, 20) + '...',
+          help: 'Get your Client ID from https://developer.xero.com/myapps'
+        }
+      });
+    }
+    
     // Validate Client ID format (Xero Client IDs are typically 32 characters)
-    if (clientId.length !== 32) {
-      console.warn('[Xero] Client ID length unusual:', clientId.length);
+    if (clientIdStr.length !== 32) {
+      console.warn('[Xero] Client ID length incorrect:', clientIdStr.length, 'Expected 32');
+      return res.status(400).json({
+        error: `Invalid Client ID format. Xero Client IDs must be exactly 32 characters (you have ${clientIdStr.length}).`,
+        configured: false,
+        details: {
+          expectedLength: 32,
+          actualLength: clientIdStr.length,
+          help: 'Get your Client ID from https://developer.xero.com/myapps'
+        }
+      });
+    }
+    
+    // Validate it's hexadecimal
+    if (!/^[0-9A-Fa-f]{32}$/.test(clientIdStr)) {
+      console.warn('[Xero] Client ID should contain only hexadecimal characters');
     }
 
     // Validate redirect URI format
