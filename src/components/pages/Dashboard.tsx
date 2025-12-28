@@ -75,12 +75,6 @@ export default function Dashboard() {
         activeTeam: 0,
         recentActivity: []
       });
-        pending_invoices: 0,
-        revenue_trend: 0,
-        hours_trend: 0,
-        projects_trend: 0,
-        invoices_trend: 0
-      });
     } finally {
       setIsLoading(false);
     }
