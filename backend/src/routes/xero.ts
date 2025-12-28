@@ -127,15 +127,16 @@ router.get('/auth/url', authenticate, requirePermission('can_sync_xero'), async 
       authUrlPreview: authUrl.substring(0, 100) + '...'
     });
 
-    // Return detailed info for debugging
+    // Return detailed info for debugging (including full client ID for verification)
     res.json({ 
       url: authUrl, 
       configured: true,
       redirectUri, // Return redirect URI so frontend can verify
-      clientIdPrefix: clientId.substring(0, 8), // For verification
+      clientId: clientId, // Return full client ID for verification
+      clientIdPrefix: clientId.substring(0, 8), // For display
       verification: {
         redirectUriMatch: 'Ensure this exact URI is in your Xero app: ' + redirectUri,
-        clientIdMatch: 'Ensure this Client ID matches your Xero app: ' + clientId.substring(0, 8) + '...',
+        clientIdMatch: 'Ensure this Client ID matches your Xero app: ' + clientId,
         xeroAppUrl: 'https://developer.xero.com/myapps'
       }
     });
@@ -172,19 +173,45 @@ router.get('/callback', async (req, res) => {
               : String(error_description))
         : undefined;
       
-      console.error('[Xero] OAuth error from Xero:', {
+      // Get credentials to include in error message
+      const { clientId, redirectUri } = await getXeroCredentials();
+      
+      const errorDetails = {
         error: errorStr,
         error_description: errorDescStr,
+        clientId: clientId || 'NOT SET',
+        redirectUri: redirectUri || 'NOT SET',
         query: req.query
-      });
+      };
+      
+      console.error('[Xero] OAuth error from Xero:', errorDetails);
+      
+      // Log to database error log if available
+      try {
+        await query(
+          `INSERT INTO error_logs (type, message, details, created_at) 
+           VALUES ($1, $2, $3, NOW())`,
+          [
+            'xero_oauth',
+            `Xero OAuth Error: ${errorStr}`,
+            JSON.stringify(errorDetails)
+          ]
+        );
+      } catch (logError) {
+        // Ignore if error_logs table doesn't exist
+        console.warn('[Xero] Could not log to error_logs table:', logError);
+      }
       
       let errorMessage = 'Authentication failed';
       if (errorStr === 'unauthorized_client') {
-        errorMessage = 'Client ID or Secret is incorrect, or redirect URI does not match Xero app settings. Please verify your credentials and redirect URI in Settings.';
+        errorMessage = `Client ID or Secret is incorrect, or redirect URI does not match Xero app settings.\n\n` +
+          `Client ID being used: ${clientId || 'NOT SET'}\n` +
+          `Redirect URI being used: ${redirectUri || 'NOT SET'}\n\n` +
+          `Please verify these match your Xero app settings exactly.`;
       } else if (errorStr === 'access_denied') {
         errorMessage = 'Connection was cancelled by user';
       } else if (errorDescStr) {
-        errorMessage = errorDescStr;
+        errorMessage = `${errorDescStr}\n\nClient ID: ${clientId || 'NOT SET'}\nRedirect URI: ${redirectUri || 'NOT SET'}`;
       }
       
       return res.redirect(`${frontendUrl}/settings?xero_error=${encodeURIComponent(errorStr)}&xero_error_msg=${encodeURIComponent(errorMessage)}`);

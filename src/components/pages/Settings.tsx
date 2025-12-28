@@ -40,11 +40,32 @@ export default function Settings() {
       };
       
       const message = xeroErrorMsg || errorMessages[xeroError] || 'Xero connection failed';
+      
+      // Log error to console and show full message
+      console.error('[Xero] Connection error:', {
+        error: xeroError,
+        message: xeroErrorMsg,
+        settings: {
+          clientId: settings.xero_client_id || 'NOT SET',
+          redirectUri: settings.xero_redirect_uri || `${window.location.origin}/api/xero/callback`
+        }
+      });
+      
+      // Show full error message with details
       toast.error(message, {
-        duration: 8000,
-        description: xeroError === 'unauthorized_client' 
-          ? 'Please verify your Client ID, Client Secret, and Redirect URI match your Xero app settings exactly.'
-          : undefined
+        duration: 15000, // Longer duration for detailed messages
+        description: (
+          <div className="space-y-2 text-xs">
+            {xeroError === 'unauthorized_client' && (
+              <>
+                <div className="font-semibold">Current Configuration:</div>
+                <div>Client ID: {settings.xero_client_id || 'NOT SET'}</div>
+                <div>Redirect URI: {settings.xero_redirect_uri || `${window.location.origin}/api/xero/callback`}</div>
+                <div className="mt-2 text-warning">⚠️ These must match your Xero app settings exactly</div>
+              </>
+            )}
+          </div>
+        )
       });
       
       // Clean up URL
@@ -161,14 +182,22 @@ export default function Settings() {
           verification: response.verification
         });
         
-        // Show detailed info about what needs to match in Xero
-        if (response.redirectUri && response.verification) {
+        // Show detailed info about what needs to match in Xero (with full client ID)
+        if (response.redirectUri) {
+          const fullClientId = response.clientId || settings.xero_client_id || 'NOT SET';
+          console.log('[Xero] Connection attempt:', {
+            clientId: fullClientId,
+            redirectUri: response.redirectUri,
+            clientIdFromResponse: response.clientId,
+            clientIdFromSettings: settings.xero_client_id
+          });
+          
           toast.info(`Connecting to Xero...`, {
-            duration: 8000,
+            duration: 10000,
             description: (
               <div className="space-y-1 text-xs">
+                <div><strong>Client ID:</strong> {fullClientId}</div>
                 <div><strong>Redirect URI:</strong> {response.redirectUri}</div>
-                <div><strong>Client ID:</strong> {response.clientIdPrefix}...</div>
                 <div className="text-warning mt-1">⚠️ These must match your Xero app settings exactly</div>
               </div>
             )
