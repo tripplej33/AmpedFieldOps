@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import { query } from '../db';
 import { authenticate, requirePermission, AuthRequest } from '../middleware/auth';
+import { env } from '../config/env';
 
 const router = Router();
 
@@ -17,21 +18,21 @@ async function getXeroCredentials() {
     `SELECT value FROM settings WHERE key = 'xero_client_secret' AND user_id IS NULL`
   );
   
-  const clientId = clientIdResult.rows[0]?.value || process.env.XERO_CLIENT_ID;
-  const clientSecret = clientSecretResult.rows[0]?.value || process.env.XERO_CLIENT_SECRET;
+  const clientId = clientIdResult.rows[0]?.value || env.XERO_CLIENT_ID;
+  const clientSecret = clientSecretResult.rows[0]?.value || env.XERO_CLIENT_SECRET;
   
   // Construct redirect URI
   // Priority: XERO_REDIRECT_URI env -> FRONTEND_URL + /api/xero/callback -> BACKEND_URL + /api/xero/callback -> localhost
-  let redirectUri = process.env.XERO_REDIRECT_URI;
+  let redirectUri = env.XERO_REDIRECT_URI;
   if (!redirectUri) {
     // If FRONTEND_URL is set (e.g., https://admin.ampedlogix.com), use that with /api prefix
     // This works for reverse proxy setups where frontend and API share the same domain
-    const frontendUrl = process.env.FRONTEND_URL;
+    const frontendUrl = env.FRONTEND_URL;
     if (frontendUrl && !frontendUrl.includes('localhost')) {
       redirectUri = `${frontendUrl}/api/xero/callback`;
     } else {
       // Fallback to BACKEND_URL for direct backend access
-      const backendUrl = process.env.BACKEND_URL || 'http://localhost:3001';
+      const backendUrl = env.BACKEND_URL || 'http://localhost:3001';
       redirectUri = `${backendUrl}/api/xero/callback`;
     }
   }
@@ -80,7 +81,7 @@ router.get('/auth/url', authenticate, requirePermission('can_sync_xero'), async 
 // Handle Xero OAuth callback
 router.get('/callback', async (req, res) => {
   const { code, state } = req.query;
-  const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:5173';
+  const frontendUrl = env.FRONTEND_URL;
 
   try {
     if (!code) {

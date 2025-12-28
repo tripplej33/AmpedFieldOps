@@ -4,6 +4,7 @@ import jwt from 'jsonwebtoken';
 import { body, validationResult } from 'express-validator';
 import { query } from '../db';
 import { authenticate, AuthRequest } from '../middleware/auth';
+import { env } from '../config/env';
 
 const router = Router();
 
@@ -52,7 +53,7 @@ router.post('/register',
       // Generate token
       const token = jwt.sign(
         { id: user.id, email: user.email, name: user.name, role: user.role },
-        process.env.JWT_SECRET!,
+        env.JWT_SECRET,
         { expiresIn: '7d' }
       );
 
@@ -125,7 +126,7 @@ router.post('/login',
       // Generate token
       const token = jwt.sign(
         { id: user.id, email: user.email, name: user.name, role: user.role },
-        process.env.JWT_SECRET!,
+        env.JWT_SECRET,
         { expiresIn: '7d' }
       );
 
@@ -158,7 +159,7 @@ router.post('/refresh', authenticate, async (req: AuthRequest, res: Response) =>
   try {
     const token = jwt.sign(
       { id: req.user!.id, email: req.user!.email, name: req.user!.name, role: req.user!.role },
-      process.env.JWT_SECRET!,
+      env.JWT_SECRET,
       { expiresIn: '7d' }
     );
 
@@ -185,7 +186,7 @@ router.post('/forgot-password',
       // Generate reset token (in production, send via email)
       const resetToken = jwt.sign(
         { id: result.rows[0].id, type: 'password-reset' },
-        process.env.JWT_SECRET!,
+        env.JWT_SECRET,
         { expiresIn: '1h' }
       );
 
@@ -208,7 +209,7 @@ router.post('/reset-password',
     const { token, password } = req.body;
 
     try {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET!) as { id: string; type: string };
+      const decoded = jwt.verify(token, env.JWT_SECRET) as { id: string; type: string };
       
       if (decoded.type !== 'password-reset') {
         return res.status(400).json({ error: 'Invalid reset token' });
