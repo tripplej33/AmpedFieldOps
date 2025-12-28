@@ -28,7 +28,21 @@ export default function Settings() {
     clientSecret: '',
     redirectUri: ''
   });
+  const [savedXeroCredentials, setSavedXeroCredentials] = useState({
+    clientId: '',
+    clientSecret: '',
+    redirectUri: ''
+  });
   const [isSavingCredentials, setIsSavingCredentials] = useState(false);
+  
+  // Check if credentials have been modified
+  const credentialsChanged = 
+    xeroCredentials.clientId !== savedXeroCredentials.clientId ||
+    xeroCredentials.clientSecret !== savedXeroCredentials.clientSecret ||
+    xeroCredentials.redirectUri !== savedXeroCredentials.redirectUri;
+  
+  // Show save button if: not connected OR credentials have changed
+  const showSaveButton = !xeroStatus?.connected || credentialsChanged;
 
   useEffect(() => {
     loadSettings();
@@ -110,6 +124,14 @@ export default function Settings() {
       window.history.replaceState({}, '', window.location.pathname);
     }
   }, []);
+  
+  // Reload settings when Xero status changes (e.g., after disconnect)
+  useEffect(() => {
+    if (xeroStatus && !xeroStatus.connected && savedXeroCredentials.clientId) {
+      // Connection was lost, show save button again
+      console.log('[Xero] Connection lost, save button will be shown');
+    }
+  }, [xeroStatus?.connected]);
 
   const loadSettings = async () => {
     try {
@@ -398,13 +420,20 @@ export default function Settings() {
       }));
       
       // Update local credentials state to match
-      setXeroCredentials(prev => ({
-        ...prev,
+      const updatedCredentials = {
+        clientId: clientId.trim(),
+        clientSecret: clientSecret.trim(),
         redirectUri: currentRedirectUri
-      }));
+      };
+      
+      setXeroCredentials(updatedCredentials);
+      // Update saved credentials to mark them as saved
+      setSavedXeroCredentials(updatedCredentials);
       
       toast.success('Xero credentials saved successfully!', {
-        description: 'You can now connect to Xero using the "Connect to Xero" button.'
+        description: xeroStatus?.connected 
+          ? 'Credentials updated. Your Xero connection remains active.'
+          : 'You can now connect to Xero using the "Connect to Xero" button.'
       });
       
       console.log('[Xero] Credentials saved:', {
