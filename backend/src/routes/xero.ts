@@ -145,7 +145,10 @@ router.get('/callback', async (req, res) => {
       return res.redirect(`${frontendUrl}/settings?xero_error=${encodeURIComponent(errorStr)}&xero_error_msg=${encodeURIComponent(errorMessage)}`);
     }
 
-    if (!code) {
+    // Ensure code is a string
+    const codeStr = code ? (Array.isArray(code) ? code[0] : String(code)) : null;
+    
+    if (!codeStr) {
       console.error('[Xero] No authorization code received:', { query: req.query });
       return res.redirect(`${frontendUrl}/settings?xero_error=no_code&xero_error_msg=${encodeURIComponent('No authorization code received from Xero')}`);
     }
@@ -159,8 +162,8 @@ router.get('/callback', async (req, res) => {
     }
 
     console.log('[Xero] Exchanging code for tokens:', {
-      hasCode: !!code,
-      codeLength: String(code).length,
+      hasCode: !!codeStr,
+      codeLength: codeStr.length,
       redirectUri,
       clientIdPrefix: clientId.substring(0, 8)
     });
@@ -174,7 +177,7 @@ router.get('/callback', async (req, res) => {
       },
       body: new URLSearchParams({
         grant_type: 'authorization_code',
-        code: code as string,
+        code: codeStr,
         redirect_uri: redirectUri
       })
     });
