@@ -165,9 +165,20 @@ export default function Settings() {
       const clientId = settings.xero_client_id.trim();
       const clientSecret = settings.xero_client_secret.trim();
       
-      if (clientId.length !== 32) {
-        toast.error('Invalid Client ID format. Xero Client IDs must be exactly 32 characters.');
+      // Check if Client ID looks like an email address
+      if (clientId.includes('@')) {
+        toast.error('Invalid Client ID: Email addresses cannot be used as Client IDs. Please enter your 32-character Xero Client ID from the Xero Developer Portal.');
         return;
+      }
+      
+      if (clientId.length !== 32) {
+        toast.error(`Invalid Client ID format. Xero Client IDs must be exactly 32 characters (you entered ${clientId.length}). Please check your Xero Developer Portal.`);
+        return;
+      }
+      
+      // Validate it's hexadecimal (Xero Client IDs are hex)
+      if (!/^[0-9A-Fa-f]{32}$/.test(clientId)) {
+        toast.warning('Client ID should contain only hexadecimal characters (0-9, A-F). Please verify it matches your Xero app.');
       }
       
       console.log('[Xero] Saving credentials:', {
@@ -178,15 +189,11 @@ export default function Settings() {
       });
       
       // First ensure credentials are saved to the database (wait for each to complete)
-      const saveClientId = await api.updateSetting('xero_client_id', clientId, true);
-      const saveClientSecret = await api.updateSetting('xero_client_secret', clientSecret, true);
-      const saveRedirectUri = await api.updateSetting('xero_redirect_uri', redirectUri, true);
+      await api.updateSetting('xero_client_id', clientId, true);
+      await api.updateSetting('xero_client_secret', clientSecret, true);
+      await api.updateSetting('xero_redirect_uri', redirectUri, true);
       
-      console.log('[Xero] Settings saved:', {
-        clientId: saveClientId?.value ? `${String(saveClientId.value).substring(0, 8)}...` : 'NOT SAVED',
-        clientSecret: saveClientSecret?.value ? 'SAVED' : 'NOT SAVED',
-        redirectUri: saveRedirectUri?.value || 'NOT SAVED'
-      });
+      console.log('[Xero] Settings saved successfully');
       
       // Update local state to reflect the saved values
       setSettings((prev: any) => ({ 

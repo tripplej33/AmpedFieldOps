@@ -53,14 +53,17 @@ async function getXeroCredentials() {
   });
   
   // Validate Client ID format
-  if (clientId && String(clientId).length !== 32 && !String(clientId).includes('@')) {
-    console.warn('[Xero] Client ID length unusual:', String(clientId).length, 'Expected 32 characters');
-  }
-  
-  // Warn if Client ID looks like an email (common mistake)
-  if (clientId && String(clientId).includes('@')) {
-    console.error('[Xero] ERROR: Client ID appears to be an email address:', clientId);
-    console.error('[Xero] Client ID should be a 32-character hexadecimal string, not an email!');
+  if (clientId) {
+    const clientIdStr = String(clientId);
+    if (clientIdStr.includes('@')) {
+      console.error('[Xero] ERROR: Client ID appears to be an email address:', clientId);
+      console.error('[Xero] Client ID should be a 32-character hexadecimal string, not an email!');
+      console.error('[Xero] Please update the Client ID in Settings to your actual Xero Client ID from https://developer.xero.com/myapps');
+    } else if (clientIdStr.length !== 32) {
+      console.warn('[Xero] Client ID length unusual:', clientIdStr.length, 'Expected 32 characters');
+    } else if (!/^[0-9A-Fa-f]{32}$/.test(clientIdStr)) {
+      console.warn('[Xero] Client ID should contain only hexadecimal characters (0-9, A-F)');
+    }
   }
   
   if (!redirectUri || redirectUri.trim() === '') {
