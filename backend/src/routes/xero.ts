@@ -620,12 +620,7 @@ router.get('/callback', async (req, res) => {
             <p>This window will close automatically...</p>
           </div>
           <script>
-            if (window.opener) {
-              window.opener.postMessage({ type: 'XERO_CONNECTED', success: false, error: 'callback_failed' }, '*');
-              setTimeout(() => window.close(), 2000);
-            } else {
-              window.location.href = '${frontendUrl}/settings?xero_error=callback_failed';
-            }
+            window.location.href = '${frontendUrl}/settings?xero_error=callback_failed';
           </script>
         </body>
       </html>
