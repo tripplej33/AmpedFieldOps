@@ -20,14 +20,25 @@ FROM node:20-alpine
 
 WORKDIR /app
 
+# Install postgresql-client for pg_isready (before switching user)
+RUN apk add --no-cache postgresql-client wget
+
 # Copy package files
 COPY package*.json ./
 
-# Install production dependencies only
-RUN npm install --omit=dev
+# Install dependencies (including dev for migrations)
+# In production, you might want to separate this, but for now we need tsx for migrations
+RUN npm install
 
 # Copy built files from builder
 COPY --from=builder /app/dist ./dist
+
+# Copy source files for migrations (migrate.ts and seed.ts need to run)
+COPY --from=builder /app/src ./src
+
+# Copy entrypoint script
+COPY docker-entrypoint.sh /app/docker-entrypoint.sh
+RUN chmod +x /app/docker-entrypoint.sh
 
 # Create uploads directory
 RUN mkdir -p uploads/logos
@@ -45,5 +56,5 @@ EXPOSE 3001
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
   CMD wget --no-verbose --tries=1 --spider http://localhost:3001/api/health || exit 1
 
-# Start the application
-CMD ["node", "dist/server.js"]
+# Start the application via entrypoint
+ENTRYPOINT ["/app/docker-entrypoint.sh"]
