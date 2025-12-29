@@ -219,38 +219,83 @@ function sendPopupOrRedirect(res: Response, frontendUrl: string, type: 'success'
     <html>
       <head>
         <title>Xero Connection ${type === 'success' ? 'Successful' : 'Error'}</title>
+        <style>
+          body {
+            font-family: system-ui, -apple-system, sans-serif;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            background: #1a1d23;
+            color: #e8eaed;
+            text-align: center;
+            padding: 20px;
+          }
+          .container {
+            max-width: 400px;
+          }
+          .icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+          }
+          .success { color: #39ff14; }
+          .error { color: #ef4444; }
+          h1 { margin: 0 0 8px; font-size: 24px; }
+          p { color: #9ca3af; margin: 8px 0; }
+          a { color: #60a5fa; text-decoration: none; }
+          a:hover { text-decoration: underline; }
+        </style>
       </head>
       <body>
+        <div class="container">
+          <div class="icon ${type}">
+            ${type === 'success' ? '✓' : '✗'}
+          </div>
+          <h1>Connection ${type === 'success' ? 'Successful' : 'Failed'}</h1>
+          <p>${message}</p>
+          <p>This window should close automatically.</p>
+        </div>
         <script>
           (function() {
+            console.log('[Xero Callback] Window opener:', window.opener ? 'exists' : 'null');
+            console.log('[Xero Callback] Window opener closed:', window.opener ? window.opener.closed : 'N/A');
+            console.log('[Xero Callback] Origin:', window.location.origin);
+            
             // Try to send message to parent window (popup mode)
             if (window.opener && !window.opener.closed) {
               try {
-                window.opener.postMessage({
+                const messageData = {
                   type: type === 'success' ? 'XERO_OAUTH_SUCCESS' : 'XERO_OAUTH_ERROR',
                   message: ${JSON.stringify(message)},
                   errorParams: ${JSON.stringify(errorParams || '')}
-                }, window.location.origin);
+                };
+                
+                console.log('[Xero Callback] Sending postMessage:', messageData);
+                window.opener.postMessage(messageData, window.location.origin);
+                console.log('[Xero Callback] postMessage sent successfully');
+                
                 // Close immediately after sending message
                 setTimeout(function() {
+                  console.log('[Xero Callback] Closing window...');
                   window.close();
                 }, 100);
                 return; // Exit early, don't redirect
               } catch (e) {
-                console.error('Failed to postMessage:', e);
+                console.error('[Xero Callback] Failed to postMessage:', e);
               }
             }
+            
             // Fallback: redirect if not in popup (only if opener doesn't exist or is closed)
+            console.log('[Xero Callback] No opener or opener closed, redirecting...');
             setTimeout(function() {
               ${type === 'success' 
                 ? `window.location.href = '${frontendUrl}/settings?xero_connected=true';`
                 : `window.location.href = '${frontendUrl}/settings${errorParams || ''}';`
               }
-            }, 500);
+            }, 1000);
           })();
         </script>
-        <p>${type === 'success' ? 'Connection successful' : 'Connection failed'}. This window should close automatically.</p>
-        <p><a href="${frontendUrl}/settings">Click here if this window doesn't close</a></p>
       </body>
     </html>
   `;
