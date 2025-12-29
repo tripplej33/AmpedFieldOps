@@ -437,57 +437,39 @@ export default function Settings() {
     }
   };
 
-  const loadPermissions = async () => {
+  const loadRolePermissions = async () => {
     setIsLoadingPermissions(true);
     try {
-      const data = await api.getPermissions();
-      setPermissions(data);
+      const data = await api.getRolePermissions();
+      setAllPermissions(data.permissions);
+      setRolePermissions(data.rolePermissions);
     } catch (error: any) {
-      toast.error('Failed to load permissions');
+      toast.error('Failed to load role permissions');
     } finally {
       setIsLoadingPermissions(false);
     }
   };
 
-  const handleCreatePermission = async () => {
-    if (!newPermission.key || !newPermission.label) {
-      toast.error('Key and label are required');
-      return;
-    }
-
-    try {
-      await api.createPermission(newPermission);
-      toast.success('Permission created');
-      setShowCreatePermissionModal(false);
-      setNewPermission({ key: '', label: '', description: '' });
-      loadPermissions();
-    } catch (error: any) {
-      toast.error(error.message || 'Failed to create permission');
-    }
+  const handleToggleRolePermission = (role: string, permissionKey: string) => {
+    setRolePermissions(prev => ({
+      ...prev,
+      [role]: {
+        ...prev[role],
+        [permissionKey]: !prev[role]?.[permissionKey]
+      }
+    }));
   };
 
-  const handleUpdatePermission = async (id: string, updates: any) => {
+  const handleSaveRolePermissions = async () => {
+    setIsSavingRolePermissions(true);
     try {
-      await api.updatePermission(id, updates);
-      toast.success('Permission updated');
-      setEditingPermission(null);
-      loadPermissions();
+      await api.updateRolePermissions(rolePermissions);
+      toast.success('Role permissions updated successfully');
+      loadRolePermissions();
     } catch (error: any) {
-      toast.error(error.message || 'Failed to update permission');
-    }
-  };
-
-  const handleDeletePermission = async (id: string, key: string) => {
-    if (!confirm(`Are you sure you want to delete the permission "${key}"? This cannot be undone.`)) {
-      return;
-    }
-
-    try {
-      await api.deletePermission(id);
-      toast.success('Permission deleted');
-      loadPermissions();
-    } catch (error: any) {
-      toast.error(error.message || 'Failed to delete permission');
+      toast.error(error.message || 'Failed to update role permissions');
+    } finally {
+      setIsSavingRolePermissions(false);
     }
   };
 
