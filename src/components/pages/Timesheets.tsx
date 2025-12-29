@@ -442,21 +442,71 @@ export default function Timesheets() {
       return;
     }
     const entry = formData.activity_entries[0];
-    if (!formData.project_id || !entry.activity_type_id || !entry.cost_center_id || !entry.hours) {
+    if (!formData.project_id || !entry.activity_type_id || !entry.cost_center_id) {
       toast.error('Please fill in all required fields');
+      return;
+    }
+
+    // Validate hours - either entry.hours or user_hours must be provided
+    if (entry.user_ids.length > 0) {
+      const missingHours = entry.user_ids.filter(
+        userId => !entry.user_hours[userId] || parseFloat(entry.user_hours[userId]) <= 0
+      );
+      if (missingHours.length > 0) {
+        toast.error('Please enter hours for all assigned users');
+        return;
+      }
+    } else if (!entry.hours || parseFloat(entry.hours) <= 0) {
+      toast.error('Please enter hours for the activity');
       return;
     }
 
     setIsSubmitting(true);
     try {
-      await api.updateTimesheet(editingEntry.id, {
-        project_id: formData.project_id,
-        activity_type_id: entry.activity_type_id,
-        cost_center_id: entry.cost_center_id,
-        date: formData.date,
-        hours: parseFloat(entry.hours),
-        notes: entry.notes || formData.notes,
-      });
+      // For updates, we only update the first activity entry (single timesheet entry)
+      // If users are assigned, use the first user's hours
+      const hours = entry.user_ids.length > 0 
+        ? parseFloat(entry.user_hours[entry.user_ids[0]]) 
+        : parseFloat(entry.hours);
+      
+      const userId = entry.user_ids.length > 0 ? entry.user_ids[0] : editingEntry.user_id;
+      
+      // If there are new image files, use FormData
+      if (imageFiles.length > 0) {
+        const formDataToSend = new FormData();
+        formDataToSend.append('project_id', formData.project_id);
+        formDataToSend.append('activity_type_id', entry.activity_type_id);
+        formDataToSend.append('cost_center_id', entry.cost_center_id);
+        formDataToSend.append('date', formData.date);
+        formDataToSend.append('hours', hours.toString());
+        if (userId) formDataToSend.append('user_id', userId);
+        if (entry.notes || formData.notes) {
+          formDataToSend.append('notes', entry.notes || formData.notes);
+        }
+        // Include existing image URLs
+        if (imagePreviews.length > 0) {
+          formDataToSend.append('image_urls', JSON.stringify(imagePreviews));
+        }
+        
+        imageFiles.forEach((file) => {
+          formDataToSend.append('images', file);
+        });
+        
+        await api.updateTimesheet(editingEntry.id, formDataToSend);
+      } else {
+        // No new images, just update the data
+        await api.updateTimesheet(editingEntry.id, {
+          project_id: formData.project_id,
+          activity_type_id: entry.activity_type_id,
+          cost_center_id: entry.cost_center_id,
+          date: formData.date,
+          hours: hours,
+          user_id: userId,
+          notes: entry.notes || formData.notes,
+          image_urls: imagePreviews, // Keep existing images
+        });
+      }
+      
       toast.success('Timesheet entry updated');
       setEditModalOpen(false);
       resetForm();
