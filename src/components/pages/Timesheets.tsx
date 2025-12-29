@@ -782,6 +782,39 @@ export default function Timesheets() {
           />
         </DialogContent>
       </Dialog>
+
+      {/* Image Viewer Modal */}
+      <ImageViewer
+        images={viewingImages}
+        currentIndex={viewingImageIndex}
+        open={imageViewerOpen}
+        onOpenChange={setImageViewerOpen}
+        onDelete={viewingEntryId ? async (index) => {
+          try {
+            await api.deleteTimesheetImage(viewingEntryId, index);
+            toast.success('Image deleted');
+            // Update local state
+            const updatedImages = [...viewingImages];
+            updatedImages.splice(index, 1);
+            setViewingImages(updatedImages);
+            // Update entry in list
+            setEntries(prev => prev.map(e => 
+              e.id === viewingEntryId 
+                ? { ...e, image_urls: updatedImages }
+                : e
+            ));
+            // If no images left, close viewer
+            if (updatedImages.length === 0) {
+              setImageViewerOpen(false);
+            } else if (index >= updatedImages.length) {
+              setViewingImageIndex(updatedImages.length - 1);
+            }
+          } catch (error: any) {
+            toast.error(error.message || 'Failed to delete image');
+          }
+        } : undefined}
+        showDelete={!!viewingEntryId}
+      />
     </>
   );
 }
