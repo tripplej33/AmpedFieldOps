@@ -274,7 +274,7 @@ export default function Settings() {
       // Now request the auth URL
       const response = await api.getXeroAuthUrl();
       if (response.url) {
-        console.log('[Xero] Opening auth URL:', {
+        console.log('[Xero] Opening auth URL in popup:', {
           redirectUri: response.redirectUri,
           clientIdPrefix: response.clientIdPrefix,
           verification: response.verification
@@ -290,8 +290,8 @@ export default function Settings() {
             clientIdFromSettings: settings.xero_client_id
           });
           
-          toast.info(`Connecting to Xero...`, {
-            duration: 10000,
+          toast.info(`Opening Xero connection in popup...`, {
+            duration: 5000,
             description: (
               <div className="space-y-1 text-xs">
                 <div><strong>Client ID:</strong> {fullClientId}</div>
@@ -302,8 +302,56 @@ export default function Settings() {
           });
         }
         
-        // Redirect to Xero OAuth in the same window
-        window.location.href = response.url;
+        // Open Xero OAuth in a popup window
+        const width = 600;
+        const height = 700;
+        const left = (window.screen.width - width) / 2;
+        const top = (window.screen.height - height) / 2;
+        
+        const popup = window.open(
+          response.url,
+          'xero-oauth',
+          `width=${width},height=${height},left=${left},top=${top},toolbar=no,menubar=no,scrollbars=yes,resizable=yes`
+        );
+        
+        if (!popup) {
+          toast.error('Popup blocked. Please allow popups for this site and try again.');
+          return;
+        }
+        
+        // Listen for messages from the popup
+        const messageListener = (event: MessageEvent) => {
+          // Verify origin for security
+          if (event.origin !== window.location.origin) {
+            return;
+          }
+          
+          if (event.data.type === 'XERO_OAUTH_SUCCESS') {
+            window.removeEventListener('message', messageListener);
+            popup.close();
+            toast.success('Successfully connected to Xero!');
+            // Reload Xero status
+            if (hasPermission('can_sync_xero')) {
+              api.getXeroStatus().then(setXeroStatus).catch(console.error);
+            }
+            loadSettings();
+          } else if (event.data.type === 'XERO_OAUTH_ERROR') {
+            window.removeEventListener('message', messageListener);
+            popup.close();
+            toast.error(event.data.message || 'Failed to connect to Xero');
+          }
+        };
+        
+        window.addEventListener('message', messageListener);
+        
+        // Check if popup was closed manually
+        const checkClosed = setInterval(() => {
+          if (popup.closed) {
+            clearInterval(checkClosed);
+            window.removeEventListener('message', messageListener);
+          }
+        }, 500);
+        
       } else if (!response.configured) {
         toast.error('Xero credentials not configured. Please save your credentials and try again.');
       } else {

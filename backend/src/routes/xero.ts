@@ -300,7 +300,33 @@ router.get('/callback', async (req, res) => {
         errorMessage = `${errorDescStr}\n\nClient ID: ${clientId || 'NOT SET'}\nRedirect URI: ${redirectUri || 'NOT SET'}`;
       }
       
-      return res.redirect(`${frontendUrl}/settings?xero_error=${encodeURIComponent(errorStr)}&xero_error_msg=${encodeURIComponent(errorMessage)}`);
+      // Send error message to parent window (for popup) or redirect (for full page)
+      const errorHtml = `
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <title>Xero Connection Error</title>
+          </head>
+          <body>
+            <script>
+              // Try to send message to parent window (popup mode)
+              if (window.opener) {
+                window.opener.postMessage({
+                  type: 'XERO_OAUTH_ERROR',
+                  message: '${errorMessage.replace(/'/g, "\\'")}'
+                }, window.location.origin);
+                window.close();
+              } else {
+                // Fallback: redirect if not in popup
+                window.location.href = '${frontendUrl}/settings?xero_error=${encodeURIComponent(errorStr)}&xero_error_msg=${encodeURIComponent(errorMessage)}';
+              }
+            </script>
+            <p>Connection failed. This window should close automatically.</p>
+            <p><a href="${frontendUrl}/settings">Click here if this window doesn't close</a></p>
+          </body>
+        </html>
+      `;
+      return res.send(errorHtml);
     }
 
     // Ensure code is a string
