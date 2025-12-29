@@ -95,12 +95,14 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
 router.get('/:id', authenticate, async (req: AuthRequest, res: Response) => {
   try {
     const result = await query(
-      `SELECT t.*, 
+      `      SELECT t.*, 
         u.name as user_name,
         p.name as project_name,
         c.name as client_name,
         at.name as activity_type_name,
-        cc.code as cost_center_code
+        cc.code as cost_center_code,
+        COALESCE(t.billing_status, 'unbilled') as billing_status,
+        t.invoice_id
        FROM timesheets t
        LEFT JOIN users u ON t.user_id = u.id
        LEFT JOIN projects p ON t.project_id = p.id
