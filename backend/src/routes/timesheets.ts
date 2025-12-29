@@ -154,17 +154,17 @@ router.post('/', authenticate, uploadLimiter, projectUpload.array('images', 5), 
   
   // Extract and validate required fields from body (works for both JSON and FormData)
   const project_id = req.body.project_id;
-  const date = req.body.date;
-  const hours = parseFloat(req.body.hours);
-  const activity_type_id = req.body.activity_type_id;
-  const cost_center_id = req.body.cost_center_id;
+  const timesheetDate = req.body.date;
+  const timesheetHours = parseFloat(req.body.hours);
+  const timesheetActivityTypeId = req.body.activity_type_id;
+  const timesheetCostCenterId = req.body.cost_center_id;
   
   // Manual validation (since express-validator doesn't work well with FormData)
-  if (!project_id || !date || !hours || !activity_type_id || !cost_center_id) {
+  if (!project_id || !timesheetDate || !timesheetHours || !timesheetActivityTypeId || !timesheetCostCenterId) {
     return res.status(400).json({ error: 'Missing required fields: project_id, date, hours, activity_type_id, cost_center_id' });
   }
   
-  if (hours < 0.25 || hours > 24) {
+  if (timesheetHours < 0.25 || timesheetHours > 24) {
     return res.status(400).json({ error: 'Hours must be between 0.25 and 24' });
   }
 
@@ -178,7 +178,7 @@ router.post('/', authenticate, uploadLimiter, projectUpload.array('images', 5), 
     imageUrls = req.body.image_urls || [];
   }
 
-  const { client_id, date, hours, activity_type_id, cost_center_id, notes, location } = req.body;
+  const { client_id, notes, location } = req.body;
 
     try {
       // Get client_id from project if not provided
@@ -194,13 +194,13 @@ router.post('/', authenticate, uploadLimiter, projectUpload.array('images', 5), 
         `INSERT INTO timesheets (user_id, project_id, client_id, date, hours, activity_type_id, cost_center_id, notes, image_urls, location, billing_status)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'unbilled')
          RETURNING *`,
-        [req.user!.id, project_id, finalClientId, date, hours, activity_type_id, cost_center_id, notes, imageUrls, location]
+        [req.user!.id, project_id, finalClientId, timesheetDate, timesheetHours, timesheetActivityTypeId, timesheetCostCenterId, notes, imageUrls, location]
       );
 
       // Update project actual_cost based on activity hourly rate
-      const activityType = await query('SELECT hourly_rate FROM activity_types WHERE id = $1', [activity_type_id]);
+      const activityType = await query('SELECT hourly_rate FROM activity_types WHERE id = $1', [timesheetActivityTypeId]);
       if (activityType.rows.length > 0) {
-        const cost = hours * parseFloat(activityType.rows[0].hourly_rate);
+        const cost = timesheetHours * parseFloat(activityType.rows[0].hourly_rate);
         await query(
           'UPDATE projects SET actual_cost = actual_cost + $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
           [cost, project_id]
@@ -211,7 +211,7 @@ router.post('/', authenticate, uploadLimiter, projectUpload.array('images', 5), 
       await query(
         `INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) 
          VALUES ($1, $2, $3, $4, $5)`,
-        [req.user!.id, 'create', 'timesheet', result.rows[0].id, JSON.stringify({ project_id, hours, date })]
+        [req.user!.id, 'create', 'timesheet', result.rows[0].id, JSON.stringify({ project_id, hours: timesheetHours, date: timesheetDate })]
       );
 
       res.status(201).json(result.rows[0]);
