@@ -23,29 +23,31 @@ WORKDIR /app
 # Install postgresql-client for pg_isready (before switching user)
 RUN apk add --no-cache postgresql-client wget
 
-# Copy package files
-COPY package*.json ./
+# Create node user early
+RUN addgroup -g 1001 -S node && \
+    adduser -S node -u 1001
+
+# Copy package files with correct ownership
+COPY --chown=node:node package*.json ./
 
 # Install dependencies (including dev for migrations)
 # In production, you might want to separate this, but for now we need tsx for migrations
-RUN npm install
+RUN npm install --production=false && \
+    chown -R node:node /app/node_modules
 
-# Copy built files from builder
-COPY --from=builder /app/dist ./dist
+# Copy built files from builder with correct ownership
+COPY --chown=node:node --from=builder /app/dist ./dist
 
 # Copy source files for migrations (migrate.ts and seed.ts need to run)
-COPY --from=builder /app/src ./src
+COPY --chown=node:node --from=builder /app/src ./src
 
-# Copy entrypoint script
-COPY docker-entrypoint.sh /app/docker-entrypoint.sh
+# Copy entrypoint script with correct ownership
+COPY --chown=node:node docker-entrypoint.sh /app/docker-entrypoint.sh
 RUN chmod +x /app/docker-entrypoint.sh
 
-# Create uploads directory and set ownership before switching user
+# Create uploads directory with correct ownership
 RUN mkdir -p uploads/logos && \
-    chown -R node:node /app/uploads && \
-    chown node:node /app/docker-entrypoint.sh && \
-    chown -R node:node /app/dist && \
-    chown -R node:node /app/src
+    chown -R node:node /app/uploads
 
 # Use non-root user
 USER node
