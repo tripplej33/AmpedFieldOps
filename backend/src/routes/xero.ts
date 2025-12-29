@@ -643,32 +643,7 @@ router.get('/callback', async (req, res) => {
     }
 
     // Return HTML that closes the popup and notifies the parent window
-    res.send(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>AmpedFieldPro - Xero Connected</title>
-          <style>
-            body { font-family: system-ui, sans-serif; background: #1a1d23; color: #e8eaed; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
-            .container { text-align: center; padding: 40px; }
-            .success { color: #39ff14; font-size: 48px; margin-bottom: 16px; }
-            h1 { margin: 0 0 8px; }
-            p { color: #9ca3af; }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <div class="success">✓</div>
-            <h1>Connected to Xero</h1>
-            <p>This window will close automatically...</p>
-          </div>
-          <script>
-            // Redirect back to settings page
-            window.location.href = '${frontendUrl}/settings?xero_connected=true';
-          </script>
-        </body>
-      </html>
-    `);
+    return sendPopupOrRedirect(res, frontendUrl, 'success', 'Successfully connected to Xero');
   } catch (error: any) {
     console.error('[Xero] Callback error:', {
       error: error.message,
