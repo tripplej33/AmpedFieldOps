@@ -676,6 +676,52 @@ class ApiClient {
   async getXeroFinancialSummary() {
     return this.request<any>('/api/xero/summary');
   }
+
+  // Troubleshooter
+  async runTroubleshooter(category?: string) {
+    return this.request<{
+      success: boolean;
+      totalTests: number;
+      passed: number;
+      failed: number;
+      skipped: number;
+      duration: number;
+      results: Array<{
+        id: string;
+        name: string;
+        category: string;
+        status: 'passed' | 'failed' | 'skipped';
+        duration: number;
+        message: string;
+        error?: {
+          message: string;
+          stack?: string;
+          details?: any;
+        };
+        timestamp: string;
+      }>;
+      timestamp: string;
+    }>('/api/troubleshooter/run', {
+      method: 'POST',
+      body: category ? { category } : {},
+    });
+  }
+
+  async getTroubleshooterRoutes() {
+    return this.request<Array<{
+      method: string;
+      path: string;
+      file: string;
+      middleware: string[];
+    }>>('/api/troubleshooter/routes');
+  }
+
+  async getTroubleshooterSuites() {
+    return this.request<Array<{
+      name: string;
+      category: string;
+    }>>('/api/troubleshooter/suites');
+  }
 }
 
 export const api = new ApiClient();

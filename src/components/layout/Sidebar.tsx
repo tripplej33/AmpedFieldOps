@@ -13,7 +13,8 @@ import {
   UserCog,
   Activity,
   LogOut,
-  User
+  User,
+  Wrench
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState, useEffect } from 'react';
@@ -41,6 +42,7 @@ const mainNavigation: NavItem[] = [
 const adminNavigation: NavItem[] = [
   { name: 'Users', href: '/users', icon: UserCog, permission: 'can_manage_users' },
   { name: 'Activity Types', href: '/activity-types', icon: Activity, permission: 'can_edit_activity_types' },
+  { name: 'Troubleshooter', href: '/troubleshooter', icon: Wrench, permission: 'can_manage_users' },
   { name: 'Settings', href: '/settings', icon: Settings },
 ];
 

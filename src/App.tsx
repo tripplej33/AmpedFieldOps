@@ -19,6 +19,7 @@ const UserSettings = lazy(() => import("./components/pages/UserSettings"));
 const Financials = lazy(() => import("./components/pages/Financials"));
 const Users = lazy(() => import("./components/pages/Users"));
 const ActivityTypes = lazy(() => import("./components/pages/ActivityTypes"));
+const Troubleshooter = lazy(() => import("./components/pages/Troubleshooter"));
 
 // Protected route wrapper
 function ProtectedRoute({ children, permission }: { children: React.ReactNode; permission?: string }) {
@@ -82,6 +83,11 @@ function AppRoutes() {
           <Route path="activity-types" element={
             <ProtectedRoute permission="can_edit_activity_types">
               <ActivityTypes />
+            </ProtectedRoute>
+          } />
+          <Route path="troubleshooter" element={
+            <ProtectedRoute permission="can_manage_users">
+              <Troubleshooter />
             </ProtectedRoute>
           } />
         </Route>

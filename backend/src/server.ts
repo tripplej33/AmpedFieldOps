@@ -21,6 +21,7 @@ import permissionsRoutes from './routes/permissions';
 import rolePermissionsRoutes from './routes/role-permissions';
 import dashboardRoutes from './routes/dashboard';
 import healthRoutes from './routes/health';
+import troubleshooterRoutes from './routes/troubleshooter';
 
 const app = express();
 
@@ -63,6 +64,7 @@ app.use('/api/permissions', permissionsRoutes);
 app.use('/api/role-permissions', rolePermissionsRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/health', healthRoutes);
+app.use('/api/troubleshooter', troubleshooterRoutes);
 
 // Error handling middleware
 app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
