@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import { query } from '../db';
 import { authenticate, requireRole, AuthRequest } from '../middleware/auth';
 import { logoUpload } from '../middleware/upload';
+import { clearEmailSettingsCache, sendTestEmail } from '../lib/email';
 
 const router = Router();
 
@@ -94,6 +95,11 @@ router.put('/:key', authenticate, async (req: AuthRequest, res: Response) => {
       [req.params.key, value, userId]
     );
 
+    // Clear email settings cache if an email setting was updated
+    if (global && ['smtp_host', 'smtp_port', 'smtp_user', 'smtp_password', 'smtp_from'].includes(req.params.key)) {
+      clearEmailSettingsCache();
+    }
+
     res.json({ key: req.params.key, value });
   } catch (error) {
     res.status(500).json({ error: 'Failed to update setting' });
@@ -122,6 +128,14 @@ router.put('/', authenticate, async (req: AuthRequest, res: Response) => {
          ON CONFLICT (key, user_id) DO UPDATE SET value = $2, updated_at = CURRENT_TIMESTAMP`,
         [key, value, userId]
       );
+    }
+
+    // Clear email settings cache if any email settings were updated
+    if (global) {
+      const emailSettings = ['smtp_host', 'smtp_port', 'smtp_user', 'smtp_password', 'smtp_from'];
+      if (settings.some((s: any) => emailSettings.includes(s.key))) {
+        clearEmailSettingsCache();
+      }
     }
 
     res.json({ message: 'Settings updated', count: settings.length });
@@ -178,6 +192,32 @@ router.post('/logo', authenticate, requireRole('admin'), logoUpload.single('logo
     res.json({ logo_url: logoUrl });
   } catch (error) {
     res.status(500).json({ error: 'Failed to upload logo' });
+  }
+});
+
+// Send test email (admin only)
+router.post('/email/test', authenticate, requireRole('admin'), async (req: AuthRequest, res: Response) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ error: 'Email address is required' });
+    }
+
+    // Validate email format
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      return res.status(400).json({ error: 'Invalid email address format' });
+    }
+
+    await sendTestEmail(email);
+    res.json({ message: 'Test email sent successfully' });
+  } catch (error: any) {
+    console.error('[Settings] Test email error:', error);
+    res.status(500).json({ 
+      error: error.message || 'Failed to send test email',
+      details: error.message 
+    });
   }
 });
 

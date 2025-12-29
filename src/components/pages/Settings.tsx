@@ -6,19 +6,21 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
-import { RefreshCw, CheckCircle, Link2, Upload, Download, Loader2 } from 'lucide-react';
+import { RefreshCw, CheckCircle, Link2, Upload, Download, Loader2, Mail, Send } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
 export default function Settings() {
-  const { hasPermission } = useAuth();
+  const { hasPermission, user } = useAuth();
   const [xeroStatus, setXeroStatus] = useState<any>(null);
   const [settings, setSettings] = useState<any>({});
   const [isLoading, setIsLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [isSendingTestEmail, setIsSendingTestEmail] = useState(false);
+  const [testEmailAddress, setTestEmailAddress] = useState('');
   
   // Local state for Xero credentials (not auto-saving)
   const [xeroCredentials, setXeroCredentials] = useState({
@@ -522,6 +524,163 @@ export default function Settings() {
             </div>
           </div>
         </Card>
+
+        {/* Email Settings */}
+        {user?.role === 'admin' && (
+        <Card className="p-6 bg-card border-border">
+          <div className="flex items-start justify-between mb-6">
+            <div>
+              <h3 className="text-lg font-bold mb-1">Email Configuration</h3>
+              <p className="text-sm text-muted-foreground">Configure SMTP settings for sending emails</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Mail className="w-5 h-5 text-muted-foreground" />
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div>
+              <Label className="font-mono text-xs uppercase tracking-wider">
+                SMTP Host *
+              </Label>
+              <Input
+                value={settings.smtp_host || ''}
+                onChange={(e) => handleSettingChange('smtp_host', e.target.value)}
+                placeholder="smtp.gmail.com"
+                className="mt-2 font-mono text-sm"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                SMTP server hostname (e.g., smtp.gmail.com, smtp.sendgrid.net)
+              </p>
+            </div>
+
+            <div>
+              <Label className="font-mono text-xs uppercase tracking-wider">
+                SMTP Port *
+              </Label>
+              <Input
+                type="number"
+                value={settings.smtp_port || ''}
+                onChange={(e) => handleSettingChange('smtp_port', e.target.value)}
+                placeholder="587"
+                className="mt-2 font-mono text-sm"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Common ports: 587 (TLS), 465 (SSL), 25 (legacy)
+              </p>
+            </div>
+
+            <div>
+              <Label className="font-mono text-xs uppercase tracking-wider">
+                SMTP User *
+              </Label>
+              <Input
+                value={settings.smtp_user || ''}
+                onChange={(e) => handleSettingChange('smtp_user', e.target.value)}
+                placeholder="your-email@gmail.com"
+                className="mt-2 font-mono text-sm"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Email address or username for SMTP authentication
+              </p>
+            </div>
+
+            <div>
+              <Label className="font-mono text-xs uppercase tracking-wider">
+                SMTP Password *
+              </Label>
+              <Input
+                type="password"
+                value={settings.smtp_password || ''}
+                onChange={(e) => handleSettingChange('smtp_password', e.target.value)}
+                placeholder="Enter SMTP password or API key"
+                className="mt-2 font-mono text-sm"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Password or API key for SMTP authentication
+              </p>
+            </div>
+
+            <div>
+              <Label className="font-mono text-xs uppercase tracking-wider">
+                From Email Address
+              </Label>
+              <Input
+                value={settings.smtp_from || ''}
+                onChange={(e) => handleSettingChange('smtp_from', e.target.value)}
+                placeholder="noreply@yourdomain.com"
+                className="mt-2 font-mono text-sm"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Email address to send from (defaults to SMTP User if not set)
+              </p>
+            </div>
+
+            <Separator />
+
+            <div className="bg-muted/20 border border-border rounded-lg p-4">
+              <h4 className="text-sm font-bold font-mono uppercase tracking-wider mb-3">Test Email Configuration</h4>
+              <div className="flex gap-2">
+                <Input
+                  type="email"
+                  value={testEmailAddress}
+                  onChange={(e) => setTestEmailAddress(e.target.value)}
+                  placeholder="Enter email address to test"
+                  className="flex-1 font-mono text-sm"
+                />
+                <Button
+                  onClick={async () => {
+                    if (!testEmailAddress) {
+                      toast.error('Please enter an email address');
+                      return;
+                    }
+                    setIsSendingTestEmail(true);
+                    try {
+                      await api.sendTestEmail(testEmailAddress);
+                      toast.success('Test email sent successfully!');
+                      setTestEmailAddress('');
+                    } catch (error: any) {
+                      toast.error(error.message || 'Failed to send test email');
+                    } finally {
+                      setIsSendingTestEmail(false);
+                    }
+                  }}
+                  disabled={isSendingTestEmail || !testEmailAddress}
+                  variant="outline"
+                >
+                  {isSendingTestEmail ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Sending...
+                    </>
+                  ) : (
+                    <>
+                      <Send className="w-4 h-4 mr-2" />
+                      Send Test Email
+                    </>
+                  )}
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground mt-2">
+                Send a test email to verify your SMTP configuration is working correctly
+              </p>
+            </div>
+
+            <div className="bg-warning/10 border border-warning/30 rounded-lg p-3">
+              <Label className="font-mono text-xs uppercase tracking-wider text-warning flex items-center gap-2 mb-2">
+                <span>⚠️</span> Important Notes
+              </Label>
+              <ul className="text-xs text-muted-foreground space-y-1 mt-2">
+                <li>• Settings are saved automatically when you change them</li>
+                <li>• For Gmail, use an App Password (not your regular password)</li>
+                <li>• For SendGrid, use "apikey" as the user and your API key as the password</li>
+                <li>• Changes take effect immediately - no restart required</li>
+                <li>• If not configured, password reset tokens will be logged to console only</li>
+              </ul>
+            </div>
+          </div>
+        </Card>
+        )}
 
         {/* Xero Integration */}
         {hasPermission('can_sync_xero') && (

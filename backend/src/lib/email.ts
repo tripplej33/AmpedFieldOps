@@ -1,21 +1,86 @@
 import nodemailer from 'nodemailer';
 import { env } from '../config/env';
+import { query } from '../db';
 
 // Create reusable transporter
 let transporter: nodemailer.Transporter | null = null;
+let cachedSettings: {
+  smtp_host?: string;
+  smtp_port?: string;
+  smtp_user?: string;
+  smtp_password?: string;
+  smtp_from?: string;
+} | null = null;
 
-function getTransporter(): nodemailer.Transporter | null {
+// Cache settings for 5 minutes
+let settingsCacheTime = 0;
+const SETTINGS_CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
+
+async function getEmailSettings(): Promise<{
+  smtp_host?: string;
+  smtp_port?: string;
+  smtp_user?: string;
+  smtp_password?: string;
+  smtp_from?: string;
+}> {
+  // Return cached settings if still valid
+  if (cachedSettings && Date.now() - settingsCacheTime < SETTINGS_CACHE_DURATION) {
+    return cachedSettings;
+  }
+
+  try {
+    // Get email settings from database (global settings only)
+    const result = await query(
+      `SELECT key, value FROM settings 
+       WHERE user_id IS NULL 
+       AND key IN ('smtp_host', 'smtp_port', 'smtp_user', 'smtp_password', 'smtp_from')`
+    );
+
+    const settings: Record<string, string> = {};
+    result.rows.forEach((row: any) => {
+      settings[row.key] = row.value;
+    });
+
+    // Cache the settings
+    cachedSettings = {
+      smtp_host: settings.smtp_host,
+      smtp_port: settings.smtp_port,
+      smtp_user: settings.smtp_user,
+      smtp_password: settings.smtp_password,
+      smtp_from: settings.smtp_from,
+    };
+    settingsCacheTime = Date.now();
+
+    return cachedSettings;
+  } catch (error) {
+    console.error('[Email] Failed to load settings from database:', error);
+    // Return empty object on error, will fall back to env vars
+    return {};
+  }
+}
+
+// Clear settings cache (call this when settings are updated)
+export function clearEmailSettingsCache() {
+  cachedSettings = null;
+  settingsCacheTime = 0;
+  // Also clear transporter so it gets recreated with new settings
+  transporter = null;
+}
+
+async function getTransporter(): Promise<nodemailer.Transporter | null> {
   // Return cached transporter if available
   if (transporter) {
     return transporter;
   }
 
-  // Check if email is configured
-  const smtpHost = process.env.SMTP_HOST;
-  const smtpPort = process.env.SMTP_PORT;
-  const smtpUser = process.env.SMTP_USER;
-  const smtpPassword = process.env.SMTP_PASSWORD;
-  const smtpFrom = process.env.SMTP_FROM || smtpUser || 'noreply@ampedfieldops.com';
+  // Get settings from database first, then fall back to env vars
+  const dbSettings = await getEmailSettings();
+  
+  const smtpHost = dbSettings.smtp_host || process.env.SMTP_HOST;
+  const smtpPort = dbSettings.smtp_port || process.env.SMTP_PORT;
+  const smtpUser = dbSettings.smtp_user || process.env.SMTP_USER;
+  const smtpPassword = dbSettings.smtp_password || process.env.SMTP_PASSWORD;
+  const smtpFrom = dbSettings.smtp_from || process.env.SMTP_FROM || smtpUser || 'noreply@ampedfieldops.com';
 
   // If no SMTP configured, return null (emails will be logged only)
   if (!smtpHost || !smtpPort || !smtpUser || !smtpPassword) {
@@ -102,15 +167,19 @@ If you didn't request a password reset, you can safely ignore this email.
 This is an automated message from AmpedFieldOps.
   `;
 
+  // Get current settings to determine "from" address
+  const dbSettings = await getEmailSettings();
+  const smtpFrom = dbSettings.smtp_from || process.env.SMTP_FROM || process.env.SMTP_USER || 'noreply@ampedfieldops.com';
+
   const mailOptions = {
-    from: process.env.SMTP_FROM || process.env.SMTP_USER || 'noreply@ampedfieldops.com',
+    from: smtpFrom,
     to: email,
     subject: subject,
     text: text,
     html: html,
   };
 
-  const emailTransporter = getTransporter();
+  const emailTransporter = await getTransporter();
 
   if (!emailTransporter) {
     // Log email details instead of sending
@@ -142,7 +211,7 @@ This is an automated message from AmpedFieldOps.
 
 // Verify email configuration
 export async function verifyEmailConfig(): Promise<boolean> {
-  const emailTransporter = getTransporter();
+  const emailTransporter = await getTransporter();
   if (!emailTransporter) {
     return false;
   }
@@ -154,6 +223,79 @@ export async function verifyEmailConfig(): Promise<boolean> {
   } catch (error) {
     console.error('[Email] SMTP configuration verification failed:', error);
     return false;
+  }
+}
+
+// Send test email
+export async function sendTestEmail(to: string): Promise<boolean> {
+  const subject = 'Test Email from AmpedFieldOps';
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <style>
+        body { font-family: Arial, sans-serif; line-height: 1.6; color: #333; }
+        .container { max-width: 600px; margin: 0 auto; padding: 20px; }
+        .header { background-color: #4F46E5; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0; }
+        .content { background-color: #f9fafb; padding: 30px; border: 1px solid #e5e7eb; border-top: none; }
+        .footer { text-align: center; margin-top: 20px; color: #6b7280; font-size: 12px; }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>Test Email</h1>
+        </div>
+        <div class="content">
+          <p>Hello,</p>
+          <p>This is a test email from your AmpedFieldOps system.</p>
+          <p>If you received this email, your SMTP configuration is working correctly!</p>
+        </div>
+        <div class="footer">
+          <p>This is an automated test message from AmpedFieldOps.</p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+
+  const text = `
+Test Email
+
+Hello,
+
+This is a test email from your AmpedFieldOps system.
+
+If you received this email, your SMTP configuration is working correctly!
+
+This is an automated test message from AmpedFieldOps.
+  `;
+
+  const dbSettings = await getEmailSettings();
+  const smtpFrom = dbSettings.smtp_from || process.env.SMTP_FROM || process.env.SMTP_USER || 'noreply@ampedfieldops.com';
+
+  const mailOptions = {
+    from: smtpFrom,
+    to: to,
+    subject: subject,
+    text: text,
+    html: html,
+  };
+
+  const emailTransporter = await getTransporter();
+
+  if (!emailTransporter) {
+    throw new Error('SMTP not configured. Please configure email settings in the Settings page.');
+  }
+
+  try {
+    await emailTransporter.sendMail(mailOptions);
+    console.log(`[Email] Test email sent to ${to}`);
+    return true;
+  } catch (error) {
+    console.error('[Email] Failed to send test email:', error);
+    throw error;
   }
 }
 

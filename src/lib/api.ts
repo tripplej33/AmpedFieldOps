@@ -503,6 +503,13 @@ class ApiClient {
     return this.uploadFile('/api/settings/logo', file, 'logo');
   }
 
+  async sendTestEmail(email: string) {
+    return this.request<{ message: string }>('/api/settings/email/test', {
+      method: 'POST',
+      body: { email },
+    });
+  }
+
   async getActivityLogs(params?: { user_id?: string; action?: string; limit?: number; offset?: number }) {
     const searchParams = new URLSearchParams(params as Record<string, string>);
     return this.request<{ logs: any[]; total: number }>(`/api/settings/logs/activity?${searchParams}`);
