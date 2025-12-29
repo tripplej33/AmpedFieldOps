@@ -19,7 +19,7 @@ import {
   TabsList,
   TabsTrigger,
 } from '@/components/ui/tabs';
-import { RefreshCw, CheckCircle, Link2, Upload, Download, Loader2, Mail, Send, Shield, Plus, Trash2, Edit, X, Settings as SettingsIcon, Plug, Lock } from 'lucide-react';
+import { RefreshCw, CheckCircle, Link2, Upload, Download, Loader2, Mail, Send, Shield, Plus, Trash2, Edit, X, Settings as SettingsIcon, Plug, Lock, X as XIcon } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
@@ -67,7 +67,7 @@ export default function Settings() {
   useEffect(() => {
     loadSettings();
     if (user?.role === 'admin') {
-      loadPermissions();
+      loadRolePermissions();
     }
 
     // Check for Xero OAuth errors in URL params
@@ -1241,20 +1241,13 @@ export default function Settings() {
 
           {user?.role === 'admin' && (
           <TabsContent value="permissions" className="space-y-6">
-            {/* Permissions Management */}
+            {/* Role-Based Permissions */}
         <Card className="p-6 bg-card border-border">
           <div className="flex items-start justify-between mb-6">
               <div>
-              <h3 className="text-lg font-bold mb-1">Permissions Management</h3>
-              <p className="text-sm text-muted-foreground">Manage system and custom permissions</p>
+              <h3 className="text-lg font-bold mb-1">Role Permissions</h3>
+              <p className="text-sm text-muted-foreground">Configure permissions for Admin, Manager, and User roles</p>
               </div>
-            <Button
-              onClick={() => setShowCreatePermissionModal(true)}
-              className="bg-electric text-background hover:bg-electric/90"
-            >
-              <Plus className="w-4 h-4 mr-2" />
-              Create Permission
-            </Button>
             </div>
 
           {isLoadingPermissions ? (

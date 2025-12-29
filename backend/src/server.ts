@@ -18,6 +18,7 @@ import setupRoutes from './routes/setup';
 import xeroRoutes from './routes/xero';
 import settingsRoutes from './routes/settings';
 import permissionsRoutes from './routes/permissions';
+import rolePermissionsRoutes from './routes/role-permissions';
 import dashboardRoutes from './routes/dashboard';
 import healthRoutes from './routes/health';
 

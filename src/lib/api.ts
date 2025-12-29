@@ -536,6 +536,18 @@ class ApiClient {
     return this.request(`/api/permissions/${id}`, { method: 'DELETE' });
   }
 
+  // Role Permissions
+  async getRolePermissions() {
+    return this.request<{ permissions: Array<{ key: string; label: string; description: string }>; rolePermissions: Record<string, Record<string, boolean>> }>('/api/role-permissions');
+  }
+
+  async updateRolePermissions(rolePermissions: Record<string, Record<string, boolean>>) {
+    return this.request('/api/role-permissions', {
+      method: 'PUT',
+      body: { rolePermissions }
+    });
+  }
+
   // Xero
   async getXeroAuthUrl() {
     return this.request<{ 
