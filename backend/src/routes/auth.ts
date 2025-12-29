@@ -183,17 +183,19 @@ router.post('/forgot-password',
         return res.json({ message: 'If an account exists, a reset link will be sent' });
       }
 
-      // Generate reset token (in production, send via email)
+      // Generate reset token
       const resetToken = jwt.sign(
         { id: result.rows[0].id, type: 'password-reset' },
         env.JWT_SECRET,
         { expiresIn: '1h' }
       );
 
-      // In production, send email with reset link
-      // For now, just log it
-      console.log(`Password reset token for ${email}: ${resetToken}`);
+      // Send password reset email
+      const { sendPasswordResetEmail } = await import('../lib/email');
+      const emailSent = await sendPasswordResetEmail(email, resetToken, result.rows[0].name);
 
+      // Always return success message (don't reveal if email exists)
+      // If email failed to send, it's logged to console/server logs
       res.json({ message: 'If an account exists, a reset link will be sent' });
     } catch (error) {
       res.status(500).json({ error: 'Failed to process request' });

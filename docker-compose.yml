@@ -37,6 +37,11 @@ services:
       XERO_CLIENT_ID: ${XERO_CLIENT_ID:-}
       XERO_CLIENT_SECRET: ${XERO_CLIENT_SECRET:-}
       XERO_REDIRECT_URI: ${XERO_REDIRECT_URI:-http://localhost:3001/api/xero/callback}
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+      SMTP_FROM: ${SMTP_FROM:-}
     ports:
       - "3001:3001"
     volumes:

@@ -19,6 +19,13 @@ interface EnvConfig {
   XERO_CLIENT_ID?: string;
   XERO_CLIENT_SECRET?: string;
   XERO_REDIRECT_URI?: string;
+  
+  // Email/SMTP (optional)
+  SMTP_HOST?: string;
+  SMTP_PORT?: string;
+  SMTP_USER?: string;
+  SMTP_PASSWORD?: string;
+  SMTP_FROM?: string;
 }
 
 function getEnvVar(key: string, required = true, defaultValue?: string): string {
@@ -48,6 +55,11 @@ function validateEnv(): EnvConfig {
     XERO_CLIENT_ID: getEnvVar('XERO_CLIENT_ID', false),
     XERO_CLIENT_SECRET: getEnvVar('XERO_CLIENT_SECRET', false),
     XERO_REDIRECT_URI: getEnvVar('XERO_REDIRECT_URI', false),
+    SMTP_HOST: getEnvVar('SMTP_HOST', false),
+    SMTP_PORT: getEnvVar('SMTP_PORT', false),
+    SMTP_USER: getEnvVar('SMTP_USER', false),
+    SMTP_PASSWORD: getEnvVar('SMTP_PASSWORD', false),
+    SMTP_FROM: getEnvVar('SMTP_FROM', false),
   };
 }
 

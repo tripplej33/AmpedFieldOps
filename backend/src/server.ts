@@ -57,10 +57,19 @@ app.use((err: Error, req: express.Request, res: express.Response, next: express.
   });
 });
 
-app.listen(env.PORT, () => {
+app.listen(env.PORT, async () => {
   console.log(`🚀 AmpedFieldOps API server running on port ${env.PORT}`);
   console.log(`📡 Environment: ${env.NODE_ENV}`);
   console.log(`🌐 Frontend URL: ${env.FRONTEND_URL}`);
+  
+  // Verify email configuration on startup
+  try {
+    const { verifyEmailConfig } = await import('./lib/email');
+    await verifyEmailConfig();
+  } catch (error) {
+    // Email verification is optional, don't fail startup
+    console.log('📧 Email configuration check skipped');
+  }
 });
 
 export default app;
