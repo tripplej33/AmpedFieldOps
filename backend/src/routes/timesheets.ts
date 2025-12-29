@@ -140,12 +140,6 @@ router.get('/:id', authenticate, async (req: AuthRequest, res: Response) => {
   }
 });
 
-const uploadLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 20, // Limit to 20 timesheet creations per 15 minutes
-  message: 'Too many timesheet creation requests, please try again later.',
-});
-
 // Create timesheet (handles both JSON and FormData with images)
 router.post('/', authenticate, uploadLimiter, projectUpload.array('images', 5), async (req: AuthRequest, res: Response) => {
   // Check if this is FormData (has files) or JSON
