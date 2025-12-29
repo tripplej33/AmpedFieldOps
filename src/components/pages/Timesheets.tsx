@@ -225,28 +225,6 @@ export default function Timesheets() {
     setViewDate(new Date());
   };
 
-  // User toggle for multi-select
-  const toggleUserSelection = (userId: string) => {
-    setSelectedUserIds(prev => {
-      if (prev.includes(userId)) {
-        // Remove user and their hours
-        const newUserHours = { ...userHours };
-        delete newUserHours[userId];
-        setUserHours(newUserHours);
-        return prev.filter(id => id !== userId);
-      } else {
-        // Add user with default hours from form
-        setUserHours(h => ({ ...h, [userId]: formData.hours || '' }));
-        return [...prev, userId];
-      }
-    });
-  };
-
-  // Update individual user's hours
-  const updateUserHours = (userId: string, hours: string) => {
-    setUserHours(prev => ({ ...prev, [userId]: hours }));
-  };
-
   const handleCreate = async () => {
     // Validate base required fields
     if (!formData.project_id) {
