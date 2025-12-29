@@ -23,11 +23,8 @@ WORKDIR /app
 # Install postgresql-client for pg_isready (before switching user)
 RUN apk add --no-cache postgresql-client wget
 
-# Create node user early
-RUN addgroup -g 1001 -S node && \
-    adduser -S node -u 1001
-
 # Copy package files with correct ownership
+# Note: node user already exists in node:20-alpine image
 COPY --chown=node:node package*.json ./
 
 # Install dependencies (including dev for migrations)
