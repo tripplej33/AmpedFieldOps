@@ -1237,175 +1237,83 @@ export default function Settings() {
             </div>
           ) : (
             <div className="space-y-4">
-              {permissions.map((perm) => (
-                <div
-                  key={perm.id}
-                  className={cn(
-                    "p-4 rounded-lg border",
-                    perm.is_system ? "bg-muted/20 border-border" : "bg-card border-border",
-                    !perm.is_active && "opacity-50"
-                  )}
-                >
-                  <div className="flex items-start justify-between">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Badge className={cn(
-                          perm.is_system ? "bg-voltage/20 text-voltage border-voltage/30" : "bg-electric/20 text-electric border-electric/30"
-                        )}>
-                          {perm.is_system ? 'System' : 'Custom'}
-                        </Badge>
-                        <code className="text-xs font-mono bg-muted px-2 py-1 rounded">{perm.key}</code>
-                        {!perm.is_active && (
-                          <Badge variant="outline" className="text-muted-foreground">Inactive</Badge>
-                        )}
-                      </div>
-                      {editingPermission?.id === perm.id ? (
-                        <div className="space-y-3 mt-3">
-              <div>
-                            <Label className="font-mono text-xs uppercase tracking-wider">Label</Label>
-                            <Input
-                              value={editingPermission.label}
-                              onChange={(e) => setEditingPermission({ ...editingPermission, label: e.target.value })}
-                              className="mt-1"
-                            />
+              {/* Permissions Table */}
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr className="border-b border-border">
+                      <th className="text-left p-3 font-mono text-xs uppercase tracking-wider text-muted-foreground">Permission</th>
+                      <th className="text-left p-3 font-mono text-xs uppercase tracking-wider text-muted-foreground">Description</th>
+                      <th className="text-center p-3 font-mono text-xs uppercase tracking-wider text-muted-foreground">Admin</th>
+                      <th className="text-center p-3 font-mono text-xs uppercase tracking-wider text-muted-foreground">Manager</th>
+                      <th className="text-center p-3 font-mono text-xs uppercase tracking-wider text-muted-foreground">User</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {allPermissions.map((perm) => (
+                      <tr key={perm.key} className="border-b border-border hover:bg-muted/20 transition-colors">
+                        <td className="p-3">
+                          <code className="text-xs font-mono bg-muted px-2 py-1 rounded">{perm.key}</code>
+                        </td>
+                        <td className="p-3 text-sm text-foreground">{perm.description || perm.label}</td>
+                        <td className="p-3 text-center">
+                          <Switch
+                            checked={rolePermissions.admin?.[perm.key] ?? false}
+                            onCheckedChange={() => handleToggleRolePermission('admin', perm.key)}
+                            disabled={isSavingRolePermissions}
+                          />
+                        </td>
+                        <td className="p-3 text-center">
+                          <Switch
+                            checked={rolePermissions.manager?.[perm.key] ?? false}
+                            onCheckedChange={() => handleToggleRolePermission('manager', perm.key)}
+                            disabled={isSavingRolePermissions}
+                          />
+                        </td>
+                        <td className="p-3 text-center">
+                          <Switch
+                            checked={rolePermissions.user?.[perm.key] ?? false}
+                            onCheckedChange={() => handleToggleRolePermission('user', perm.key)}
+                            disabled={isSavingRolePermissions}
+                          />
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-                          <div>
-                            <Label className="font-mono text-xs uppercase tracking-wider">Description</Label>
-                            <Input
-                              value={editingPermission.description || ''}
-                              onChange={(e) => setEditingPermission({ ...editingPermission, description: e.target.value })}
-                              className="mt-1"
-                            />
-            </div>
-                          {!perm.is_system && (
-            <div className="flex items-center justify-between">
-                              <Label className="font-mono text-xs uppercase tracking-wider">Active</Label>
-                              <Switch
-                                checked={editingPermission.is_active}
-                                onCheckedChange={(checked) => setEditingPermission({ ...editingPermission, is_active: checked })}
-                              />
-              </div>
-                          )}
-                          <div className="flex gap-2">
-                            <Button
-                              size="sm"
-                              onClick={() => handleUpdatePermission(perm.id, {
-                                label: editingPermission.label,
-                                description: editingPermission.description,
-                                is_active: editingPermission.is_active
-                              })}
-                              className="bg-electric text-background hover:bg-electric/90"
-                            >
-                              Save
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              onClick={() => setEditingPermission(null)}
-                            >
-                              Cancel
-                            </Button>
-            </div>
-          </div>
-                      ) : (
-                        <div>
-                          <p className="font-medium">{perm.label}</p>
-                          {perm.description && (
-                            <p className="text-sm text-muted-foreground mt-1">{perm.description}</p>
-                          )}
-          </div>
-                      )}
-                    </div>
-                    {editingPermission?.id !== perm.id && (
-                      <div className="flex items-center gap-2 ml-4">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setEditingPermission({ ...perm })}
-                        >
-                          <Edit className="w-4 h-4" />
-                        </Button>
-                        {!perm.is_system && (
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            className="text-destructive hover:text-destructive"
-                            onClick={() => handleDeletePermission(perm.id, perm.key)}
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </Button>
-                        )}
-                  </div>
-                    )}
-                </div>
-              </div>
-            ))}
-              {permissions.length === 0 && (
+
+              {allPermissions.length === 0 && (
                 <p className="text-center text-muted-foreground py-8">No permissions found</p>
-            )}
-          </div>
-            )}
+              )}
+
+              {/* Save Button */}
+              <div className="flex justify-end pt-4 border-t border-border">
+                <Button
+                  onClick={handleSaveRolePermissions}
+                  disabled={isSavingRolePermissions}
+                  className="bg-electric text-background hover:bg-electric/90"
+                >
+                  {isSavingRolePermissions ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle className="w-4 h-4 mr-2" />
+                      Save Changes
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          )}
         </Card>
           </TabsContent>
           )}
         </Tabs>
       </div>
-
-      {/* Create Permission Modal */}
-      <Dialog open={showCreatePermissionModal} onOpenChange={setShowCreatePermissionModal}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Create Custom Permission</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-4">
-              <div>
-              <Label className="font-mono text-xs uppercase">Permission Key *</Label>
-              <Input
-                value={newPermission.key}
-                onChange={(e) => setNewPermission({ ...newPermission, key: e.target.value.toLowerCase().replace(/[^a-z_]/g, '') })}
-                placeholder="can_custom_action"
-                className="mt-2 font-mono"
-              />
-              <p className="text-xs text-muted-foreground mt-1">Lowercase letters and underscores only</p>
-            </div>
-              <div>
-              <Label className="font-mono text-xs uppercase">Label *</Label>
-              <Input
-                value={newPermission.label}
-                onChange={(e) => setNewPermission({ ...newPermission, label: e.target.value })}
-                placeholder="Custom Action"
-                className="mt-2"
-              />
-            </div>
-              <div>
-              <Label className="font-mono text-xs uppercase">Description</Label>
-              <Input
-                value={newPermission.description}
-                onChange={(e) => setNewPermission({ ...newPermission, description: e.target.value })}
-                placeholder="Description of what this permission allows"
-                className="mt-2"
-              />
-            </div>
-            <div className="flex gap-2">
-              <Button
-                onClick={handleCreatePermission}
-                className="flex-1 bg-electric text-background hover:bg-electric/90"
-              >
-                Create Permission
-              </Button>
-              <Button
-                variant="outline"
-                onClick={() => {
-                  setShowCreatePermissionModal(false);
-                  setNewPermission({ key: '', label: '', description: '' });
-                }}
-              >
-                Cancel
-              </Button>
-          </div>
-            </div>
-        </DialogContent>
-      </Dialog>
     </>
   );
 }
