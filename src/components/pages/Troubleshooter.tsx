@@ -135,22 +135,37 @@ export default function Troubleshooter() {
     setExpandedTests(newExpanded);
   };
 
-  const exportResults = (format: 'json' | 'csv') => {
+  const exportResults = (format: 'json' | 'csv', errorsOnly: boolean = false) => {
     if (!results) return;
 
+    // Filter to errors only if requested
+    const dataToExport = errorsOnly
+      ? {
+          ...results,
+          results: results.results.filter(r => r.status === 'failed'),
+          totalTests: results.results.filter(r => r.status === 'failed').length,
+          passed: 0,
+          failed: results.failed,
+          skipped: 0,
+        }
+      : results;
+
     if (format === 'json') {
-      const dataStr = JSON.stringify(results, null, 2);
+      const dataStr = JSON.stringify(dataToExport, null, 2);
       const dataBlob = new Blob([dataStr], { type: 'application/json' });
       const url = URL.createObjectURL(dataBlob);
       const link = document.createElement('a');
+      const filename = errorsOnly
+        ? `troubleshooter-errors-${new Date().toISOString()}.json`
+        : `troubleshooter-results-${new Date().toISOString()}.json`;
       link.href = url;
-      link.download = `troubleshooter-results-${new Date().toISOString()}.json`;
+      link.download = filename;
       link.click();
       URL.revokeObjectURL(url);
     } else if (format === 'csv') {
       const csvRows = [
         ['Test Name', 'Category', 'Status', 'Duration (ms)', 'Message', 'Error'],
-        ...results.results.map(r => [
+        ...dataToExport.results.map(r => [
           r.name,
           r.category,
           r.status,
@@ -167,8 +182,11 @@ export default function Troubleshooter() {
       const dataBlob = new Blob([csvContent], { type: 'text/csv' });
       const url = URL.createObjectURL(dataBlob);
       const link = document.createElement('a');
+      const filename = errorsOnly
+        ? `troubleshooter-errors-${new Date().toISOString()}.csv`
+        : `troubleshooter-results-${new Date().toISOString()}.csv`;
       link.href = url;
-      link.download = `troubleshooter-results-${new Date().toISOString()}.csv`;
+      link.download = filename;
       link.click();
       URL.revokeObjectURL(url);
     }
