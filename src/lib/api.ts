@@ -393,6 +393,10 @@ class ApiClient {
     return response.json();
   }
 
+  async deleteTimesheetImage(timesheetId: string, imageIndex: number) {
+    return this.request(`/api/timesheets/${timesheetId}/images/${imageIndex}`, { method: 'DELETE' });
+  }
+
   // Cost Centers
   async getCostCenters(activeOnly = false, projectId?: string) {
     const params = new URLSearchParams();

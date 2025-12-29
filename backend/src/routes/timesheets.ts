@@ -132,8 +132,17 @@ router.get('/:id', authenticate, async (req: AuthRequest, res: Response) => {
   }
 });
 
+// Rate limiting middleware (import at top)
+import rateLimit from 'express-rate-limit';
+
+const uploadLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 20, // Limit to 20 timesheet creations per 15 minutes
+  message: 'Too many timesheet creation requests, please try again later.',
+});
+
 // Create timesheet (handles both JSON and FormData with images)
-router.post('/', authenticate, projectUpload.array('images', 5), async (req: AuthRequest, res: Response) => {
+router.post('/', authenticate, uploadLimiter, projectUpload.array('images', 5), async (req: AuthRequest, res: Response) => {
   // Check if this is FormData (has files) or JSON
   const files = req.files as Express.Multer.File[];
   const isFormData = files && files.length > 0;
@@ -315,7 +324,32 @@ router.delete('/:id', authenticate, async (req: AuthRequest, res: Response) => {
       });
     }
 
+    // Get timesheet info for cleanup
+    const timesheetInfo = existing.rows[0];
+    
     await query('DELETE FROM timesheets WHERE id = $1', [req.params.id]);
+
+    // Delete associated image files
+    if (timesheetInfo.image_urls && timesheetInfo.image_urls.length > 0 && timesheetInfo.project_id) {
+      try {
+        const fs = require('fs');
+        const path = require('path');
+        const projectDir = path.join(__dirname, '../../uploads/projects', timesheetInfo.project_id);
+        
+        timesheetInfo.image_urls.forEach((imageUrl: string) => {
+          const filename = imageUrl.split('/').pop();
+          if (filename) {
+            const filePath = path.join(projectDir, filename);
+            if (fs.existsSync(filePath)) {
+              fs.unlinkSync(filePath);
+            }
+          }
+        });
+      } catch (fileError) {
+        console.error('Failed to delete timesheet image files:', fileError);
+        // Continue even if file deletion fails
+      }
+    }
 
     // Update project costs
     const activity = await query('SELECT hourly_rate FROM activity_types WHERE id = $1', [existing.rows[0].activity_type_id]);
@@ -370,6 +404,67 @@ router.post('/:id/images', authenticate, projectUpload.array('images', 5), async
   } catch (error) {
     console.error('Upload images error:', error);
     res.status(500).json({ error: 'Failed to upload images' });
+  }
+});
+
+// Delete individual image from timesheet
+router.delete('/:id/images/:index', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const timesheetId = req.params.id;
+    const imageIndex = parseInt(req.params.index, 10);
+
+    if (isNaN(imageIndex) || imageIndex < 0) {
+      return res.status(400).json({ error: 'Invalid image index' });
+    }
+
+    // Get timesheet with images
+    const timesheet = await query('SELECT image_urls, project_id FROM timesheets WHERE id = $1', [timesheetId]);
+    if (timesheet.rows.length === 0) {
+      return res.status(404).json({ error: 'Timesheet not found' });
+    }
+
+    const imageUrls = timesheet.rows[0].image_urls || [];
+    if (imageIndex >= imageUrls.length) {
+      return res.status(404).json({ error: 'Image not found' });
+    }
+
+    // Get image URL to delete file
+    const imageUrl = imageUrls[imageIndex];
+    const projectId = timesheet.rows[0].project_id;
+
+    // Remove image from array
+    const updatedUrls = [...imageUrls];
+    updatedUrls.splice(imageIndex, 1);
+
+    // Update database
+    await query(
+      `UPDATE timesheets 
+       SET image_urls = $1, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $2`,
+      [updatedUrls, timesheetId]
+    );
+
+    // Delete physical file
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      // Extract filename from URL (e.g., /uploads/projects/{id}/filename.jpg)
+      const filename = imageUrl.split('/').pop();
+      if (filename && projectId) {
+        const filePath = path.join(__dirname, '../../uploads/projects', projectId, filename);
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+        }
+      }
+    } catch (fileError) {
+      console.error('Failed to delete image file:', fileError);
+      // Continue even if file deletion fails
+    }
+
+    res.json({ image_urls: updatedUrls, message: 'Image deleted' });
+  } catch (error) {
+    console.error('Delete image error:', error);
+    res.status(500).json({ error: 'Failed to delete image' });
   }
 });
 

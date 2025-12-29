@@ -14,6 +14,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { api } from '@/lib/api';
 import { TimesheetEntry, Client, Project, ActivityType, CostCenter, User } from '@/types';
 import { Plus, Calendar, Clock, Wrench, Pencil, Trash2, Loader2, Camera, Image, X, ChevronLeft, ChevronRight, Users } from 'lucide-react';
+import ImageViewer from '@/components/modals/ImageViewer';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useNotifications } from '@/contexts/NotificationContext';
@@ -652,15 +653,25 @@ export default function Timesheets() {
                           {entry.image_urls && entry.image_urls.length > 0 && (
                             <div className="flex gap-2 mb-3 flex-wrap">
                               {entry.image_urls.map((url, idx) => (
-                                <a 
-                                  key={idx} 
-                                  href={url} 
-                                  target="_blank" 
-                                  rel="noopener noreferrer"
-                                  className="w-12 h-12 rounded border border-border overflow-hidden hover:border-electric transition-colors"
+                                <button
+                                  key={idx}
+                                  onClick={() => {
+                                    setViewingImages(entry.image_urls);
+                                    setViewingImageIndex(idx);
+                                    setViewingEntryId(entry.id);
+                                    setImageViewerOpen(true);
+                                  }}
+                                  className="w-16 h-16 rounded border border-border overflow-hidden hover:border-electric transition-colors group relative"
                                 >
-                                  <img src={url} alt={`Photo ${idx + 1}`} className="w-full h-full object-cover" />
-                                </a>
+                                  <img 
+                                    src={url} 
+                                    alt={`Photo ${idx + 1}`} 
+                                    className="w-full h-full object-cover" 
+                                  />
+                                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
+                                    <Image className="w-4 h-4 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
+                                  </div>
+                                </button>
                               ))}
                             </div>
                           )}

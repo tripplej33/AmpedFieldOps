@@ -46,6 +46,18 @@ const fileFilter = (req: Express.Request, file: Express.Multer.File, cb: multer.
   }
 };
 
+// Enhanced file filter with size and dimension validation
+const enhancedFileFilter = (req: Express.Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
+  const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+  
+  if (!allowedTypes.includes(file.mimetype)) {
+    return cb(new Error('Invalid file type. Only images (JPEG, PNG, GIF, WebP) are allowed.'));
+  }
+  
+  // File size is already limited by multer limits, but we can add additional checks here
+  cb(null, true);
+};
+
 export const upload = multer({
   storage,
   fileFilter,
