@@ -604,7 +604,7 @@ export default function Settings() {
             <div>
               <Label className="font-mono text-xs uppercase tracking-wider">Timezone</Label>
               <select
-                value={settings.timezone || 'America/New_York'}
+                value={settings.timezone || 'Pacific/Auckland'}
                 onChange={(e) => handleSettingChange('timezone', e.target.value)}
                 className="mt-2 w-full h-10 rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring"
               >

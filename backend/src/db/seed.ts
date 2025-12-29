@@ -61,7 +61,7 @@ async function seed() {
     const defaultSettings = [
       { key: 'company_name', value: 'AmpedFieldOps' },
       { key: 'company_logo', value: null },
-      { key: 'timezone', value: 'America/New_York' },
+      { key: 'timezone', value: 'Pacific/Auckland' },
       { key: 'xero_auto_sync', value: 'false' },
       { key: 'xero_sync_frequency', value: '30' },
       { key: 'setup_completed', value: 'false' },
