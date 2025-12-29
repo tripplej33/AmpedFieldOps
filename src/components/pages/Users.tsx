@@ -25,18 +25,7 @@ import { Plus, Edit, Trash2, Shield, UserCircle, Mail, Loader2 } from 'lucide-re
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
-const allPermissions = [
-  { key: 'can_view_financials', label: 'View Financials', description: 'View invoices, quotes, and financial data' },
-  { key: 'can_edit_projects', label: 'Manage Projects', description: 'Create, edit, and delete projects' },
-  { key: 'can_manage_users', label: 'Manage Users', description: 'Add, edit, and remove users' },
-  { key: 'can_sync_xero', label: 'Xero Sync', description: 'Sync data with Xero' },
-  { key: 'can_view_all_timesheets', label: 'View All Timesheets', description: 'View timesheets from all users' },
-  { key: 'can_edit_activity_types', label: 'Manage Activity Types', description: 'Configure activity types' },
-  { key: 'can_manage_clients', label: 'Manage Clients', description: 'Create, edit, and delete clients' },
-  { key: 'can_manage_cost_centers', label: 'Manage Cost Centers', description: 'Configure cost centers' },
-  { key: 'can_view_reports', label: 'View Reports', description: 'Access reports section' },
-  { key: 'can_export_data', label: 'Export Data', description: 'Export data to CSV/PDF' },
-];
+// Permissions will be loaded from the database
 
 export default function Users() {
   const [users, setUsers] = useState<User[]>([]);
@@ -45,6 +34,7 @@ export default function Users() {
   const [showPermissionsModal, setShowPermissionsModal] = useState(false);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [allPermissions, setAllPermissions] = useState<Array<{ key: string; label: string; description: string }>>([]);
 
   // New user form
   const [newEmail, setNewEmail] = useState('');
@@ -57,7 +47,28 @@ export default function Users() {
 
   useEffect(() => {
     loadUsers();
+    loadPermissions();
   }, []);
+
+  const loadPermissions = async () => {
+    try {
+      const perms = await api.getPermissions();
+      // Filter to only active permissions and format for display
+      setAllPermissions(
+        perms
+          .filter((p: any) => p.is_active)
+          .map((p: any) => ({
+            key: p.key,
+            label: p.label,
+            description: p.description || ''
+          }))
+      );
+    } catch (error) {
+      console.error('Failed to load permissions:', error);
+      // Fallback to empty array if permissions can't be loaded
+      setAllPermissions([]);
+    }
+  };
 
   const loadUsers = async () => {
     setIsLoading(true);

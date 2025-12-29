@@ -17,6 +17,7 @@ DROP TABLE IF EXISTS clients CASCADE;
 DROP TABLE IF EXISTS cost_centers CASCADE;
 DROP TABLE IF EXISTS activity_types CASCADE;
 DROP TABLE IF EXISTS user_permissions CASCADE;
+DROP TABLE IF EXISTS permissions CASCADE;
 DROP TABLE IF EXISTS users CASCADE;
 ` : ''}
 
@@ -203,6 +204,19 @@ CREATE TABLE IF NOT EXISTS activity_logs (
   details JSONB,
   ip_address VARCHAR(45),
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Permissions table (defines available permissions)
+CREATE TABLE IF NOT EXISTS permissions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  key VARCHAR(100) UNIQUE NOT NULL,
+  label VARCHAR(255) NOT NULL,
+  description TEXT,
+  is_system BOOLEAN DEFAULT false,
+  is_custom BOOLEAN DEFAULT false,
+  is_active BOOLEAN DEFAULT true,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
 -- Create indexes for better performance

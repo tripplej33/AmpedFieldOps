@@ -6,7 +6,20 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Separator } from '@/components/ui/separator';
-import { RefreshCw, CheckCircle, Link2, Upload, Download, Loader2, Mail, Send } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from '@/components/ui/dialog';
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from '@/components/ui/tabs';
+import { RefreshCw, CheckCircle, Link2, Upload, Download, Loader2, Mail, Send, Shield, Plus, Trash2, Edit, X, Settings as SettingsIcon, Plug, Lock } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
@@ -21,6 +34,13 @@ export default function Settings() {
   const [isUploading, setIsUploading] = useState(false);
   const [isSendingTestEmail, setIsSendingTestEmail] = useState(false);
   const [testEmailAddress, setTestEmailAddress] = useState('');
+  
+  // Permissions management
+  const [permissions, setPermissions] = useState<any[]>([]);
+  const [isLoadingPermissions, setIsLoadingPermissions] = useState(false);
+  const [showCreatePermissionModal, setShowCreatePermissionModal] = useState(false);
+  const [editingPermission, setEditingPermission] = useState<any | null>(null);
+  const [newPermission, setNewPermission] = useState({ key: '', label: '', description: '' });
   
   // Local state for Xero credentials (not auto-saving)
   const [xeroCredentials, setXeroCredentials] = useState({
@@ -46,6 +66,9 @@ export default function Settings() {
 
   useEffect(() => {
     loadSettings();
+    if (user?.role === 'admin') {
+      loadPermissions();
+    }
 
     // Check for Xero OAuth errors in URL params
     const urlParams = new URLSearchParams(window.location.search);
@@ -367,6 +390,60 @@ export default function Settings() {
     }
   };
 
+  const loadPermissions = async () => {
+    setIsLoadingPermissions(true);
+    try {
+      const data = await api.getPermissions();
+      setPermissions(data);
+    } catch (error: any) {
+      toast.error('Failed to load permissions');
+    } finally {
+      setIsLoadingPermissions(false);
+    }
+  };
+
+  const handleCreatePermission = async () => {
+    if (!newPermission.key || !newPermission.label) {
+      toast.error('Key and label are required');
+      return;
+    }
+
+    try {
+      await api.createPermission(newPermission);
+      toast.success('Permission created');
+      setShowCreatePermissionModal(false);
+      setNewPermission({ key: '', label: '', description: '' });
+      loadPermissions();
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to create permission');
+    }
+  };
+
+  const handleUpdatePermission = async (id: string, updates: any) => {
+    try {
+      await api.updatePermission(id, updates);
+      toast.success('Permission updated');
+      setEditingPermission(null);
+      loadPermissions();
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to update permission');
+    }
+  };
+
+  const handleDeletePermission = async (id: string, key: string) => {
+    if (!confirm(`Are you sure you want to delete the permission "${key}"? This cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      await api.deletePermission(id);
+      toast.success('Permission deleted');
+      loadPermissions();
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to delete permission');
+    }
+  };
+
   const handleSaveXeroCredentials = async () => {
     const { clientId, clientSecret, redirectUri } = xeroCredentials;
     
@@ -459,9 +536,31 @@ export default function Settings() {
     <>
       <Header title="Settings" subtitle="Configure system preferences and integrations" />
 
-      <div className="p-8 max-w-[1000px] mx-auto space-y-6">
-        {/* Company Branding */}
-        <Card className="p-6 bg-card border-border">
+      <div className="p-8 max-w-[1000px] mx-auto">
+        <Tabs defaultValue="general" className="w-full">
+          <TabsList className={cn(
+            "grid w-full mb-6",
+            user?.role === 'admin' ? "grid-cols-3" : "grid-cols-2"
+          )}>
+            <TabsTrigger value="general" className="flex items-center gap-2">
+              <SettingsIcon className="w-4 h-4" />
+              General
+            </TabsTrigger>
+            <TabsTrigger value="integrations" className="flex items-center gap-2">
+              <Plug className="w-4 h-4" />
+              Integrations
+            </TabsTrigger>
+            {user?.role === 'admin' && (
+              <TabsTrigger value="permissions" className="flex items-center gap-2">
+                <Lock className="w-4 h-4" />
+                Permissions
+              </TabsTrigger>
+            )}
+          </TabsList>
+
+          <TabsContent value="general" className="space-y-6">
+            {/* Company Branding */}
+            <Card className="p-6 bg-card border-border">
           <h3 className="text-lg font-bold mb-4">Company Branding</h3>
           
           <div className="space-y-4">
@@ -525,9 +624,87 @@ export default function Settings() {
           </div>
         </Card>
 
-        {/* Email Settings */}
-        {user?.role === 'admin' && (
-        <Card className="p-6 bg-card border-border">
+            {/* Notification Settings */}
+            <Card className="p-6 bg-card border-border">
+              <h3 className="text-lg font-bold mb-4">Notifications</h3>
+
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label className="font-mono text-xs uppercase tracking-wider">Budget Alerts</Label>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Notify when projects exceed 80% of budget
+                    </p>
+                  </div>
+                  <Switch 
+                    checked={settings.budget_alerts !== 'false'}
+                    onCheckedChange={(checked) => handleSettingChange('budget_alerts', checked.toString())}
+                  />
+                </div>
+
+                <Separator />
+
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label className="font-mono text-xs uppercase tracking-wider">Timesheet Reminders</Label>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Daily reminder for technicians to log hours
+                    </p>
+                  </div>
+                  <Switch 
+                    checked={settings.timesheet_reminders !== 'false'}
+                    onCheckedChange={(checked) => handleSettingChange('timesheet_reminders', checked.toString())}
+                  />
+                </div>
+
+                <Separator />
+
+                <div className="flex items-center justify-between">
+                  <div>
+                    <Label className="font-mono text-xs uppercase tracking-wider">Project Status Changes</Label>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Notify when project status is updated
+                    </p>
+                  </div>
+                  <Switch 
+                    checked={settings.status_notifications === 'true'}
+                    onCheckedChange={(checked) => handleSettingChange('status_notifications', checked.toString())}
+                  />
+                </div>
+              </div>
+            </Card>
+
+            {/* System Info */}
+            <Card className="p-6 bg-card border-border">
+              <h3 className="text-lg font-bold mb-4">System Information</h3>
+
+              <div className="grid grid-cols-2 gap-4 text-sm">
+                <div>
+                  <p className="text-muted-foreground font-mono mb-1">Version</p>
+                  <p className="font-mono text-foreground">v2.0.0</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground font-mono mb-1">Environment</p>
+                  <p className="font-mono text-foreground">
+                    {import.meta.env.MODE === 'production' ? 'Production' : 'Development'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground font-mono mb-1">Database</p>
+                  <p className="font-mono text-voltage">Online</p>
+                </div>
+                <div>
+                  <p className="text-muted-foreground font-mono mb-1">Timezone</p>
+                  <p className="font-mono text-foreground">{settings.timezone || 'America/New_York'}</p>
+                </div>
+              </div>
+            </Card>
+          </TabsContent>
+
+          <TabsContent value="integrations" className="space-y-6">
+            {/* Email Settings */}
+            {user?.role === 'admin' && (
+            <Card className="p-6 bg-card border-border">
           <div className="flex items-start justify-between mb-6">
             <div>
               <h3 className="text-lg font-bold mb-1">Email Configuration</h3>
@@ -680,11 +857,11 @@ export default function Settings() {
             </div>
           </div>
         </Card>
-        )}
+            )}
 
-        {/* Xero Integration */}
-        {hasPermission('can_sync_xero') && (
-        <Card className="p-6 bg-card border-border">
+            {/* Xero Integration */}
+            {hasPermission('can_sync_xero') && (
+            <Card className="p-6 bg-card border-border">
           <div className="flex items-start justify-between mb-6">
             <div>
               <h3 className="text-lg font-bold mb-1">Xero Integration</h3>
@@ -1029,86 +1206,204 @@ export default function Settings() {
               )}
             </div>
           </div>
+            )}
+          </Card>
           )}
-        </Card>
-        )}
+          </TabsContent>
 
-        {/* Notification Settings */}
-        <Card className="p-6 bg-card border-border">
-          <h3 className="text-lg font-bold mb-4">Notifications</h3>
-
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <Label className="font-mono text-xs uppercase tracking-wider">Budget Alerts</Label>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Notify when projects exceed 80% of budget
-                </p>
-              </div>
-              <Switch 
-                checked={settings.budget_alerts !== 'false'}
-                onCheckedChange={(checked) => handleSettingChange('budget_alerts', checked.toString())}
-              />
+          {user?.role === 'admin' && (
+          <TabsContent value="permissions" className="space-y-6">
+            {/* Permissions Management */}
+            <Card className="p-6 bg-card border-border">
+          <div className="flex items-start justify-between mb-6">
+            <div>
+              <h3 className="text-lg font-bold mb-1">Permissions Management</h3>
+              <p className="text-sm text-muted-foreground">Manage system and custom permissions</p>
             </div>
-
-            <Separator />
-
-            <div className="flex items-center justify-between">
-              <div>
-                <Label className="font-mono text-xs uppercase tracking-wider">Timesheet Reminders</Label>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Daily reminder for technicians to log hours
-                </p>
-              </div>
-              <Switch 
-                checked={settings.timesheet_reminders !== 'false'}
-                onCheckedChange={(checked) => handleSettingChange('timesheet_reminders', checked.toString())}
-              />
-            </div>
-
-            <Separator />
-
-            <div className="flex items-center justify-between">
-              <div>
-                <Label className="font-mono text-xs uppercase tracking-wider">Project Status Changes</Label>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Notify when project status is updated
-                </p>
-              </div>
-              <Switch 
-                checked={settings.status_notifications === 'true'}
-                onCheckedChange={(checked) => handleSettingChange('status_notifications', checked.toString())}
-              />
-            </div>
+            <Button
+              onClick={() => setShowCreatePermissionModal(true)}
+              className="bg-electric text-background hover:bg-electric/90"
+            >
+              <Plus className="w-4 h-4 mr-2" />
+              Create Permission
+            </Button>
           </div>
-        </Card>
 
-        {/* System Info */}
-        <Card className="p-6 bg-card border-border">
-          <h3 className="text-lg font-bold mb-4">System Information</h3>
-
-          <div className="grid grid-cols-2 gap-4 text-sm">
-            <div>
-              <p className="text-muted-foreground font-mono mb-1">Version</p>
-              <p className="font-mono text-foreground">v2.0.0</p>
+          {isLoadingPermissions ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="w-8 h-8 animate-spin text-electric" />
             </div>
-            <div>
-              <p className="text-muted-foreground font-mono mb-1">Environment</p>
-              <p className="font-mono text-foreground">
-                {import.meta.env.MODE === 'production' ? 'Production' : 'Development'}
-              </p>
+          ) : (
+            <div className="space-y-4">
+              {permissions.map((perm) => (
+                <div
+                  key={perm.id}
+                  className={cn(
+                    "p-4 rounded-lg border",
+                    perm.is_system ? "bg-muted/20 border-border" : "bg-card border-border",
+                    !perm.is_active && "opacity-50"
+                  )}
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Badge className={cn(
+                          perm.is_system ? "bg-voltage/20 text-voltage border-voltage/30" : "bg-electric/20 text-electric border-electric/30"
+                        )}>
+                          {perm.is_system ? 'System' : 'Custom'}
+                        </Badge>
+                        <code className="text-xs font-mono bg-muted px-2 py-1 rounded">{perm.key}</code>
+                        {!perm.is_active && (
+                          <Badge variant="outline" className="text-muted-foreground">Inactive</Badge>
+                        )}
+                      </div>
+                      {editingPermission?.id === perm.id ? (
+                        <div className="space-y-3 mt-3">
+                          <div>
+                            <Label className="font-mono text-xs uppercase tracking-wider">Label</Label>
+                            <Input
+                              value={editingPermission.label}
+                              onChange={(e) => setEditingPermission({ ...editingPermission, label: e.target.value })}
+                              className="mt-1"
+                            />
+                          </div>
+                          <div>
+                            <Label className="font-mono text-xs uppercase tracking-wider">Description</Label>
+                            <Input
+                              value={editingPermission.description || ''}
+                              onChange={(e) => setEditingPermission({ ...editingPermission, description: e.target.value })}
+                              className="mt-1"
+                            />
+                          </div>
+                          {!perm.is_system && (
+                            <div className="flex items-center justify-between">
+                              <Label className="font-mono text-xs uppercase tracking-wider">Active</Label>
+                              <Switch
+                                checked={editingPermission.is_active}
+                                onCheckedChange={(checked) => setEditingPermission({ ...editingPermission, is_active: checked })}
+                              />
+                            </div>
+                          )}
+                          <div className="flex gap-2">
+                            <Button
+                              size="sm"
+                              onClick={() => handleUpdatePermission(perm.id, {
+                                label: editingPermission.label,
+                                description: editingPermission.description,
+                                is_active: editingPermission.is_active
+                              })}
+                              className="bg-electric text-background hover:bg-electric/90"
+                            >
+                              Save
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setEditingPermission(null)}
+                            >
+                              Cancel
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div>
+                          <p className="font-medium">{perm.label}</p>
+                          {perm.description && (
+                            <p className="text-sm text-muted-foreground mt-1">{perm.description}</p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    {editingPermission?.id !== perm.id && (
+                      <div className="flex items-center gap-2 ml-4">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setEditingPermission({ ...perm })}
+                        >
+                          <Edit className="w-4 h-4" />
+                        </Button>
+                        {!perm.is_system && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="text-destructive hover:text-destructive"
+                            onClick={() => handleDeletePermission(perm.id, perm.key)}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              ))}
+              {permissions.length === 0 && (
+                <p className="text-center text-muted-foreground py-8">No permissions found</p>
+              )}
             </div>
-            <div>
-              <p className="text-muted-foreground font-mono mb-1">Database</p>
-              <p className="font-mono text-voltage">Online</p>
-            </div>
-            <div>
-              <p className="text-muted-foreground font-mono mb-1">Timezone</p>
-              <p className="font-mono text-foreground">{settings.timezone || 'America/New_York'}</p>
-            </div>
-          </div>
-        </Card>
+            )}
+          </Card>
+          </TabsContent>
+          )}
+        </Tabs>
       </div>
+
+      {/* Create Permission Modal */}
+      <Dialog open={showCreatePermissionModal} onOpenChange={setShowCreatePermissionModal}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Create Custom Permission</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <Label className="font-mono text-xs uppercase">Permission Key *</Label>
+              <Input
+                value={newPermission.key}
+                onChange={(e) => setNewPermission({ ...newPermission, key: e.target.value.toLowerCase().replace(/[^a-z_]/g, '') })}
+                placeholder="can_custom_action"
+                className="mt-2 font-mono"
+              />
+              <p className="text-xs text-muted-foreground mt-1">Lowercase letters and underscores only</p>
+            </div>
+            <div>
+              <Label className="font-mono text-xs uppercase">Label *</Label>
+              <Input
+                value={newPermission.label}
+                onChange={(e) => setNewPermission({ ...newPermission, label: e.target.value })}
+                placeholder="Custom Action"
+                className="mt-2"
+              />
+            </div>
+            <div>
+              <Label className="font-mono text-xs uppercase">Description</Label>
+              <Input
+                value={newPermission.description}
+                onChange={(e) => setNewPermission({ ...newPermission, description: e.target.value })}
+                placeholder="Description of what this permission allows"
+                className="mt-2"
+              />
+            </div>
+            <div className="flex gap-2">
+              <Button
+                onClick={handleCreatePermission}
+                className="flex-1 bg-electric text-background hover:bg-electric/90"
+              >
+                Create Permission
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowCreatePermissionModal(false);
+                  setNewPermission({ key: '', label: '', description: '' });
+                }}
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

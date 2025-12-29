@@ -17,6 +17,7 @@ import searchRoutes from './routes/search';
 import setupRoutes from './routes/setup';
 import xeroRoutes from './routes/xero';
 import settingsRoutes from './routes/settings';
+import permissionsRoutes from './routes/permissions';
 import dashboardRoutes from './routes/dashboard';
 import healthRoutes from './routes/health';
 
@@ -57,6 +58,7 @@ app.use('/api/search', searchRoutes);
 app.use('/api/setup', setupRoutes);
 app.use('/api/xero', xeroRoutes);
 app.use('/api/settings', settingsRoutes);
+app.use('/api/permissions', permissionsRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/health', healthRoutes);
 

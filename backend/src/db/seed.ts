@@ -77,6 +77,32 @@ async function seed() {
     }
     console.log('  ✓ Default settings seeded');
     
+    // Seed default permissions
+    const defaultPermissions = [
+      { key: 'can_view_financials', label: 'View Financials', description: 'Access invoices, quotes, and financial data', is_system: true },
+      { key: 'can_edit_projects', label: 'Manage Projects', description: 'Create, edit, and delete projects', is_system: true },
+      { key: 'can_manage_users', label: 'Manage Users', description: 'Add, edit, and remove users', is_system: true },
+      { key: 'can_sync_xero', label: 'Xero Sync', description: 'Sync data with Xero', is_system: true },
+      { key: 'can_view_all_timesheets', label: 'View All Timesheets', description: 'View timesheets from all users', is_system: true },
+      { key: 'can_edit_activity_types', label: 'Manage Activity Types', description: 'Configure activity types', is_system: true },
+      { key: 'can_manage_clients', label: 'Manage Clients', description: 'Create, edit, and delete clients', is_system: true },
+      { key: 'can_manage_cost_centers', label: 'Manage Cost Centers', description: 'Configure cost centers', is_system: true },
+      { key: 'can_view_reports', label: 'View Reports', description: 'Access reports section', is_system: true },
+      { key: 'can_export_data', label: 'Export Data', description: 'Export data to CSV/PDF', is_system: true },
+      { key: 'can_create_timesheets', label: 'Create Timesheets', description: 'Create new timesheet entries', is_system: true },
+      { key: 'can_view_own_timesheets', label: 'View Own Timesheets', description: 'View own timesheet entries', is_system: true },
+    ];
+    
+    for (const perm of defaultPermissions) {
+      await client.query(
+        `INSERT INTO permissions (key, label, description, is_system, is_custom, is_active) 
+         VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT (key) DO UPDATE SET label = $2, description = $3, updated_at = CURRENT_TIMESTAMP`,
+        [perm.key, perm.label, perm.description, perm.is_system, false, true]
+      );
+    }
+    console.log('  ✓ Default permissions seeded');
+    
     // Create default admin user
     const hashedPassword = await bcrypt.hash('admin123', 10);
     

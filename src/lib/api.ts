@@ -515,6 +515,27 @@ class ApiClient {
     return this.request<{ logs: any[]; total: number }>(`/api/settings/logs/activity?${searchParams}`);
   }
 
+  // Permissions
+  async getPermissions() {
+    return this.request<any[]>('/api/permissions');
+  }
+
+  async getPermission(id: string) {
+    return this.request<any>(`/api/permissions/${id}`);
+  }
+
+  async createPermission(data: { key: string; label: string; description?: string }) {
+    return this.request<any>('/api/permissions', { method: 'POST', body: data });
+  }
+
+  async updatePermission(id: string, data: { label?: string; description?: string; is_active?: boolean }) {
+    return this.request<any>(`/api/permissions/${id}`, { method: 'PUT', body: data });
+  }
+
+  async deletePermission(id: string) {
+    return this.request(`/api/permissions/${id}`, { method: 'DELETE' });
+  }
+
   // Xero
   async getXeroAuthUrl() {
     return this.request<{ 
