@@ -22,12 +22,19 @@ async function seed() {
     ];
     
     for (const type of activityTypes) {
-      await client.query(
-        `INSERT INTO activity_types (name, icon, color, hourly_rate) 
-         VALUES ($1, $2, $3, $4)
-         ON CONFLICT DO NOTHING`,
-        [type.name, type.icon, type.color, type.hourly_rate]
+      // Check if activity type with same name (case-insensitive) already exists
+      const existing = await client.query(
+        `SELECT id FROM activity_types WHERE LOWER(TRIM(name)) = LOWER(TRIM($1))`,
+        [type.name]
       );
+      
+      if (existing.rows.length === 0) {
+        await client.query(
+          `INSERT INTO activity_types (name, icon, color, hourly_rate) 
+           VALUES ($1, $2, $3, $4)`,
+          [type.name, type.icon, type.color, type.hourly_rate]
+        );
+      }
     }
     console.log('  ✓ Activity types seeded');
     

@@ -886,47 +886,6 @@ export default function Settings() {
                   Notify when projects exceed 80% of budget
                 </p>
               </div>
-              <Switch defaultChecked />
-            </div>
-
-            <Separator />
-
-            <div className="flex items-center justify-between">
-              <div>
-                <Label className="font-mono text-xs uppercase tracking-wider">Timesheet Reminders</Label>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Daily reminder for technicians to log hours
-                </p>
-              </div>
-              <Switch defaultChecked />
-            </div>
-
-            <Separator />
-
-            <div className="flex items-center justify-between">
-              <div>
-                <Label className="font-mono text-xs uppercase tracking-wider">Project Status Changes</Label>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Notify when project status is updated
-                </p>
-              </div>
-              <Switch />
-            </div>
-          </div>
-        </Card>
-
-        {/* Notification Settings */}
-        <Card className="p-6 bg-card border-border">
-          <h3 className="text-lg font-bold mb-4">Notifications</h3>
-
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <Label className="font-mono text-xs uppercase tracking-wider">Budget Alerts</Label>
-                <p className="text-xs text-muted-foreground mt-1">
-                  Notify when projects exceed 80% of budget
-                </p>
-              </div>
               <Switch 
                 checked={settings.budget_alerts !== 'false'}
                 onCheckedChange={(checked) => handleSettingChange('budget_alerts', checked.toString())}
