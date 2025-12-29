@@ -4,8 +4,6 @@
 
 A mobile-first service business management platform designed for electrical contractors and their field teams. Orchestrates client relationships, project workflows, timesheet capture, and financial reconciliation through Xero integration.
 
-![AmpedFieldOps](https://images.unsplash.com/photo-1621905251189-08b45d6a269e?w=1200&q=80)
-
 ## Features
 
 - 📊 **Command Center Dashboard** - Real-time metrics, project health, and team activity
@@ -14,6 +12,7 @@ A mobile-first service business management platform designed for electrical cont
 - ⏱️ **Timesheet Tracking** - Mobile-optimized time entry with photo capture
 - 📈 **Reports & Analytics** - Cost center analysis and budget tracking
 - 💰 **Xero Integration** - Invoices, quotes, and financial sync
+- 📧 **Email Configuration** - Admin-managed SMTP settings with test email functionality
 - 👤 **User Management** - Role-based access control with granular permissions
 - 🎨 **Activity Types** - Configurable work categories with hourly rates
 
@@ -32,6 +31,7 @@ A mobile-first service business management platform designed for electrical cont
 - PostgreSQL database
 - JWT authentication
 - Xero API integration
+- Nodemailer for email delivery
 
 ## Quick Start
 
@@ -43,10 +43,11 @@ A mobile-first service business management platform designed for electrical cont
 ### Option 1: Docker Installation (Recommended)
 
 ```bash
-# Clone and run installation script
+# Clone the repository
 git clone https://github.com/tripplej33/AmpedFieldOps.git
 cd AmpedFieldOps
 
+# Run installation script
 chmod +x install.sh
 ./install.sh
 ```
@@ -64,7 +65,7 @@ Access the app at **http://localhost:3000**
 ### Option 2: Local Development
 
 ```bash
-# Clone and run local installation script
+# Run local installation script
 chmod +x install-local.sh
 ./install-local.sh
 ```
@@ -76,28 +77,28 @@ Or manually:
 npm install
 
 # Install backend dependencies
-cd backend && npm install
+cd backend && npm install && cd ..
 
 # Copy environment file
 cp .env.example .env
 # Edit .env with your database credentials
 
 # Run migrations
-npm run migrate
+cd backend && npm run migrate && cd ..
 
 # Seed default data
-npm run seed
+cd backend && npm run seed && cd ..
 
 # Start backend (terminal 1)
-npm run dev
+cd backend && npm run dev
 
 # Start frontend (terminal 2, from root)
-cd .. && npm run dev
+npm run dev
 ```
 
 ## Environment Variables
 
-Create a `.env` file based on `.env.example`:
+Create a `.env` file in the `backend` directory based on `.env.example`:
 
 ```env
 # Database
@@ -110,15 +111,23 @@ JWT_SECRET=your-secret-key-min-32-characters
 PORT=3001
 NODE_ENV=development
 FRONTEND_URL=http://localhost:5173
+BACKEND_URL=http://localhost:3001
 
-# Frontend API
-VITE_API_URL=http://localhost:3001
-
-# Xero Integration (Optional)
+# Xero Integration (Optional - can also be configured in Settings)
 XERO_CLIENT_ID=
 XERO_CLIENT_SECRET=
 XERO_REDIRECT_URI=http://localhost:3001/api/xero/callback
+
+# Email/SMTP (Optional - can be configured in Settings page)
+# These are fallback values if not set in the Settings page
+SMTP_HOST=
+SMTP_PORT=
+SMTP_USER=
+SMTP_PASSWORD=
+SMTP_FROM=
 ```
+
+> **Note:** Email settings can be managed through the Settings page (Admin only). Environment variables serve as fallback values.
 
 ## First-Time Setup
 
@@ -126,101 +135,141 @@ XERO_REDIRECT_URI=http://localhost:3001/api/xero/callback
 2. Complete the setup wizard:
    - Create admin account
    - Configure company name and logo
+   - Set up email configuration (optional)
    - Connect Xero (optional)
 3. Start adding clients and projects!
+
+## Configuration
+
+### Email Settings
+
+Email configuration can be managed in the Settings page (Admin only):
+
+1. Navigate to **Settings → Email Configuration**
+2. Enter your SMTP details:
+   - SMTP Host (e.g., `smtp.gmail.com`, `smtp.sendgrid.net`)
+   - SMTP Port (typically `587` for TLS or `465` for SSL)
+   - SMTP User (your email or API key username)
+   - SMTP Password (your password or API key)
+   - From Email Address (optional, defaults to SMTP User)
+3. Click **Send Test Email** to verify your configuration
+
+For detailed email setup instructions, see [EMAIL_SETUP.md](./EMAIL_SETUP.md).
+
+### Xero Integration
+
+1. Create a Xero app at https://developer.xero.com/app/manage
+2. Set OAuth 2.0 redirect URI to `http://your-domain/api/xero/callback`
+3. Add your Client ID and Secret in **Settings → Xero Integration**
+4. Click **Connect to Xero** and authorize the connection
+
+For detailed Xero setup instructions, see [XERO_SETUP.md](./XERO_SETUP.md).
 
 ## User Roles & Permissions
 
 ### Roles
-- **Admin** - Full system access
+- **Admin** - Full system access, can manage all settings
 - **Manager** - View all data, manage projects, approve timesheets
 - **User** - Create timesheets, view assigned projects
 
 ### Permissions
+
 | Permission | Description | Admin | Manager | User |
 |------------|-------------|-------|---------|------|
-| can_view_financials | Access invoices and quotes | ✅ | ✅ | ❌ |
-| can_edit_projects | Create/edit projects | ✅ | ✅ | ❌ |
-| can_manage_users | User administration | ✅ | ❌ | ❌ |
-| can_sync_xero | Xero integration control | ✅ | ❌ | ❌ |
-| can_view_all_timesheets | See all team timesheets | ✅ | ✅ | ❌ |
-| can_edit_activity_types | Configure activity types | ✅ | ❌ | ❌ |
-| can_manage_clients | Client administration | ✅ | ✅ | ❌ |
-| can_manage_cost_centers | Cost center setup | ✅ | ❌ | ❌ |
+| `can_view_financials` | Access invoices and quotes | ✅ | ✅ | ❌ |
+| `can_edit_projects` | Create/edit projects | ✅ | ✅ | ❌ |
+| `can_manage_users` | User administration | ✅ | ❌ | ❌ |
+| `can_sync_xero` | Xero integration control | ✅ | ❌ | ❌ |
+| `can_view_all_timesheets` | See all team timesheets | ✅ | ✅ | ❌ |
+| `can_edit_activity_types` | Configure activity types | ✅ | ❌ | ❌ |
+| `can_manage_clients` | Client administration | ✅ | ✅ | ❌ |
+| `can_manage_cost_centers` | Cost center setup | ✅ | ❌ | ❌ |
 
 ## API Documentation
 
 ### Authentication
 ```
-POST /api/auth/register     - Register new user
-POST /api/auth/login        - Login
-POST /api/auth/refresh      - Refresh token
-POST /api/auth/forgot-password - Request password reset
-GET  /api/auth/me           - Get current user
+POST   /api/auth/register          - Register new user
+POST   /api/auth/login             - Login
+POST   /api/auth/refresh           - Refresh token
+POST   /api/auth/forgot-password   - Request password reset
+POST   /api/auth/reset-password    - Reset password with token
+GET    /api/auth/me                - Get current user
+PUT    /api/auth/profile           - Update user profile
+PUT    /api/auth/change-password   - Change password
 ```
 
 ### Clients
 ```
-GET    /api/clients         - List all clients
-POST   /api/clients         - Create client
-GET    /api/clients/:id     - Get client details
-PUT    /api/clients/:id     - Update client
-DELETE /api/clients/:id     - Delete client
+GET    /api/clients                - List all clients
+POST   /api/clients                - Create client
+GET    /api/clients/:id            - Get client details
+PUT    /api/clients/:id            - Update client
+DELETE /api/clients/:id            - Delete client
 ```
 
 ### Projects
 ```
-GET    /api/projects        - List projects
-POST   /api/projects        - Create project
-GET    /api/projects/:id    - Get project details
-PUT    /api/projects/:id    - Update project
-DELETE /api/projects/:id    - Delete project
+GET    /api/projects               - List projects
+POST   /api/projects               - Create project
+GET    /api/projects/:id           - Get project details
+PUT    /api/projects/:id           - Update project
+DELETE /api/projects/:id           - Delete project
 ```
 
 ### Timesheets
 ```
-GET    /api/timesheets      - List timesheets
-POST   /api/timesheets      - Create entry
-PUT    /api/timesheets/:id  - Update entry
-DELETE /api/timesheets/:id  - Delete entry
-POST   /api/timesheets/:id/images - Upload photos
+GET    /api/timesheets             - List timesheets
+POST   /api/timesheets             - Create entry
+PUT    /api/timesheets/:id         - Update entry
+DELETE /api/timesheets/:id         - Delete entry
+POST   /api/timesheets/:id/images  - Upload photos
+DELETE /api/timesheets/:id/images/:index - Delete photo
+```
+
+### Settings
+```
+GET    /api/settings               - Get all settings
+GET    /api/settings/:key          - Get specific setting
+PUT    /api/settings/:key           - Update setting
+POST   /api/settings/email/test     - Send test email (Admin only)
+POST   /api/settings/logo          - Upload company logo (Admin only)
+GET    /api/settings/logs/activity - Get activity logs (Admin only)
 ```
 
 ### Xero Integration
 ```
-GET    /api/xero/auth/url   - Get OAuth URL
-GET    /api/xero/status     - Connection status
-POST   /api/xero/sync       - Trigger sync
-GET    /api/xero/invoices   - List invoices
-POST   /api/xero/invoices   - Create invoice
-GET    /api/xero/quotes     - List quotes
-GET    /api/xero/summary    - Financial summary
+GET    /api/xero/auth/url          - Get OAuth URL
+GET    /api/xero/status            - Connection status
+POST   /api/xero/sync              - Trigger sync
+DELETE /api/xero/disconnect        - Disconnect Xero
+GET    /api/xero/invoices          - List invoices
+POST   /api/xero/invoices          - Create invoice
+POST   /api/xero/invoices/from-timesheets - Create invoice from timesheets
+GET    /api/xero/quotes            - List quotes
+POST   /api/xero/quotes            - Create quote
+GET    /api/xero/summary           - Financial summary
+POST   /api/xero/contacts/pull     - Pull contacts from Xero
+POST   /api/xero/contacts/push/:id - Push client to Xero
+POST   /api/xero/contacts/push-all - Push all clients to Xero
 ```
-
-## Xero Integration Setup
-
-1. Create a Xero app at https://developer.xero.com/app/manage
-2. Set OAuth 2.0 redirect URI to `http://your-domain/api/xero/callback`
-3. Add your Client ID and Secret to environment variables
-4. In AmpedFieldOps Settings, click "Connect to Xero"
-5. Authorize the connection
 
 ## Database Schema
 
 ```
-users               - User accounts and authentication
-user_permissions    - Granular permission assignments
-clients             - Customer records
-projects            - Project management
-project_cost_centers - Project to cost center mapping
-timesheets          - Time tracking entries
-cost_centers        - Cost categorization
-activity_types      - Work type definitions
-xero_tokens         - OAuth token storage
-xero_invoices       - Cached invoice data
-xero_quotes         - Cached quote data
-settings            - System and user settings
-activity_logs       - Audit trail
+users                 - User accounts and authentication
+user_permissions      - Granular permission assignments
+clients               - Customer records
+projects              - Project management
+project_cost_centers  - Project to cost center mapping
+timesheets            - Time tracking entries
+cost_centers          - Cost categorization
+activity_types        - Work type definitions
+xero_tokens           - OAuth token storage
+xero_invoices         - Cached invoice data
+xero_quotes           - Cached quote data
+settings              - System and user settings (including email config)
+activity_logs         - Audit trail
 ```
 
 ## Backup & Restore
@@ -249,24 +298,31 @@ psql -U postgres ampedfieldops < backup.sql
 
 **"Database connection failed"**
 - Verify PostgreSQL is running
-- Check DATABASE_URL in .env
+- Check `DATABASE_URL` in `.env`
 - Ensure database exists
 
 **"Xero connection failed"**
-- Verify XERO_CLIENT_ID and XERO_CLIENT_SECRET
+- Verify Xero credentials in Settings page
 - Check redirect URI matches Xero app settings
 - Ensure tokens haven't expired
 
+**"Email sending failed"**
+- Verify SMTP settings in Settings page
+- Test email configuration using "Send Test Email"
+- Check SMTP credentials and firewall settings
+- See [EMAIL_SETUP.md](./EMAIL_SETUP.md) for detailed setup
+
 **"401 Unauthorized"**
 - Token may have expired, try logging in again
-- Check JWT_SECRET is consistent
+- Check `JWT_SECRET` is consistent across restarts
 
 ### Logs
+
 ```bash
 # Docker logs
 docker compose logs -f backend
 
-# View activity logs
+# View activity logs via API
 GET /api/settings/logs/activity
 ```
 
@@ -281,18 +337,27 @@ cd backend && npm run dev
 
 # Type checking
 npx tsc --noEmit
+cd backend && npx tsc --noEmit
 
 # Build for production
 npm run build
 cd backend && npm run build
 ```
 
+## Additional Documentation
+
+- [DOCKER_SETUP.md](./DOCKER_SETUP.md) - Detailed Docker setup instructions
+- [EMAIL_SETUP.md](./EMAIL_SETUP.md) - Email/SMTP configuration guide
+- [XERO_SETUP.md](./XERO_SETUP.md) - Xero integration setup guide
+- [IMPLEMENTATION.md](./IMPLEMENTATION.md) - Implementation details
+
 ## Contributing
 
 1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Submit a pull request
+2. Create a feature branch (`git checkout -b feature/amazing-feature`)
+3. Commit your changes (`git commit -m 'feat: Add amazing feature'`)
+4. Push to the branch (`git push origin feature/amazing-feature`)
+5. Open a Pull Request
 
 ## License
 
