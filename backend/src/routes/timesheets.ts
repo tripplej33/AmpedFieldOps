@@ -230,10 +230,44 @@ router.post('/', authenticate, uploadLimiter, projectUpload.array('images', 5), 
   }
 );
 
-// Update timesheet
-router.put('/:id', authenticate,
+// Update timesheet (handles both JSON and FormData with images)
+router.put('/:id', authenticate, projectUpload.array('images', 5),
   async (req: AuthRequest, res: Response) => {
-    const { project_id, date, hours, activity_type_id, cost_center_id, notes, image_urls, location, synced } = req.body;
+    // Check if this is FormData (has files) or JSON
+    const files = req.files as Express.Multer.File[];
+    const isFormData = files && files.length > 0;
+    
+    // Extract fields from body (works for both JSON and FormData)
+    const project_id = req.body.project_id;
+    const date = req.body.date;
+    const hours = req.body.hours ? parseFloat(req.body.hours) : undefined;
+    const activity_type_id = req.body.activity_type_id;
+    const cost_center_id = req.body.cost_center_id;
+    const notes = req.body.notes;
+    const location = req.body.location;
+    const synced = req.body.synced;
+    const user_id = req.body.user_id;
+    
+    // Get image URLs from uploaded files or from body
+    let imageUrls: string[] = [];
+    if (isFormData && files.length > 0) {
+      // Files were uploaded, use project-specific paths
+      imageUrls = files.map(f => `/uploads/projects/${project_id}/${f.filename}`);
+      // Also include any existing image URLs from body
+      if (req.body.image_urls) {
+        try {
+          const existingUrls = typeof req.body.image_urls === 'string' 
+            ? JSON.parse(req.body.image_urls) 
+            : req.body.image_urls;
+          imageUrls = [...imageUrls, ...existingUrls];
+        } catch (e) {
+          // If parsing fails, just use the new files
+        }
+      }
+    } else {
+      // JSON request with pre-uploaded URLs or existing URLs
+      imageUrls = req.body.image_urls || [];
+    }
 
     try {
       // Check ownership or permission
@@ -263,7 +297,27 @@ router.put('/:id', authenticate,
       const values: any[] = [];
       let paramCount = 1;
 
-      const fields = { project_id, date, hours, activity_type_id, cost_center_id, notes, image_urls, location, synced };
+      const fields: Record<string, any> = { 
+        project_id, 
+        date, 
+        hours, 
+        activity_type_id, 
+        cost_center_id, 
+        notes, 
+        image_urls: imageUrls.length > 0 ? imageUrls : undefined,
+        location, 
+        synced 
+      };
+      
+      // Add user_id if provided (for admin/manager updating timesheet for other users)
+      if (user_id && user_id !== existing.rows[0].user_id) {
+        const canManageOthers = req.user!.role === 'admin' || 
+                                req.user!.role === 'manager' ||
+                                req.user!.permissions.includes('can_view_all_timesheets');
+        if (canManageOthers) {
+          fields.user_id = user_id;
+        }
+      }
       
       for (const [key, value] of Object.entries(fields)) {
         if (value !== undefined) {

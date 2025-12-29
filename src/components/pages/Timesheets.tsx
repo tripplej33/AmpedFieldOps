@@ -174,6 +174,7 @@ export default function Timesheets() {
     setEditingEntry(null);
     setImageFiles([]);
     setImagePreviews([]);
+    setCostCenters([]); // Reset cost centers
   };
 
   // Image handling
@@ -377,7 +378,7 @@ export default function Timesheets() {
     }
   };
 
-  const handleEdit = (entry: TimesheetEntry) => {
+  const handleEdit = async (entry: TimesheetEntry) => {
     // Check if timesheet is billed or paid - cannot edit
     const billingStatus = entry.billing_status || 'unbilled';
     if (billingStatus === 'billed' || billingStatus === 'paid') {
@@ -385,6 +386,36 @@ export default function Timesheets() {
       return;
     }
     setEditingEntry(entry);
+    
+    // Load projects for the client
+    if (entry.client_id) {
+      try {
+        const projectsData = await api.getProjects({ client_id: entry.client_id });
+        setProjects(Array.isArray(projectsData) ? projectsData : []);
+      } catch (error) {
+        setProjects([]);
+      }
+    }
+    
+    // Load cost centers for the project
+    if (entry.project_id) {
+      try {
+        const costCenterData = await api.getCostCenters(true, entry.project_id);
+        setCostCenters(Array.isArray(costCenterData) ? costCenterData : []);
+      } catch (error) {
+        setCostCenters([]);
+      }
+    }
+    
+    // Load image previews from existing image URLs
+    const existingImageUrls = entry.image_urls || [];
+    setImagePreviews(existingImageUrls);
+    setImageFiles([]); // Clear any new files, we'll handle existing images separately
+    
+    // Populate user_ids and user_hours if the entry has a user_id
+    const user_ids = entry.user_id ? [entry.user_id] : [];
+    const user_hours = entry.user_id ? { [entry.user_id]: entry.hours.toString() } : {};
+    
     setFormData({
       client_id: entry.client_id || '',
       project_id: entry.project_id,
@@ -395,15 +426,12 @@ export default function Timesheets() {
         activity_type_id: entry.activity_type_id,
         cost_center_id: entry.cost_center_id,
         hours: entry.hours.toString(),
-        user_ids: [],
-        user_hours: {},
-        notes: '',
+        user_ids: user_ids,
+        user_hours: user_hours,
+        notes: entry.notes || '',
       }],
     });
-    // Load projects for the client
-    if (entry.client_id) {
-      api.getProjects({ client_id: entry.client_id }).then(setProjects);
-    }
+    
     setEditModalOpen(true);
   };
 

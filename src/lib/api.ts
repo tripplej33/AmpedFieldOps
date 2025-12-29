@@ -374,6 +374,36 @@ class ApiClient {
   }
 
   async updateTimesheet(id: string, data: any) {
+    // If data is FormData, use requestFormData
+    if (data instanceof FormData) {
+      const config: RequestInit = {
+        method: 'PUT',
+        body: data,
+      };
+
+      if (this.token) {
+        config.headers = {
+          'Authorization': `Bearer ${this.token}`,
+        };
+      }
+
+      const response = await fetch(`${API_URL}/api/timesheets/${id}`, config);
+
+      if (response.status === 401) {
+        this.setToken(null);
+        window.location.href = '/login';
+        throw new Error('Unauthorized');
+      }
+
+      if (!response.ok) {
+        const error = await response.json().catch(() => ({ error: 'Request failed' }));
+        throw new Error(error.error || error.message || 'Request failed');
+      }
+
+      return response.json();
+    }
+    
+    // Otherwise, use regular JSON request
     return this.request(`/api/timesheets/${id}`, { method: 'PUT', body: data });
   }
 
