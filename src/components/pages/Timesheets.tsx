@@ -227,6 +227,70 @@ export default function Timesheets() {
     setViewDate(new Date());
   };
 
+  // Activity entry management functions
+  const addActivityEntry = () => {
+    const newEntry: ActivityTypeEntry = {
+      id: `entry-${Date.now()}-${Math.random()}`,
+      activity_type_id: '',
+      cost_center_id: '',
+      hours: '',
+      user_ids: [],
+      user_hours: {},
+      notes: '',
+    };
+    setFormData(prev => ({
+      ...prev,
+      activity_entries: [...prev.activity_entries, newEntry]
+    }));
+  };
+
+  const removeActivityEntry = (entryId: string) => {
+    setFormData(prev => ({
+      ...prev,
+      activity_entries: prev.activity_entries.filter(e => e.id !== entryId)
+    }));
+  };
+
+  const updateActivityEntry = (entryId: string, updates: Partial<ActivityTypeEntry>) => {
+    setFormData(prev => ({
+      ...prev,
+      activity_entries: prev.activity_entries.map(e => 
+        e.id === entryId ? { ...e, ...updates } : e
+      )
+    }));
+  };
+
+  const toggleUserForActivity = (entryId: string, userId: string) => {
+    setFormData(prev => ({
+      ...prev,
+      activity_entries: prev.activity_entries.map(e => {
+        if (e.id !== entryId) return e;
+        const isSelected = e.user_ids.includes(userId);
+        const newUserIds = isSelected 
+          ? e.user_ids.filter(id => id !== userId)
+          : [...e.user_ids, userId];
+        const newUserHours = { ...e.user_hours };
+        if (isSelected) {
+          delete newUserHours[userId];
+        } else {
+          newUserHours[userId] = e.hours || '';
+        }
+        return { ...e, user_ids: newUserIds, user_hours: newUserHours };
+      })
+    }));
+  };
+
+  const updateUserHoursForActivity = (entryId: string, userId: string, hours: string) => {
+    setFormData(prev => ({
+      ...prev,
+      activity_entries: prev.activity_entries.map(e => 
+        e.id === entryId 
+          ? { ...e, user_hours: { ...e.user_hours, [userId]: hours } }
+          : e
+      )
+    }));
+  };
+
   const handleCreate = async () => {
     // Validate base required fields
     if (!formData.project_id) {
