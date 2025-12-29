@@ -44,7 +44,9 @@ export default function Financials() {
   
   // Create Invoice Modal state
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isCreateFromTimesheetsModalOpen, setIsCreateFromTimesheetsModalOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  const [isCreatingFromTimesheets, setIsCreatingFromTimesheets] = useState(false);
   const [clients, setClients] = useState<Client[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [invoiceForm, setInvoiceForm] = useState({
@@ -53,6 +55,14 @@ export default function Financials() {
     due_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
     reference: '',
     line_items: [{ description: '', quantity: 1, unit_price: 0, amount: 0 }] as LineItem[]
+  });
+  const [timesheetInvoiceForm, setTimesheetInvoiceForm] = useState({
+    client_id: '',
+    project_id: '',
+    period: 'week' as 'week' | 'month' | 'custom',
+    date_from: '',
+    date_to: '',
+    due_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
   });
 
   useEffect(() => {
@@ -307,6 +317,13 @@ export default function Financials() {
             <Button variant="outline">
               <Download className="w-4 h-4 mr-2" />
               Export
+            </Button>
+            <Button 
+              variant="outline"
+              onClick={() => setIsCreateFromTimesheetsModalOpen(true)}
+            >
+              <Clock className="w-4 h-4 mr-2" />
+              Invoice from Timesheets
             </Button>
             <Button 
               className="bg-electric text-background hover:bg-electric/90"

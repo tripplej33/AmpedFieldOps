@@ -298,6 +298,12 @@ export default function Timesheets() {
   };
 
   const handleEdit = (entry: TimesheetEntry) => {
+    // Check if timesheet is billed or paid - cannot edit
+    const billingStatus = entry.billing_status || 'unbilled';
+    if (billingStatus === 'billed' || billingStatus === 'paid') {
+      toast.error(`Cannot edit timesheet that has been ${billingStatus}`);
+      return;
+    }
     setEditingEntry(entry);
     setFormData({
       client_id: entry.client_id || '',
@@ -344,6 +350,13 @@ export default function Timesheets() {
   };
 
   const handleDelete = async (entry: TimesheetEntry) => {
+    // Check if timesheet is billed or paid - cannot delete
+    const billingStatus = entry.billing_status || 'unbilled';
+    if (billingStatus === 'billed' || billingStatus === 'paid') {
+      toast.error(`Cannot delete timesheet that has been ${billingStatus}`);
+      return;
+    }
+
     if (!confirm('Are you sure you want to delete this entry?')) return;
 
     try {

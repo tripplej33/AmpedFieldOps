@@ -92,6 +92,8 @@ export interface TimesheetEntry {
   location?: string;
   synced: boolean;
   xero_timesheet_id?: string;
+  billing_status?: 'unbilled' | 'billed' | 'paid';
+  invoice_id?: string;
   created_at: string;
   updated_at: string;
   // Joined fields

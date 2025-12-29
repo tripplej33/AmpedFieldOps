@@ -26,7 +26,9 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
         at.icon as activity_type_icon,
         at.color as activity_type_color,
         cc.code as cost_center_code,
-        cc.name as cost_center_name
+        cc.name as cost_center_name,
+        COALESCE(t.billing_status, 'unbilled') as billing_status,
+        t.invoice_id
       FROM timesheets t
       LEFT JOIN users u ON t.user_id = u.id
       LEFT JOIN projects p ON t.project_id = p.id
@@ -70,6 +72,13 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
     if (date_to) {
       sql += ` AND t.date <= $${paramCount++}`;
       params.push(date_to);
+    }
+
+    // Filter by billing status if provided
+    const billing_status = req.query.billing_status;
+    if (billing_status) {
+      sql += ` AND COALESCE(t.billing_status, 'unbilled') = $${paramCount++}`;
+      params.push(billing_status);
     }
 
     sql += ' ORDER BY t.date DESC, t.created_at DESC';
@@ -147,8 +156,8 @@ router.post('/', authenticate,
       }
 
       const result = await query(
-        `INSERT INTO timesheets (user_id, project_id, client_id, date, hours, activity_type_id, cost_center_id, notes, image_urls, location)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        `INSERT INTO timesheets (user_id, project_id, client_id, date, hours, activity_type_id, cost_center_id, notes, image_urls, location, billing_status)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'unbilled')
          RETURNING *`,
         [req.user!.id, project_id, finalClientId, date, hours, activity_type_id, cost_center_id, notes, image_urls, location]
       );
@@ -196,6 +205,15 @@ router.put('/:id', authenticate,
 
       if (!canEdit) {
         return res.status(403).json({ error: 'Not authorized to edit this timesheet' });
+      }
+
+      // Check if timesheet is billed or paid - cannot edit
+      const billingStatus = existing.rows[0].billing_status || 'unbilled';
+      if (billingStatus === 'billed' || billingStatus === 'paid') {
+        return res.status(400).json({ 
+          error: 'Cannot edit timesheet that has been billed or paid',
+          billing_status: billingStatus
+        });
       }
 
       const updates: string[] = [];
@@ -265,6 +283,15 @@ router.delete('/:id', authenticate, async (req: AuthRequest, res: Response) => {
 
     if (!canDelete) {
       return res.status(403).json({ error: 'Not authorized to delete this timesheet' });
+    }
+
+    // Check if timesheet is billed or paid - cannot delete
+    const billingStatus = existing.rows[0].billing_status || 'unbilled';
+    if (billingStatus === 'billed' || billingStatus === 'paid') {
+      return res.status(400).json({ 
+        error: 'Cannot delete timesheet that has been billed or paid',
+        billing_status: billingStatus
+      });
     }
 
     await query('DELETE FROM timesheets WHERE id = $1', [req.params.id]);

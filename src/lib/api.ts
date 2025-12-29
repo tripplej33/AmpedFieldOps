@@ -577,6 +577,14 @@ class ApiClient {
     return this.request('/api/xero/invoices', { method: 'POST', body: data });
   }
 
+  async createInvoiceFromTimesheets(data: { client_id: string; project_id?: string; date_from?: string; date_to?: string; period?: 'week' | 'month'; due_date?: string }) {
+    return this.request('/api/xero/invoices/from-timesheets', { method: 'POST', body: data });
+  }
+
+  async markInvoiceAsPaid(invoiceId: string) {
+    return this.request(`/api/xero/invoices/${invoiceId}/paid`, { method: 'PUT' });
+  }
+
   async getXeroQuotes() {
     return this.request<any[]>('/api/xero/quotes');
   }
