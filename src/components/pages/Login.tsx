@@ -50,20 +50,20 @@ export default function Login() {
         const status = await api.getHealthStatus() as any;
         setHealthStatus({
           database: {
-            healthy: status.database === 'connected',
-            status: status.database || 'unknown'
+            healthy: status.database?.healthy || status.database?.status === 'connected' || false,
+            status: status.database?.status || (status.database?.healthy ? 'connected' : 'disconnected')
           },
           xero: {
             configured: status.xero?.configured || false,
             connected: status.xero?.connected || false,
-            status: status.xero?.connected ? 'connected' : status.xero?.configured ? 'not_connected' : 'not_configured'
+            status: status.xero?.status || (status.xero?.connected ? 'connected' : status.xero?.configured ? 'not_connected' : 'not_configured')
           }
         });
       } catch (error) {
         // Health check failed, show as unhealthy
         setHealthStatus({
-          database: { healthy: false, status: 'unknown' },
-          xero: { configured: false, connected: false, status: 'unknown' }
+          database: { healthy: false, status: 'disconnected' },
+          xero: { configured: false, connected: false, status: 'not_configured' }
         });
       }
     };
