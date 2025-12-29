@@ -343,11 +343,17 @@ export default function Timesheets() {
     setFormData({
       client_id: entry.client_id || '',
       project_id: entry.project_id,
-      activity_type_id: entry.activity_type_id,
-      cost_center_id: entry.cost_center_id,
       date: entry.date,
-      hours: entry.hours.toString(),
       notes: entry.notes || '',
+      activity_entries: [{
+        id: `entry-${Date.now()}`,
+        activity_type_id: entry.activity_type_id,
+        cost_center_id: entry.cost_center_id,
+        hours: entry.hours.toString(),
+        user_ids: [],
+        user_hours: {},
+        notes: '',
+      }],
     });
     // Load projects for the client
     if (entry.client_id) {
@@ -358,7 +364,12 @@ export default function Timesheets() {
 
   const handleUpdate = async () => {
     if (!editingEntry) return;
-    if (!formData.project_id || !formData.activity_type_id || !formData.cost_center_id || !formData.hours) {
+    if (formData.activity_entries.length === 0) {
+      toast.error('Please fill in all required fields');
+      return;
+    }
+    const entry = formData.activity_entries[0];
+    if (!formData.project_id || !entry.activity_type_id || !entry.cost_center_id || !entry.hours) {
       toast.error('Please fill in all required fields');
       return;
     }
@@ -367,11 +378,11 @@ export default function Timesheets() {
     try {
       await api.updateTimesheet(editingEntry.id, {
         project_id: formData.project_id,
-        activity_type_id: formData.activity_type_id,
-        cost_center_id: formData.cost_center_id,
+        activity_type_id: entry.activity_type_id,
+        cost_center_id: entry.cost_center_id,
         date: formData.date,
-        hours: parseFloat(formData.hours),
-        notes: formData.notes,
+        hours: parseFloat(entry.hours),
+        notes: entry.notes || formData.notes,
       });
       toast.success('Timesheet entry updated');
       setEditModalOpen(false);
