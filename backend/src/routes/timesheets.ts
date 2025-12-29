@@ -132,9 +132,6 @@ router.get('/:id', authenticate, async (req: AuthRequest, res: Response) => {
   }
 });
 
-// Rate limiting middleware (import at top)
-import rateLimit from 'express-rate-limit';
-
 const uploadLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
   max: 20, // Limit to 20 timesheet creations per 15 minutes
