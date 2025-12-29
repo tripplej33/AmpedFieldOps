@@ -810,14 +810,13 @@ export default function Financials() {
             {/* Period Selection */}
             <div>
               <Label className="font-mono text-xs uppercase tracking-wider">Time Period *</Label>
-              <div className="mt-2">
-                <Select
-                  value={timesheetInvoiceForm.period}
-                  onValueChange={(value: 'week' | 'month' | 'custom') => setTimesheetInvoiceForm(prev => ({ ...prev, period: value }))}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
+              <Select
+                value={timesheetInvoiceForm.period}
+                onValueChange={(value: 'week' | 'month' | 'custom') => setTimesheetInvoiceForm(prev => ({ ...prev, period: value }))}
+              >
+                <SelectTrigger className="mt-2">
+                  <SelectValue />
+                </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="week">Last 7 Days</SelectItem>
                   <SelectItem value="month">Last 30 Days</SelectItem>
