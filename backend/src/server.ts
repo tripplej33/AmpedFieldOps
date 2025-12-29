@@ -40,18 +40,9 @@ const uploadRateLimit = rateLimit({
 });
 
 // Static files for uploads (including project-specific directories)
-// Add authentication middleware for uploads
-app.use('/uploads', (req, res, next) => {
-  // Allow access to uploads if user is authenticated
-  // This is a basic check - you might want to add more sophisticated auth
-  const authHeader = req.headers.authorization;
-  if (!authHeader && process.env.NODE_ENV === 'production') {
-    // In production, require authentication for uploads
-    // In development, allow public access for easier testing
-    return res.status(401).json({ error: 'Unauthorized' });
-  }
-  next();
-}, express.static(path.join(__dirname, '../uploads')));
+// Note: In production, you may want to add authentication middleware here
+// For now, we allow public access to uploaded files (they're served via Nginx proxy)
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 // API Routes
 app.use('/api/auth', authRoutes);
