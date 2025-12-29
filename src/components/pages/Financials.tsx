@@ -395,9 +395,20 @@ export default function Financials() {
                             {getStatusBadge(invoice.status)}
                           </td>
                           <td className="px-6 py-4 text-right">
-                            <Button variant="ghost" size="sm">
-                              View
-                            </Button>
+                            <div className="flex items-center justify-end gap-2">
+                              {invoice.status !== 'PAID' && (
+                                <Button 
+                                  variant="ghost" 
+                                  size="sm"
+                                  onClick={() => handleMarkAsPaid(invoice.id)}
+                                >
+                                  Mark as Paid
+                                </Button>
+                              )}
+                              <Button variant="ghost" size="sm">
+                                View
+                              </Button>
+                            </div>
                           </td>
                         </tr>
                       ))
@@ -682,6 +693,149 @@ export default function Financials() {
                 ) : (
                   <>
                     <FileText className="w-4 h-4 mr-2" />
+                    Create Invoice
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Create Invoice from Timesheets Modal */}
+      <Dialog open={isCreateFromTimesheetsModalOpen} onOpenChange={setIsCreateFromTimesheetsModalOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold">Create Invoice from Timesheets</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-6 py-4">
+            {/* Client & Project Selection */}
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label className="font-mono text-xs uppercase tracking-wider">Client *</Label>
+                <Select
+                  value={timesheetInvoiceForm.client_id}
+                  onValueChange={(value) => {
+                    setTimesheetInvoiceForm(prev => ({ ...prev, client_id: value, project_id: '' }));
+                    loadProjects(value);
+                  }}
+                >
+                  <SelectTrigger className="mt-2">
+                    <SelectValue placeholder="Select client" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {clients.map(client => (
+                      <SelectItem key={client.id} value={client.id}>
+                        {client.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label className="font-mono text-xs uppercase tracking-wider">Project (Optional)</Label>
+                <Select
+                  value={timesheetInvoiceForm.project_id}
+                  onValueChange={(value) => setTimesheetInvoiceForm(prev => ({ ...prev, project_id: value }))}
+                  disabled={!timesheetInvoiceForm.client_id}
+                >
+                  <SelectTrigger className="mt-2">
+                    <SelectValue placeholder="All projects" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">All projects</SelectItem>
+                    {projects.map(project => (
+                      <SelectItem key={project.id} value={project.id}>
+                        {project.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Period Selection */}
+            <div>
+              <Label className="font-mono text-xs uppercase tracking-wider">Time Period *</Label>
+              <Select
+                value={timesheetInvoiceForm.period}
+                onValueChange={(value: 'week' | 'month' | 'custom') => setTimesheetInvoiceForm(prev => ({ ...prev, period: value }))}
+                className="mt-2"
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="week">Last 7 Days</SelectItem>
+                  <SelectItem value="month">Last 30 Days</SelectItem>
+                  <SelectItem value="custom">Custom Date Range</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Custom Date Range */}
+            {timesheetInvoiceForm.period === 'custom' && (
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="font-mono text-xs uppercase tracking-wider">From Date *</Label>
+                  <Input
+                    type="date"
+                    value={timesheetInvoiceForm.date_from}
+                    onChange={(e) => setTimesheetInvoiceForm(prev => ({ ...prev, date_from: e.target.value }))}
+                    className="mt-2"
+                  />
+                </div>
+                <div>
+                  <Label className="font-mono text-xs uppercase tracking-wider">To Date *</Label>
+                  <Input
+                    type="date"
+                    value={timesheetInvoiceForm.date_to}
+                    onChange={(e) => setTimesheetInvoiceForm(prev => ({ ...prev, date_to: e.target.value }))}
+                    className="mt-2"
+                  />
+                </div>
+              </div>
+            )}
+
+            {/* Due Date */}
+            <div>
+              <Label className="font-mono text-xs uppercase tracking-wider">Due Date</Label>
+              <Input
+                type="date"
+                value={timesheetInvoiceForm.due_date}
+                onChange={(e) => setTimesheetInvoiceForm(prev => ({ ...prev, due_date: e.target.value }))}
+                className="mt-2"
+              />
+            </div>
+
+            {/* Info */}
+            <div className="p-4 rounded-lg bg-muted/30 border border-border">
+              <p className="text-sm text-muted-foreground">
+                This will create an invoice from all unbilled timesheets for the selected client and period.
+                Timesheets will be grouped by activity type and automatically marked as "billed".
+              </p>
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center justify-end gap-3 pt-4 border-t border-border">
+              <Button variant="outline" onClick={() => setIsCreateFromTimesheetsModalOpen(false)}>
+                Cancel
+              </Button>
+              <Button 
+                className="bg-electric text-background hover:bg-electric/90"
+                onClick={handleCreateInvoiceFromTimesheets}
+                disabled={isCreatingFromTimesheets}
+              >
+                {isCreatingFromTimesheets ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Creating...
+                  </>
+                ) : (
+                  <>
+                    <Clock className="w-4 h-4 mr-2" />
                     Create Invoice
                   </>
                 )}
