@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs';
-import { query } from '../db';
-import { env } from '../config/env';
+import { query } from '../../db';
+import { env } from '../../config/env';
 import jwt from 'jsonwebtoken';
 
 const TEST_PREFIX = 'TEST_';
