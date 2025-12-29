@@ -138,17 +138,20 @@ router.post('/', authenticate, projectUpload.array('images', 5), async (req: Aut
   const files = req.files as Express.Multer.File[];
   const isFormData = files && files.length > 0;
   
-  // Extract project_id from body (works for both JSON and FormData)
+  // Extract and validate required fields from body (works for both JSON and FormData)
   const project_id = req.body.project_id;
+  const date = req.body.date;
+  const hours = parseFloat(req.body.hours);
+  const activity_type_id = req.body.activity_type_id;
+  const cost_center_id = req.body.cost_center_id;
   
-  if (!project_id) {
-    return res.status(400).json({ error: 'project_id is required' });
+  // Manual validation (since express-validator doesn't work well with FormData)
+  if (!project_id || !date || !hours || !activity_type_id || !cost_center_id) {
+    return res.status(400).json({ error: 'Missing required fields: project_id, date, hours, activity_type_id, cost_center_id' });
   }
-
-  // Validate other required fields
-  const errors = validationResult(req);
-  if (!errors.isEmpty()) {
-    return res.status(400).json({ errors: errors.array() });
+  
+  if (hours < 0.25 || hours > 24) {
+    return res.status(400).json({ error: 'Hours must be between 0.25 and 24' });
   }
 
   // Get image URLs from uploaded files or from body
