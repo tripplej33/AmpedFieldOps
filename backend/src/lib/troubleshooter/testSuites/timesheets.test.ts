@@ -1,12 +1,13 @@
 import { TestResult, TestContext } from '../types';
 import { runTest, apiRequest } from '../testHelpers';
-import { createTestClient, createTestProject, createTestActivityType } from '../testData';
+import { createTestClient, createTestProject, createTestActivityType, createTestCostCenter } from '../testData';
 
 export async function runTests(context: TestContext): Promise<TestResult[]> {
   const results: TestResult[] = [];
   let clientId: string | null = null;
   let projectId: string | null = null;
   let activityTypeId: string | null = null;
+  let costCenterId: string | null = null;
   let createdTimesheetId: string | null = null;
 
   // Setup test data
@@ -17,6 +18,8 @@ export async function runTests(context: TestContext): Promise<TestResult[]> {
     context.testData.projectIds.push(projectId);
     activityTypeId = await createTestActivityType(`TEST_Timesheet Activity ${Date.now()}`);
     context.testData.activityTypeIds.push(activityTypeId);
+    costCenterId = await createTestCostCenter(`TEST_TCC${Date.now()}`, `TEST_Timesheet Cost Center ${Date.now()}`);
+    context.testData.costCenterIds.push(costCenterId);
   } catch (error: any) {
     results.push({
       id: 'timesheets-setup',
@@ -43,6 +46,7 @@ export async function runTests(context: TestContext): Promise<TestResult[]> {
             project_id: projectId,
             client_id: clientId,
             activity_type_id: activityTypeId,
+            cost_center_id: costCenterId,
             date: new Date().toISOString().split('T')[0],
             hours: 8,
             notes: 'TEST_Timesheet entry for testing',

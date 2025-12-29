@@ -32,10 +32,10 @@ export async function runTests(context: TestContext): Promise<TestResult[]> {
       'Login with valid credentials succeeds',
       'Auth',
       async () => {
-        // Use test user credentials (created in testData.ts)
+        // Use test user credentials (created in testData.ts, email is normalized to lowercase)
         const response = await apiRequest('/api/auth/login', {
           method: 'POST',
-          body: { email: 'TEST_admin@test.com', password: 'TestPassword123!' },
+          body: { email: 'test_admin@test.com', password: 'TestPassword123!' },
           expectedStatus: 200,
         });
         if (!response.token || !response.user) {

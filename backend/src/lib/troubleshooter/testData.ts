@@ -21,7 +21,8 @@ export async function createTestUsers(): Promise<TestUser[]> {
   const roles: Array<'admin' | 'manager' | 'user'> = ['admin', 'manager', 'user'];
 
   for (const role of roles) {
-    const email = `${TEST_PREFIX}${role}@test.com`;
+    // Normalize email to match what express-validator does (lowercase)
+    const email = `${TEST_PREFIX}${role}@test.com`.toLowerCase();
     const password = 'TestPassword123!';
     const name = `Test ${role}`;
 
