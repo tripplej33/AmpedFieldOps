@@ -872,67 +872,6 @@ function TimesheetForm({
   return (
     <div className="space-y-4 py-4 max-h-[70vh] overflow-y-auto">
       {/* Client and Project Selection */}
-        <div>
-          <Label className="font-mono text-xs uppercase tracking-wider">
-            Assign to Technicians
-          </Label>
-          <p className="text-xs text-muted-foreground mb-2">
-            Select users and set individual hours for each (leave empty to log for yourself)
-          </p>
-          <div className="space-y-2 mt-2 p-3 rounded-lg border border-border bg-muted/20">
-            {users.map((user) => {
-              const isSelected = selectedUserIds.includes(user.id);
-              return (
-                <div
-                  key={user.id}
-                  className={cn(
-                    "flex items-center gap-3 p-2 rounded-lg border transition-all",
-                    isSelected
-                      ? "bg-electric/10 border-electric"
-                      : "border-border hover:border-electric/50"
-                  )}
-                >
-                  <div 
-                    className="flex items-center gap-2 cursor-pointer flex-1"
-                    onClick={() => toggleUserSelection(user.id)}
-                  >
-                    <Checkbox 
-                      checked={isSelected} 
-                      className="pointer-events-none"
-                    />
-                    <span className={cn(
-                      "font-medium text-sm",
-                      isSelected ? "text-electric" : ""
-                    )}>{user.name}</span>
-                  </div>
-                  {isSelected && (
-                    <div className="flex items-center gap-2">
-                      <Label className="text-xs text-muted-foreground">Hours:</Label>
-                      <Input
-                        type="number"
-                        step="0.5"
-                        min="0"
-                        max="24"
-                        value={userHours[user.id] || ''}
-                        onChange={(e) => updateUserHours(user.id, e.target.value)}
-                        placeholder="8"
-                        className="w-20 h-8 text-sm"
-                        onClick={(e) => e.stopPropagation()}
-                      />
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-          {selectedUserIds.length > 0 && (
-            <p className="text-xs text-electric mt-2 font-mono">
-              {selectedUserIds.length} user{selectedUserIds.length > 1 ? 's' : ''} selected
-            </p>
-          )}
-        </div>
-      )}
-
       <div>
         <Label className="font-mono text-xs uppercase tracking-wider">Client</Label>
         <Select value={formData.client_id} onValueChange={handleClientChange}>
@@ -1014,33 +953,14 @@ function TimesheetForm({
         </div>
       </div>
 
-      <div className={cn("grid gap-4", selectedUserIds.length === 0 && showUserSelect ? "grid-cols-2" : "grid-cols-1")}>
-        <div>
-          <Label className="font-mono text-xs uppercase tracking-wider">Date *</Label>
-          <Input
-            type="date"
-            value={formData.date}
-            onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-            className="mt-2"
-          />
-        </div>
-
-        {/* Only show default hours field if no users are selected or not in multi-user mode */}
-        {(selectedUserIds.length === 0 || !showUserSelect) && (
-          <div>
-            <Label className="font-mono text-xs uppercase tracking-wider">Hours *</Label>
-            <Input
-              type="number"
-              step="0.5"
-              min="0"
-              max="24"
-              value={formData.hours}
-              onChange={(e) => setFormData({ ...formData, hours: e.target.value })}
-              placeholder="8"
-              className="mt-2"
-            />
-          </div>
-        )}
+      <div>
+        <Label className="font-mono text-xs uppercase tracking-wider">Date *</Label>
+        <Input
+          type="date"
+          value={formData.date}
+          onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+          className="mt-2"
+        />
       </div>
 
       <div>
