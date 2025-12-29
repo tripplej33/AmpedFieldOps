@@ -184,11 +184,25 @@ router.post('/', authenticate, uploadLimiter, projectUpload.array('images', 5), 
         }
       }
 
+      // Allow user_id to be specified in request body (for admin/manager creating timesheets for other users)
+      // Otherwise use the authenticated user's ID
+      const userId = req.body.user_id || req.user!.id;
+      
+      // Validate user_id if provided (only admins/managers can create timesheets for other users)
+      if (req.body.user_id && req.body.user_id !== req.user!.id) {
+        const canManageOthers = req.user!.role === 'admin' || 
+                                req.user!.role === 'manager' ||
+                                req.user!.permissions.includes('can_view_all_timesheets');
+        if (!canManageOthers) {
+          return res.status(403).json({ error: 'Not authorized to create timesheets for other users' });
+        }
+      }
+
       const result = await query(
         `INSERT INTO timesheets (user_id, project_id, client_id, date, hours, activity_type_id, cost_center_id, notes, image_urls, location, billing_status)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'unbilled')
          RETURNING *`,
-        [req.user!.id, project_id, finalClientId, timesheetDate, timesheetHours, timesheetActivityTypeId, timesheetCostCenterId, notes, imageUrls, location]
+        [userId, project_id, finalClientId, timesheetDate, timesheetHours, timesheetActivityTypeId, timesheetCostCenterId, notes, imageUrls, location]
       );
 
       // Update project actual_cost based on activity hourly rate

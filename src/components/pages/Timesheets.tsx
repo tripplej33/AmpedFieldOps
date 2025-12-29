@@ -952,51 +952,6 @@ function TimesheetForm({
         </Select>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div>
-          <Label className="font-mono text-xs uppercase tracking-wider">Activity Type *</Label>
-          <Select
-            value={formData.activity_type_id}
-            onValueChange={(value) => setFormData({ ...formData, activity_type_id: value })}
-          >
-            <SelectTrigger className="mt-2">
-              <SelectValue placeholder="Select activity" />
-            </SelectTrigger>
-            <SelectContent>
-              {activityTypes.filter(type => type.id).map((type) => (
-                <SelectItem key={type.id} value={type.id.toString()}>
-                  {type.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        <div>
-          <Label className="font-mono text-xs uppercase tracking-wider">Cost Center *</Label>
-          <Select
-            value={formData.cost_center_id}
-            onValueChange={(value) => setFormData({ ...formData, cost_center_id: value })}
-            disabled={!formData.project_id || costCenters.length === 0}
-          >
-            <SelectTrigger className="mt-2">
-              <SelectValue placeholder={costCenters.length === 0 ? "Select project first" : "Select cost center"} />
-            </SelectTrigger>
-            <SelectContent>
-              {costCenters.length === 0 ? (
-                <SelectItem value="__none__" disabled>No cost centers for this project</SelectItem>
-              ) : (
-                costCenters.filter(cc => cc.id).map((cc) => (
-                  <SelectItem key={cc.id} value={cc.id.toString()}>
-                    {cc.code} - {cc.name}
-                  </SelectItem>
-                ))
-              )}
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-
       <div>
         <Label className="font-mono text-xs uppercase tracking-wider">Date *</Label>
         <Input
@@ -1007,12 +962,161 @@ function TimesheetForm({
         />
       </div>
 
+      {/* Activity Entries Section */}
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <Label className="font-mono text-xs uppercase tracking-wider">Activity Types *</Label>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={addActivityEntry}
+            className="h-8"
+          >
+            <Plus className="w-3 h-3 mr-1" />
+            Add Activity
+          </Button>
+        </div>
+
+        {formData.activity_entries.length === 0 ? (
+          <div className="p-4 border border-dashed border-muted rounded-lg text-center text-muted-foreground text-sm">
+            No activities added. Click "Add Activity" to get started.
+          </div>
+        ) : (
+          formData.activity_entries.map((entry, index) => (
+            <div key={entry.id} className="p-4 border border-border rounded-lg bg-muted/20 space-y-4">
+              <div className="flex items-center justify-between">
+                <Label className="font-mono text-xs uppercase tracking-wider">
+                  Activity {index + 1}
+                </Label>
+                {formData.activity_entries.length > 1 && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => removeActivityEntry(entry.id)}
+                    className="h-7 text-destructive hover:text-destructive"
+                  >
+                    <X className="w-3 h-3" />
+                  </Button>
+                )}
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="font-mono text-xs uppercase tracking-wider">Activity Type *</Label>
+                  <Select
+                    value={entry.activity_type_id}
+                    onValueChange={(value) => updateActivityEntry(entry.id, { activity_type_id: value })}
+                  >
+                    <SelectTrigger className="mt-2">
+                      <SelectValue placeholder="Select activity" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {activityTypes.filter(type => type.id).map((type) => (
+                        <SelectItem key={type.id} value={type.id.toString()}>
+                          {type.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <Label className="font-mono text-xs uppercase tracking-wider">Cost Center *</Label>
+                  <Select
+                    value={entry.cost_center_id}
+                    onValueChange={(value) => updateActivityEntry(entry.id, { cost_center_id: value })}
+                    disabled={!formData.project_id || costCenters.length === 0}
+                  >
+                    <SelectTrigger className="mt-2">
+                      <SelectValue placeholder={costCenters.length === 0 ? "Select project first" : "Select cost center"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {costCenters.length === 0 ? (
+                        <SelectItem value="__none__" disabled>No cost centers for this project</SelectItem>
+                      ) : (
+                        costCenters.filter(cc => cc.id).map((cc) => (
+                          <SelectItem key={cc.id} value={cc.id.toString()}>
+                            {cc.code} - {cc.name}
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {/* Users and Hours Section */}
+              <div className="space-y-3 pt-2 border-t border-border">
+                <Label className="font-mono text-xs uppercase tracking-wider flex items-center gap-2">
+                  <Users className="w-3 h-3" />
+                  Assign Users & Hours
+                </Label>
+                
+                <div className="space-y-2">
+                  {users.map((user) => {
+                    const isSelected = entry.user_ids.includes(user.id);
+                    return (
+                      <div key={user.id} className="flex items-center gap-3 p-2 rounded border border-border bg-card">
+                        <Checkbox
+                          checked={isSelected}
+                          onCheckedChange={() => toggleUserForActivity(entry.id, user.id)}
+                        />
+                        <div className="flex-1">
+                          <Label className="text-sm font-medium cursor-pointer" onClick={() => toggleUserForActivity(entry.id, user.id)}>
+                            {user.name}
+                          </Label>
+                        </div>
+                        {isSelected && (
+                          <div className="flex items-center gap-2">
+                            <Input
+                              type="number"
+                              step="0.25"
+                              min="0.25"
+                              max="24"
+                              value={entry.user_hours[user.id] || ''}
+                              onChange={(e) => updateUserHoursForActivity(entry.id, user.id, e.target.value)}
+                              placeholder="Hours"
+                              className="w-20 h-8 text-sm"
+                            />
+                            <span className="text-xs text-muted-foreground">hrs</span>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {entry.user_ids.length === 0 && (
+                  <div className="p-2 text-xs text-muted-foreground text-center border border-dashed border-muted rounded">
+                    No users assigned. Check users above to assign hours.
+                  </div>
+                )}
+              </div>
+
+              {/* Activity-specific notes */}
+              <div>
+                <Label className="font-mono text-xs uppercase tracking-wider">Activity Notes</Label>
+                <Textarea
+                  value={entry.notes}
+                  onChange={(e) => updateActivityEntry(entry.id, { notes: e.target.value })}
+                  placeholder="Notes for this activity..."
+                  className="mt-2 min-h-[60px] text-sm"
+                />
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* General Notes */}
       <div>
-        <Label className="font-mono text-xs uppercase tracking-wider">Notes</Label>
+        <Label className="font-mono text-xs uppercase tracking-wider">General Notes</Label>
         <Textarea
           value={formData.notes}
           onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-          placeholder="Work description..."
+          placeholder="General work description..."
           className="mt-2 min-h-[80px]"
         />
       </div>
