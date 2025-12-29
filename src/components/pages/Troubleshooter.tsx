@@ -272,7 +272,7 @@ export default function Troubleshooter() {
                 <>
                   <Button
                     variant="outline"
-                    onClick={() => exportResults('json')}
+                    onClick={() => exportResults('json', false)}
                     className="flex items-center gap-2"
                   >
                     <Download className="h-4 w-4" />
@@ -280,12 +280,32 @@ export default function Troubleshooter() {
                   </Button>
                   <Button
                     variant="outline"
-                    onClick={() => exportResults('csv')}
+                    onClick={() => exportResults('csv', false)}
                     className="flex items-center gap-2"
                   >
                     <Download className="h-4 w-4" />
                     Export CSV
                   </Button>
+                  {results.failed > 0 && (
+                    <>
+                      <Button
+                        variant="outline"
+                        onClick={() => exportResults('json', true)}
+                        className="flex items-center gap-2 text-red-500 hover:text-red-600"
+                      >
+                        <Download className="h-4 w-4" />
+                        Export Errors (JSON)
+                      </Button>
+                      <Button
+                        variant="outline"
+                        onClick={() => exportResults('csv', true)}
+                        className="flex items-center gap-2 text-red-500 hover:text-red-600"
+                      >
+                        <Download className="h-4 w-4" />
+                        Export Errors (CSV)
+                      </Button>
+                    </>
+                  )}
                 </>
               )}
             </div>
