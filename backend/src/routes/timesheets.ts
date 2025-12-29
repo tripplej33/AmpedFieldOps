@@ -1,10 +1,18 @@
 import { Router, Response } from 'express';
 import { body, validationResult } from 'express-validator';
+import rateLimit from 'express-rate-limit';
 import { query } from '../db';
 import { authenticate, requirePermission, AuthRequest } from '../middleware/auth';
 import { upload, projectUpload } from '../middleware/upload';
 
 const router = Router();
+
+// Rate limiting for uploads
+const uploadLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 20, // Limit to 20 timesheet creations per 15 minutes
+  message: 'Too many timesheet creation requests, please try again later.',
+});
 
 // Get all timesheets
 router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
