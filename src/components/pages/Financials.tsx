@@ -209,6 +209,56 @@ export default function Financials() {
     }
   };
 
+  const handleCreateInvoiceFromTimesheets = async () => {
+    if (!timesheetInvoiceForm.client_id) {
+      toast.error('Please select a client');
+      return;
+    }
+
+    if (timesheetInvoiceForm.period === 'custom' && (!timesheetInvoiceForm.date_from || !timesheetInvoiceForm.date_to)) {
+      toast.error('Please select date range');
+      return;
+    }
+
+    setIsCreatingFromTimesheets(true);
+    try {
+      const result = await api.createInvoiceFromTimesheets({
+        client_id: timesheetInvoiceForm.client_id,
+        project_id: timesheetInvoiceForm.project_id || undefined,
+        period: timesheetInvoiceForm.period === 'custom' ? undefined : timesheetInvoiceForm.period,
+        date_from: timesheetInvoiceForm.period === 'custom' ? timesheetInvoiceForm.date_from : undefined,
+        date_to: timesheetInvoiceForm.period === 'custom' ? timesheetInvoiceForm.date_to : undefined,
+        due_date: timesheetInvoiceForm.due_date
+      });
+      
+      toast.success(`Invoice created from ${result.timesheet_count} timesheet${result.timesheet_count !== 1 ? 's' : ''}`);
+      setIsCreateFromTimesheetsModalOpen(false);
+      setTimesheetInvoiceForm({
+        client_id: '',
+        project_id: '',
+        period: 'week',
+        date_from: '',
+        date_to: '',
+        due_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]
+      });
+      loadData();
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to create invoice from timesheets');
+    } finally {
+      setIsCreatingFromTimesheets(false);
+    }
+  };
+
+  const handleMarkAsPaid = async (invoiceId: string) => {
+    try {
+      await api.markInvoiceAsPaid(invoiceId);
+      toast.success('Invoice marked as paid. Timesheets updated.');
+      loadData();
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to mark invoice as paid');
+    }
+  };
+
   const getStatusBadge = (status: string) => {
     const statusConfig: Record<string, { color: string; icon: React.ReactNode }> = {
       PAID: { color: 'bg-voltage/20 text-voltage border-voltage/30', icon: <CheckCircle className="w-3 h-3" /> },
