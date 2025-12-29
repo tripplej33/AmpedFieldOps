@@ -1,5 +1,7 @@
 import { query, getClient } from './index';
 import dotenv from 'dotenv';
+import fs from 'fs';
+import path from 'path';
 
 dotenv.config();
 
@@ -127,6 +129,8 @@ CREATE TABLE IF NOT EXISTS timesheets (
   location VARCHAR(255),
   synced BOOLEAN DEFAULT false,
   xero_timesheet_id VARCHAR(100),
+  billing_status VARCHAR(20) DEFAULT 'unbilled' CHECK (billing_status IN ('unbilled', 'billed', 'paid')),
+  invoice_id UUID REFERENCES xero_invoices(id) ON DELETE SET NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -223,6 +227,8 @@ CREATE TABLE IF NOT EXISTS permissions (
 CREATE INDEX IF NOT EXISTS idx_timesheets_user_id ON timesheets(user_id);
 CREATE INDEX IF NOT EXISTS idx_timesheets_project_id ON timesheets(project_id);
 CREATE INDEX IF NOT EXISTS idx_timesheets_date ON timesheets(date);
+CREATE INDEX IF NOT EXISTS idx_timesheets_billing_status ON timesheets(billing_status);
+CREATE INDEX IF NOT EXISTS idx_timesheets_invoice_id ON timesheets(invoice_id);
 CREATE INDEX IF NOT EXISTS idx_projects_client_id ON projects(client_id);
 CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status);
 CREATE INDEX IF NOT EXISTS idx_clients_name ON clients(name);
@@ -243,7 +249,25 @@ async function runMigration() {
     
     try {
       await client.query('BEGIN');
+      
+      // Run main migrations
       await client.query(migrations);
+      
+      // Run additional migration files from migrations directory
+      const migrationsDir = path.join(__dirname, 'migrations');
+      if (fs.existsSync(migrationsDir)) {
+        const migrationFiles = fs.readdirSync(migrationsDir)
+          .filter(file => file.endsWith('.sql'))
+          .sort(); // Run in alphabetical order
+        
+        for (const file of migrationFiles) {
+          const filePath = path.join(migrationsDir, file);
+          const sql = fs.readFileSync(filePath, 'utf8');
+          console.log(`  Running migration: ${file}`);
+          await client.query(sql);
+        }
+      }
+      
       await client.query('COMMIT');
       console.log('✅ Migrations completed successfully!');
     } catch (err) {

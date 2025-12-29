@@ -1338,6 +1338,133 @@ router.post('/invoices', authenticate, requirePermission('can_sync_xero'), async
   }
 });
 
+// Create invoice from timesheets
+router.post('/invoices/from-timesheets', authenticate, requirePermission('can_sync_xero'), async (req: AuthRequest, res: Response) => {
+  try {
+    const { client_id, project_id, date_from, date_to, period, due_date } = req.body;
+
+    if (!client_id) {
+      return res.status(400).json({ error: 'Client is required' });
+    }
+
+    // Build query for unbilled timesheets
+    let sql = `
+      SELECT t.*, 
+        at.name as activity_type_name,
+        at.hourly_rate,
+        (t.hours * COALESCE(at.hourly_rate, 0)) as line_total
+      FROM timesheets t
+      LEFT JOIN activity_types at ON t.activity_type_id = at.id
+      WHERE t.client_id = $1 
+        AND COALESCE(t.billing_status, 'unbilled') = 'unbilled'
+    `;
+    const params: any[] = [client_id];
+    let paramCount = 2;
+
+    if (project_id) {
+      sql += ` AND t.project_id = $${paramCount++}`;
+      params.push(project_id);
+    }
+
+    if (date_from) {
+      sql += ` AND t.date >= $${paramCount++}`;
+      params.push(date_from);
+    }
+
+    if (date_to) {
+      sql += ` AND t.date <= $${paramCount++}`;
+      params.push(date_to);
+    } else if (period === 'week') {
+      // Last 7 days
+      sql += ` AND t.date >= CURRENT_DATE - INTERVAL '7 days'`;
+    } else if (period === 'month') {
+      // Current month
+      sql += ` AND t.date >= DATE_TRUNC('month', CURRENT_DATE)`;
+    }
+
+    sql += ' ORDER BY t.date, t.created_at';
+
+    const timesheetsResult = await query(sql, params);
+
+    if (timesheetsResult.rows.length === 0) {
+      return res.status(400).json({ error: 'No unbilled timesheets found for the selected criteria' });
+    }
+
+    // Group by activity type and create line items
+    const lineItemsMap = new Map<string, { hours: number; rate: number; description: string }>();
+    
+    for (const ts of timesheetsResult.rows) {
+      const key = ts.activity_type_id || 'other';
+      const rate = parseFloat(ts.hourly_rate || '0');
+      const hours = parseFloat(ts.hours);
+      
+      if (!lineItemsMap.has(key)) {
+        lineItemsMap.set(key, {
+          hours: 0,
+          rate,
+          description: ts.activity_type_name || 'Other'
+        });
+      }
+      
+      const item = lineItemsMap.get(key)!;
+      item.hours += hours;
+    }
+
+    // Convert to line items array
+    const lineItems = Array.from(lineItemsMap.values()).map(item => ({
+      description: `${item.description} - ${item.hours.toFixed(2)} hours`,
+      quantity: item.hours,
+      unit_price: item.rate,
+      amount: item.hours * item.rate
+    }));
+
+    const total = lineItems.reduce((sum, item) => sum + item.amount, 0);
+
+    // Generate invoice number
+    const countResult = await query('SELECT COUNT(*) as count FROM xero_invoices');
+    const invoiceNumber = `INV-${String(parseInt(countResult.rows[0].count) + 1).padStart(5, '0')}`;
+
+    // Create invoice
+    const invoiceResult = await query(
+      `INSERT INTO xero_invoices (xero_invoice_id, invoice_number, client_id, project_id, status, line_items, total, amount_due, due_date, issue_date, synced_at)
+       VALUES ($1, $2, $3, $4, 'DRAFT', $5, $6, $6, $7, CURRENT_DATE, CURRENT_TIMESTAMP)
+       RETURNING *`,
+      [invoiceNumber, invoiceNumber, client_id, project_id || null, JSON.stringify(lineItems), total, due_date || null]
+    );
+
+    const invoiceId = invoiceResult.rows[0].id;
+
+    // Update timesheets billing status
+    const timesheetIds = timesheetsResult.rows.map(ts => ts.id);
+    await query(
+      `UPDATE timesheets 
+       SET billing_status = 'billed', invoice_id = $1, updated_at = CURRENT_TIMESTAMP 
+       WHERE id = ANY($2)`,
+      [invoiceId, timesheetIds]
+    );
+
+    // Log activity
+    await query(
+      `INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) 
+       VALUES ($1, $2, $3, $4, $5)`,
+      [req.user!.id, 'create', 'invoice', invoiceId, JSON.stringify({ 
+        invoice_number: invoiceNumber, 
+        total, 
+        timesheets_count: timesheetIds.length,
+        from_timesheets: true
+      })]
+    );
+
+    res.status(201).json({
+      ...invoiceResult.rows[0],
+      timesheets_count: timesheetIds.length
+    });
+  } catch (error) {
+    console.error('Failed to create invoice from timesheets:', error);
+    res.status(500).json({ error: 'Failed to create invoice from timesheets' });
+  }
+});
+
 // Get quotes from Xero (cached)
 router.get('/quotes', authenticate, requirePermission('can_view_financials'), async (req: AuthRequest, res: Response) => {
   try {
