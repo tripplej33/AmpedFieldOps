@@ -327,6 +327,9 @@ class ApiClient {
       formData.append('project_id', data.project_id);
       formData.append('activity_type_id', data.activity_type_id);
       formData.append('cost_center_id', data.cost_center_id);
+      if (data.user_id) {
+        formData.append('user_id', data.user_id);
+      }
       formData.append('date', data.date);
       formData.append('hours', data.hours.toString());
       if (data.notes) formData.append('notes', data.notes);
