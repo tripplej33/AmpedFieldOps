@@ -60,6 +60,7 @@ app.use('/api/setup', setupRoutes);
 app.use('/api/xero', xeroRoutes);
 app.use('/api/settings', settingsRoutes);
 app.use('/api/permissions', permissionsRoutes);
+app.use('/api/role-permissions', rolePermissionsRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/health', healthRoutes);
 

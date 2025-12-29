@@ -35,12 +35,11 @@ export default function Settings() {
   const [isSendingTestEmail, setIsSendingTestEmail] = useState(false);
   const [testEmailAddress, setTestEmailAddress] = useState('');
   
-  // Permissions management
-  const [permissions, setPermissions] = useState<any[]>([]);
+  // Role-based permissions management
+  const [rolePermissions, setRolePermissions] = useState<Record<string, Record<string, boolean>>>({});
+  const [allPermissions, setAllPermissions] = useState<Array<{ key: string; label: string; description: string }>>([]);
   const [isLoadingPermissions, setIsLoadingPermissions] = useState(false);
-  const [showCreatePermissionModal, setShowCreatePermissionModal] = useState(false);
-  const [editingPermission, setEditingPermission] = useState<any | null>(null);
-  const [newPermission, setNewPermission] = useState({ key: '', label: '', description: '' });
+  const [isSavingRolePermissions, setIsSavingRolePermissions] = useState(false);
   
   // Local state for Xero credentials (not auto-saving)
   const [xeroCredentials, setXeroCredentials] = useState({
