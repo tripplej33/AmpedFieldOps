@@ -1005,12 +1005,12 @@ export default function Settings() {
                 />
               </div>
               
-              {showSaveButton && (
-                <>
+              <div className="space-y-3 pt-2">
+                {showSaveButton && (
                   <Button
                     onClick={handleSaveXeroCredentials}
                     disabled={isSavingCredentials || !xeroCredentials.clientId || !xeroCredentials.clientSecret}
-                    className="w-full bg-electric text-background hover:bg-electric/90"
+                    className="w-full bg-electric text-background hover:bg-electric/90 h-10"
                   >
                     {isSavingCredentials ? (
                       <>
@@ -1024,44 +1024,57 @@ export default function Settings() {
                       </>
                     )}
                   </Button>
-                  
-                  {credentialsChanged && (
-                    <p className="text-xs text-warning text-center">
-                      ⚠️ Credentials have been modified. Click "Save Changes" to update.
-                    </p>
-                  )}
-                </>
-              )}
-              
-              {!showSaveButton && !credentialsChanged && (
-                <p className="text-xs text-muted-foreground text-center">
-                  ✓ Credentials saved. Edit credentials above to make changes.
-                </p>
-              )}
-              
-              {(!xeroCredentials.clientId || !xeroCredentials.clientSecret) && (
-                <p className="text-xs text-muted-foreground text-center">
-                  Enter your credentials above and click "Save Credentials" before connecting
-                </p>
-              )}
+                )}
+                
+                {credentialsChanged && showSaveButton && (
+                  <p className="text-xs text-warning text-center py-1">
+                    ⚠️ Credentials have been modified. Click "Save Changes" to update.
+                  </p>
+                )}
+                
+                {!showSaveButton && !credentialsChanged && (
+                  <p className="text-xs text-muted-foreground text-center py-1">
+                    ✓ Credentials saved. Edit credentials above to make changes.
+                  </p>
+                )}
+                
+                {(!xeroCredentials.clientId || !xeroCredentials.clientSecret) && (
+                  <p className="text-xs text-muted-foreground text-center py-1">
+                    Enter your credentials above and click "Save Credentials" before connecting
+                  </p>
+                )}
 
-              <p className="text-xs text-muted-foreground">
-                Get your credentials from the <a href="https://developer.xero.com/myapps" target="_blank" rel="noopener noreferrer" className="text-electric hover:underline">Xero Developer Portal</a>
-              </p>
+                <p className="text-xs text-muted-foreground text-center pt-2 border-t border-border">
+                  Get your credentials from the <a href="https://developer.xero.com/myapps" target="_blank" rel="noopener noreferrer" className="text-electric hover:underline">Xero Developer Portal</a>
+                </p>
+              </div>
             </div>
 
-            <div className="text-center py-6">
-              <Link2 className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
-              <p className="text-sm text-muted-foreground mb-4">
-                Connect your Xero account to sync invoices, quotes, and contacts
-              </p>
-              <Button 
-                onClick={handleXeroConnect}
-                className="bg-electric text-background hover:bg-electric/90"
-                disabled={!settings.xero_client_id || !settings.xero_client_secret}
-              >
-                Connect to Xero
-              </Button>
+            <div className="text-center py-8 px-4">
+              <div className="flex flex-col items-center space-y-4">
+                <Link2 className="w-12 h-12 text-muted-foreground" />
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-foreground">
+                    Connect your Xero account
+                  </p>
+                  <p className="text-xs text-muted-foreground max-w-md">
+                    Sync invoices, quotes, and contacts with your Xero accounting system
+                  </p>
+                </div>
+                <Button 
+                  onClick={handleXeroConnect}
+                  className="bg-electric text-background hover:bg-electric/90 h-10 px-6 min-w-[180px]"
+                  disabled={!settings.xero_client_id || !settings.xero_client_secret}
+                >
+                  <Link2 className="w-4 h-4 mr-2" />
+                  Connect to Xero
+                </Button>
+                {(!settings.xero_client_id || !settings.xero_client_secret) && (
+                  <p className="text-xs text-warning">
+                    Please save your credentials above first
+                  </p>
+                )}
+              </div>
             </div>
           </div>
             )}
