@@ -231,7 +231,8 @@ export default function Financials() {
         due_date: timesheetInvoiceForm.due_date
       });
       
-      toast.success(`Invoice created from ${result.timesheet_count} timesheet${result.timesheet_count !== 1 ? 's' : ''}`);
+      const timesheetCount = (result as any)?.timesheet_count || (result as any)?.timesheet_ids?.length || 0;
+      toast.success(`Invoice created from ${timesheetCount} timesheet${timesheetCount !== 1 ? 's' : ''}`);
       setIsCreateFromTimesheetsModalOpen(false);
       setTimesheetInvoiceForm({
         client_id: '',
@@ -809,14 +810,14 @@ export default function Financials() {
             {/* Period Selection */}
             <div>
               <Label className="font-mono text-xs uppercase tracking-wider">Time Period *</Label>
-              <Select
-                value={timesheetInvoiceForm.period}
-                onValueChange={(value: 'week' | 'month' | 'custom') => setTimesheetInvoiceForm(prev => ({ ...prev, period: value }))}
-                className="mt-2"
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
+              <div className="mt-2">
+                <Select
+                  value={timesheetInvoiceForm.period}
+                  onValueChange={(value: 'week' | 'month' | 'custom') => setTimesheetInvoiceForm(prev => ({ ...prev, period: value }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="week">Last 7 Days</SelectItem>
                   <SelectItem value="month">Last 30 Days</SelectItem>

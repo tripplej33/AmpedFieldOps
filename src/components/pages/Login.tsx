@@ -47,8 +47,18 @@ export default function Login() {
   useEffect(() => {
     const loadHealthStatus = async () => {
       try {
-        const status = await api.getHealthStatus();
-        setHealthStatus(status);
+        const status = await api.getHealthStatus() as any;
+        setHealthStatus({
+          database: {
+            healthy: status.database === 'connected',
+            status: status.database || 'unknown'
+          },
+          xero: {
+            configured: status.xero?.configured || false,
+            connected: status.xero?.connected || false,
+            status: status.xero?.connected ? 'connected' : status.xero?.configured ? 'not_connected' : 'not_configured'
+          }
+        });
       } catch (error) {
         // Health check failed, show as unhealthy
         setHealthStatus({

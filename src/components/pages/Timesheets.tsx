@@ -34,6 +34,12 @@ export default function Timesheets() {
   const [viewDate, setViewDate] = useState(new Date());
   const [selectedUserId, setSelectedUserId] = useState<string>('all');
 
+  // Image viewer state
+  const [imageViewerOpen, setImageViewerOpen] = useState(false);
+  const [viewingImages, setViewingImages] = useState<string[]>([]);
+  const [viewingImageIndex, setViewingImageIndex] = useState(0);
+  const [viewingEntryId, setViewingEntryId] = useState<string | null>(null);
+
   // Form data
   const [clients, setClients] = useState<Client[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
@@ -129,7 +135,7 @@ export default function Timesheets() {
   };
 
   const handleClientChange = async (clientId: string) => {
-    setFormData({ ...formData, client_id: clientId, project_id: '', cost_center_id: '' });
+    setFormData({ ...formData, client_id: clientId, project_id: '' });
     setCostCenters([]); // Reset cost centers when client changes
     if (clientId) {
       try {
@@ -144,7 +150,7 @@ export default function Timesheets() {
   };
 
   const handleProjectChange = async (projectId: string) => {
-    setFormData({ ...formData, project_id: projectId, cost_center_id: '' });
+    setFormData({ ...formData, project_id: projectId });
     if (projectId) {
       try {
         const costCenterData = await api.getCostCenters(true, projectId);
@@ -161,15 +167,11 @@ export default function Timesheets() {
     setFormData({
       client_id: '',
       project_id: '',
-      activity_type_id: '',
-      cost_center_id: '',
       date: new Date().toISOString().split('T')[0],
-      hours: '',
       notes: '',
+      activity_entries: [],
     });
     setEditingEntry(null);
-    setSelectedUserIds([]);
-    setUserHours({});
     setImageFiles([]);
     setImagePreviews([]);
   };
