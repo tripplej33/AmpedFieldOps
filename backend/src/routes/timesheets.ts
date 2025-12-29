@@ -196,7 +196,7 @@ router.put('/:id', authenticate,
 
     try {
       // Check ownership or permission
-      const existing = await query('SELECT user_id, hours, project_id, activity_type_id FROM timesheets WHERE id = $1', [req.params.id]);
+      const existing = await query('SELECT user_id, hours, project_id, activity_type_id, COALESCE(billing_status, \'unbilled\') as billing_status FROM timesheets WHERE id = $1', [req.params.id]);
       if (existing.rows.length === 0) {
         return res.status(404).json({ error: 'Timesheet not found' });
       }
