@@ -222,20 +222,32 @@ function sendPopupOrRedirect(res: Response, frontendUrl: string, type: 'success'
       </head>
       <body>
         <script>
-          // Try to send message to parent window (popup mode)
-          if (window.opener) {
-            window.opener.postMessage({
-              type: type === 'success' ? 'XERO_OAUTH_SUCCESS' : 'XERO_OAUTH_ERROR',
-              message: ${JSON.stringify(message)}
-            }, window.location.origin);
-            window.close();
-          } else {
-            // Fallback: redirect if not in popup
-            ${type === 'success' 
-              ? `window.location.href = '${frontendUrl}/settings?xero_connected=true';`
-              : `window.location.href = '${frontendUrl}/settings${errorParams || ''}';`
+          (function() {
+            // Try to send message to parent window (popup mode)
+            if (window.opener && !window.opener.closed) {
+              try {
+                window.opener.postMessage({
+                  type: type === 'success' ? 'XERO_OAUTH_SUCCESS' : 'XERO_OAUTH_ERROR',
+                  message: ${JSON.stringify(message)},
+                  errorParams: ${JSON.stringify(errorParams || '')}
+                }, window.location.origin);
+                // Close immediately after sending message
+                setTimeout(function() {
+                  window.close();
+                }, 100);
+                return; // Exit early, don't redirect
+              } catch (e) {
+                console.error('Failed to postMessage:', e);
+              }
             }
-          }
+            // Fallback: redirect if not in popup (only if opener doesn't exist or is closed)
+            setTimeout(function() {
+              ${type === 'success' 
+                ? `window.location.href = '${frontendUrl}/settings?xero_connected=true';`
+                : `window.location.href = '${frontendUrl}/settings${errorParams || ''}';`
+              }
+            }, 500);
+          })();
         </script>
         <p>${type === 'success' ? 'Connection successful' : 'Connection failed'}. This window should close automatically.</p>
         <p><a href="${frontendUrl}/settings">Click here if this window doesn't close</a></p>

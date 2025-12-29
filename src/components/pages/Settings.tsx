@@ -607,8 +607,8 @@ export default function Settings() {
           </TabsList>
 
           <TabsContent value="general" className="space-y-6">
-            {/* Company Branding */}
-            <Card className="p-6 bg-card border-border">
+        {/* Company Branding */}
+        <Card className="p-6 bg-card border-border">
           <h3 className="text-lg font-bold mb-4">Company Branding</h3>
           
           <div className="space-y-4">
@@ -907,9 +907,9 @@ export default function Settings() {
         </Card>
             )}
 
-            {/* Xero Integration */}
-            {hasPermission('can_sync_xero') && (
-            <Card className="p-6 bg-card border-border">
+        {/* Xero Integration */}
+        {hasPermission('can_sync_xero') && (
+        <Card className="p-6 bg-card border-border">
           <div className="flex items-start justify-between mb-6">
             <div>
               <h3 className="text-lg font-bold mb-1">Xero Integration</h3>
@@ -1033,20 +1033,6 @@ export default function Settings() {
               <p className="text-xs text-muted-foreground">
                 Get your credentials from the <a href="https://developer.xero.com/myapps" target="_blank" rel="noopener noreferrer" className="text-electric hover:underline">Xero Developer Portal</a>
               </p>
-              <div className="bg-warning/10 border border-warning/30 rounded-lg p-3 mt-3">
-                <Label className="font-mono text-xs uppercase tracking-wider text-warning flex items-center gap-2">
-                  <span>⚠️</span> Important: Redirect URI
-                </Label>
-                <p className="text-xs text-muted-foreground mt-2 mb-2">
-                  In your Xero app settings, add this exact redirect URI:
-                </p>
-                <code className="text-xs bg-background px-2 py-1 rounded border border-border block font-mono break-all">
-                  {window.location.origin}/api/xero/callback
-                </code>
-                <p className="text-xs text-muted-foreground mt-2">
-                  Go to <strong>Configuration → OAuth 2.0 redirect URIs</strong> in your Xero app
-                </p>
-              </div>
             </div>
 
             <Separator />
@@ -1219,20 +1205,6 @@ export default function Settings() {
               <p className="text-xs text-muted-foreground">
                 Get your credentials from the <a href="https://developer.xero.com/myapps" target="_blank" rel="noopener noreferrer" className="text-electric hover:underline">Xero Developer Portal</a>
               </p>
-              <div className="bg-warning/10 border border-warning/30 rounded-lg p-3 mt-3">
-                <Label className="font-mono text-xs uppercase tracking-wider text-warning flex items-center gap-2">
-                  <span>⚠️</span> Important: Redirect URI
-                </Label>
-                <p className="text-xs text-muted-foreground mt-2 mb-2">
-                  In your Xero app settings, add this exact redirect URI:
-                </p>
-                <code className="text-xs bg-background px-2 py-1 rounded border border-border block font-mono break-all">
-                  {window.location.origin}/api/xero/callback
-                </code>
-                <p className="text-xs text-muted-foreground mt-2">
-                  Go to <strong>Configuration → OAuth 2.0 redirect URIs</strong> in your Xero app
-                </p>
-              </div>
             </div>
 
             <div className="text-center py-6">
@@ -1247,27 +1219,22 @@ export default function Settings() {
               >
                 Connect to Xero
               </Button>
-              {(!settings.xero_client_id || !settings.xero_client_secret) && (
-                <p className="text-xs text-warning mt-2">
-                  Please save your Xero credentials above before connecting
-                </p>
-              )}
             </div>
           </div>
-            )}
-          </Card>
           )}
+        </Card>
+        )}
           </TabsContent>
 
           {user?.role === 'admin' && (
           <TabsContent value="permissions" className="space-y-6">
             {/* Permissions Management */}
-            <Card className="p-6 bg-card border-border">
+        <Card className="p-6 bg-card border-border">
           <div className="flex items-start justify-between mb-6">
-            <div>
+              <div>
               <h3 className="text-lg font-bold mb-1">Permissions Management</h3>
               <p className="text-sm text-muted-foreground">Manage system and custom permissions</p>
-            </div>
+              </div>
             <Button
               onClick={() => setShowCreatePermissionModal(true)}
               className="bg-electric text-background hover:bg-electric/90"
@@ -1275,7 +1242,7 @@ export default function Settings() {
               <Plus className="w-4 h-4 mr-2" />
               Create Permission
             </Button>
-          </div>
+            </div>
 
           {isLoadingPermissions ? (
             <div className="flex items-center justify-center py-8">
@@ -1307,14 +1274,14 @@ export default function Settings() {
                       </div>
                       {editingPermission?.id === perm.id ? (
                         <div className="space-y-3 mt-3">
-                          <div>
+              <div>
                             <Label className="font-mono text-xs uppercase tracking-wider">Label</Label>
                             <Input
                               value={editingPermission.label}
                               onChange={(e) => setEditingPermission({ ...editingPermission, label: e.target.value })}
                               className="mt-1"
                             />
-                          </div>
+              </div>
                           <div>
                             <Label className="font-mono text-xs uppercase tracking-wider">Description</Label>
                             <Input
@@ -1322,15 +1289,15 @@ export default function Settings() {
                               onChange={(e) => setEditingPermission({ ...editingPermission, description: e.target.value })}
                               className="mt-1"
                             />
-                          </div>
+            </div>
                           {!perm.is_system && (
-                            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between">
                               <Label className="font-mono text-xs uppercase tracking-wider">Active</Label>
                               <Switch
                                 checked={editingPermission.is_active}
                                 onCheckedChange={(checked) => setEditingPermission({ ...editingPermission, is_active: checked })}
                               />
-                            </div>
+              </div>
                           )}
                           <div className="flex gap-2">
                             <Button
@@ -1351,15 +1318,15 @@ export default function Settings() {
                             >
                               Cancel
                             </Button>
-                          </div>
-                        </div>
+            </div>
+          </div>
                       ) : (
                         <div>
                           <p className="font-medium">{perm.label}</p>
                           {perm.description && (
                             <p className="text-sm text-muted-foreground mt-1">{perm.description}</p>
                           )}
-                        </div>
+          </div>
                       )}
                     </div>
                     {editingPermission?.id !== perm.id && (
@@ -1381,17 +1348,17 @@ export default function Settings() {
                             <Trash2 className="w-4 h-4" />
                           </Button>
                         )}
-                      </div>
-                    )}
                   </div>
+                    )}
                 </div>
-              ))}
+              </div>
+            ))}
               {permissions.length === 0 && (
                 <p className="text-center text-muted-foreground py-8">No permissions found</p>
-              )}
-            </div>
             )}
-          </Card>
+          </div>
+            )}
+        </Card>
           </TabsContent>
           )}
         </Tabs>
@@ -1404,7 +1371,7 @@ export default function Settings() {
             <DialogTitle>Create Custom Permission</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
-            <div>
+              <div>
               <Label className="font-mono text-xs uppercase">Permission Key *</Label>
               <Input
                 value={newPermission.key}
@@ -1414,7 +1381,7 @@ export default function Settings() {
               />
               <p className="text-xs text-muted-foreground mt-1">Lowercase letters and underscores only</p>
             </div>
-            <div>
+              <div>
               <Label className="font-mono text-xs uppercase">Label *</Label>
               <Input
                 value={newPermission.label}
@@ -1423,7 +1390,7 @@ export default function Settings() {
                 className="mt-2"
               />
             </div>
-            <div>
+              <div>
               <Label className="font-mono text-xs uppercase">Description</Label>
               <Input
                 value={newPermission.description}
@@ -1448,8 +1415,8 @@ export default function Settings() {
               >
                 Cancel
               </Button>
-            </div>
           </div>
+            </div>
         </DialogContent>
       </Dialog>
     </>
