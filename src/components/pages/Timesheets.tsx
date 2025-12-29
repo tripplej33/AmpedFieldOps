@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import Header from '@/components/layout/Header';
 import { Card } from '@/components/ui/card';
+import { Separator } from '@/components/ui/separator';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
@@ -38,22 +39,29 @@ export default function Timesheets() {
   const [activityTypes, setActivityTypes] = useState<ActivityType[]>([]);
   const [costCenters, setCostCenters] = useState<CostCenter[]>([]);
   const [users, setUsers] = useState<User[]>([]);
-  const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
-  const [userHours, setUserHours] = useState<Record<string, string>>({}); // Individual hours per user
   const [imageFiles, setImageFiles] = useState<File[]>([]);
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
 
+  // New form structure: multiple activity types with users and hours
+  interface ActivityTypeEntry {
+    id: string; // temporary ID for the entry
+    activity_type_id: string;
+    cost_center_id: string;
+    hours: string;
+    user_ids: string[]; // Multiple users can be assigned to one activity type
+    user_hours: Record<string, string>; // Hours per user for this activity type
+    notes: string;
+  }
+
   const [formData, setFormData] = useState({
     client_id: '',
     project_id: '',
-    activity_type_id: '',
-    cost_center_id: '',
     date: new Date().toISOString().split('T')[0],
-    hours: '',
-    notes: '',
+    notes: '', // General notes
+    activity_entries: [] as ActivityTypeEntry[],
   });
 
   useEffect(() => {
@@ -240,58 +248,85 @@ export default function Timesheets() {
 
   const handleCreate = async () => {
     // Validate base required fields
-    if (!formData.project_id || !formData.activity_type_id || !formData.cost_center_id) {
-      toast.error('Please fill in all required fields');
+    if (!formData.project_id) {
+      toast.error('Please select a project');
       return;
     }
 
-    // If users are selected, validate each has hours; otherwise validate default hours
-    if (selectedUserIds.length > 0) {
-      const missingHours = selectedUserIds.filter(id => !userHours[id] || parseFloat(userHours[id]) <= 0);
-      if (missingHours.length > 0) {
-        toast.error('Please enter hours for all selected users');
+    if (formData.activity_entries.length === 0) {
+      toast.error('Please add at least one activity type');
+      return;
+    }
+
+    // Validate each activity entry
+    for (const entry of formData.activity_entries) {
+      if (!entry.activity_type_id) {
+        toast.error('Please select an activity type for all entries');
         return;
       }
-    } else if (!formData.hours || parseFloat(formData.hours) <= 0) {
-      toast.error('Please enter hours');
-      return;
+      if (!entry.cost_center_id) {
+        toast.error('Please select a cost center for all entries');
+        return;
+      }
+
+      // If users are assigned, validate hours for each user
+      if (entry.user_ids.length > 0) {
+        const missingHours = entry.user_ids.filter(
+          userId => !entry.user_hours[userId] || parseFloat(entry.user_hours[userId]) <= 0
+        );
+        if (missingHours.length > 0) {
+          toast.error('Please enter hours for all assigned users');
+          return;
+        }
+      } else if (!entry.hours || parseFloat(entry.hours) <= 0) {
+        toast.error('Please enter hours for all activity types');
+        return;
+      }
     }
 
     setIsSubmitting(true);
     try {
-      // Create entry for each selected user with their individual hours, or current user if none selected
-      if (selectedUserIds.length > 0) {
-        for (const userId of selectedUserIds) {
+      let createdCount = 0;
+
+      // Create timesheet entries for each activity type
+      for (const entry of formData.activity_entries) {
+        // If users are assigned, create an entry for each user
+        if (entry.user_ids.length > 0) {
+          for (const userId of entry.user_ids) {
+            const hours = parseFloat(entry.user_hours[userId]);
+            await api.createTimesheet({
+              project_id: formData.project_id,
+              activity_type_id: entry.activity_type_id,
+              cost_center_id: entry.cost_center_id,
+              date: formData.date,
+              hours: hours,
+              notes: entry.notes || formData.notes,
+              user_id: userId,
+              image_files: imageFiles,
+            });
+            createdCount++;
+          }
+        } else {
+          // No users assigned, create entry for current user
           await api.createTimesheet({
             project_id: formData.project_id,
-            activity_type_id: formData.activity_type_id,
-            cost_center_id: formData.cost_center_id,
+            activity_type_id: entry.activity_type_id,
+            cost_center_id: entry.cost_center_id,
             date: formData.date,
-            hours: parseFloat(userHours[userId]),
-            notes: formData.notes,
-            user_id: userId,
+            hours: parseFloat(entry.hours),
+            notes: entry.notes || formData.notes,
             image_files: imageFiles,
           });
+          createdCount++;
         }
-        toast.success(`Timesheet entries created for ${selectedUserIds.length} users`);
-      } else {
-        await api.createTimesheet({
-          project_id: formData.project_id,
-          activity_type_id: formData.activity_type_id,
-          cost_center_id: formData.cost_center_id,
-          date: formData.date,
-          hours: parseFloat(formData.hours),
-          notes: formData.notes,
-          image_files: imageFiles,
-        });
-        toast.success('Timesheet entry created');
       }
-      
+
+      toast.success(`Created ${createdCount} timesheet entr${createdCount !== 1 ? 'ies' : 'y'}`);
       setCreateModalOpen(false);
       resetForm();
       loadTimesheets();
     } catch (error: any) {
-      toast.error(error.message || 'Failed to create entry');
+      toast.error(error.message || 'Failed to create entries');
     } finally {
       setIsSubmitting(false);
     }
@@ -670,10 +705,6 @@ export default function Timesheets() {
             activityTypes={activityTypes}
             costCenters={costCenters}
             users={users}
-            selectedUserIds={selectedUserIds}
-            toggleUserSelection={toggleUserSelection}
-            userHours={userHours}
-            updateUserHours={updateUserHours}
             imagePreviews={imagePreviews}
             removeImage={removeImage}
             fileInputRef={fileInputRef}
@@ -685,7 +716,11 @@ export default function Timesheets() {
             onCancel={() => { setCreateModalOpen(false); resetForm(); }}
             isSubmitting={isSubmitting}
             submitLabel="Create Entry"
-            showUserSelect={true}
+            addActivityEntry={addActivityEntry}
+            removeActivityEntry={removeActivityEntry}
+            updateActivityEntry={updateActivityEntry}
+            toggleUserForActivity={toggleUserForActivity}
+            updateUserHoursForActivity={updateUserHoursForActivity}
           />
         </DialogContent>
       </Dialog>
@@ -706,10 +741,6 @@ export default function Timesheets() {
             activityTypes={activityTypes}
             costCenters={costCenters}
             users={users}
-            selectedUserIds={selectedUserIds}
-            toggleUserSelection={toggleUserSelection}
-            userHours={userHours}
-            updateUserHours={updateUserHours}
             imagePreviews={imagePreviews}
             removeImage={removeImage}
             fileInputRef={fileInputRef}
@@ -721,7 +752,11 @@ export default function Timesheets() {
             onCancel={() => { setEditModalOpen(false); resetForm(); }}
             isSubmitting={isSubmitting}
             submitLabel="Save Changes"
-            showUserSelect={false}
+            addActivityEntry={addActivityEntry}
+            removeActivityEntry={removeActivityEntry}
+            updateActivityEntry={updateActivityEntry}
+            toggleUserForActivity={toggleUserForActivity}
+            updateUserHoursForActivity={updateUserHoursForActivity}
           />
         </DialogContent>
       </Dialog>
@@ -738,10 +773,6 @@ function TimesheetForm({
   activityTypes,
   costCenters,
   users,
-  selectedUserIds,
-  toggleUserSelection,
-  userHours,
-  updateUserHours,
   imagePreviews,
   removeImage,
   fileInputRef,
@@ -753,7 +784,11 @@ function TimesheetForm({
   onCancel,
   isSubmitting,
   submitLabel,
-  showUserSelect,
+  addActivityEntry,
+  removeActivityEntry,
+  updateActivityEntry,
+  toggleUserForActivity,
+  updateUserHoursForActivity,
 }: {
   formData: any;
   setFormData: (data: any) => void;
@@ -762,10 +797,6 @@ function TimesheetForm({
   activityTypes: ActivityType[];
   costCenters: CostCenter[];
   users: User[];
-  selectedUserIds: string[];
-  toggleUserSelection: (id: string) => void;
-  userHours: Record<string, string>;
-  updateUserHours: (userId: string, hours: string) => void;
   imagePreviews: string[];
   removeImage: (index: number) => void;
   fileInputRef: React.RefObject<HTMLInputElement | null>;
@@ -777,12 +808,15 @@ function TimesheetForm({
   onCancel: () => void;
   isSubmitting: boolean;
   submitLabel: string;
-  showUserSelect: boolean;
+  addActivityEntry: () => void;
+  removeActivityEntry: (entryId: string) => void;
+  updateActivityEntry: (entryId: string, updates: any) => void;
+  toggleUserForActivity: (entryId: string, userId: string) => void;
+  updateUserHoursForActivity: (entryId: string, userId: string, hours: string) => void;
 }) {
   return (
     <div className="space-y-4 py-4 max-h-[70vh] overflow-y-auto">
-      {/* User Selection (for creating entries for multiple technicians) */}
-      {showUserSelect && users.length > 0 && (
+      {/* Client and Project Selection */}
         <div>
           <Label className="font-mono text-xs uppercase tracking-wider">
             Assign to Technicians
