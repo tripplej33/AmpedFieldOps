@@ -271,7 +271,7 @@ router.put('/:id', authenticate,
 router.delete('/:id', authenticate, async (req: AuthRequest, res: Response) => {
   try {
     const existing = await query(
-      'SELECT user_id, hours, project_id, activity_type_id FROM timesheets WHERE id = $1', 
+      'SELECT user_id, hours, project_id, activity_type_id, COALESCE(billing_status, \'unbilled\') as billing_status FROM timesheets WHERE id = $1', 
       [req.params.id]
     );
     
