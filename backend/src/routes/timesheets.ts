@@ -2,7 +2,7 @@ import { Router, Response } from 'express';
 import { body, validationResult } from 'express-validator';
 import { query } from '../db';
 import { authenticate, requirePermission, AuthRequest } from '../middleware/auth';
-import { upload } from '../middleware/upload';
+import { upload, projectUpload } from '../middleware/upload';
 
 const router = Router();
 
@@ -132,20 +132,36 @@ router.get('/:id', authenticate, async (req: AuthRequest, res: Response) => {
   }
 });
 
-// Create timesheet
-router.post('/', authenticate,
-  body('project_id').isUUID(),
-  body('date').isDate(),
-  body('hours').isFloat({ min: 0.25, max: 24 }),
-  body('activity_type_id').isUUID(),
-  body('cost_center_id').isUUID(),
-  async (req: AuthRequest, res: Response) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
+// Create timesheet (handles both JSON and FormData with images)
+router.post('/', authenticate, projectUpload.array('images', 5), async (req: AuthRequest, res: Response) => {
+  // Check if this is FormData (has files) or JSON
+  const files = req.files as Express.Multer.File[];
+  const isFormData = files && files.length > 0;
+  
+  // Extract project_id from body (works for both JSON and FormData)
+  const project_id = req.body.project_id;
+  
+  if (!project_id) {
+    return res.status(400).json({ error: 'project_id is required' });
+  }
 
-    const { project_id, client_id, date, hours, activity_type_id, cost_center_id, notes, image_urls = [], location } = req.body;
+  // Validate other required fields
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    return res.status(400).json({ errors: errors.array() });
+  }
+
+  // Get image URLs from uploaded files or from body
+  let imageUrls: string[] = [];
+  if (isFormData && files.length > 0) {
+    // Files were uploaded, use project-specific paths
+    imageUrls = files.map(f => `/uploads/projects/${project_id}/${f.filename}`);
+  } else {
+    // JSON request with pre-uploaded URLs
+    imageUrls = req.body.image_urls || [];
+  }
+
+  const { client_id, date, hours, activity_type_id, cost_center_id, notes, location } = req.body;
 
     try {
       // Get client_id from project if not provided
@@ -161,7 +177,7 @@ router.post('/', authenticate,
         `INSERT INTO timesheets (user_id, project_id, client_id, date, hours, activity_type_id, cost_center_id, notes, image_urls, location, billing_status)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'unbilled')
          RETURNING *`,
-        [req.user!.id, project_id, finalClientId, date, hours, activity_type_id, cost_center_id, notes, image_urls, location]
+        [req.user!.id, project_id, finalClientId, date, hours, activity_type_id, cost_center_id, notes, imageUrls, location]
       );
 
       // Update project actual_cost based on activity hourly rate
@@ -321,8 +337,8 @@ router.delete('/:id', authenticate, async (req: AuthRequest, res: Response) => {
   }
 });
 
-// Upload images for timesheet
-router.post('/:id/images', authenticate, upload.array('images', 5), async (req: AuthRequest, res: Response) => {
+// Upload images for existing timesheet
+router.post('/:id/images', authenticate, projectUpload.array('images', 5), async (req: AuthRequest, res: Response) => {
   try {
     const files = req.files as Express.Multer.File[];
     
@@ -330,7 +346,14 @@ router.post('/:id/images', authenticate, upload.array('images', 5), async (req: 
       return res.status(400).json({ error: 'No files uploaded' });
     }
 
-    const imageUrls = files.map(f => `/uploads/${f.filename}`);
+    // Get project_id from timesheet
+    const timesheet = await query('SELECT project_id FROM timesheets WHERE id = $1', [req.params.id]);
+    if (timesheet.rows.length === 0) {
+      return res.status(404).json({ error: 'Timesheet not found' });
+    }
+
+    const project_id = timesheet.rows[0].project_id;
+    const imageUrls = files.map(f => `/uploads/projects/${project_id}/${f.filename}`);
 
     const result = await query(
       `UPDATE timesheets 
@@ -340,12 +363,9 @@ router.post('/:id/images', authenticate, upload.array('images', 5), async (req: 
       [imageUrls, req.params.id]
     );
 
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Timesheet not found' });
-    }
-
     res.json({ image_urls: result.rows[0].image_urls });
   } catch (error) {
+    console.error('Upload images error:', error);
     res.status(500).json({ error: 'Failed to upload images' });
   }
 });
