@@ -788,8 +788,8 @@ export default function Financials() {
               <div>
                 <Label className="font-mono text-xs uppercase tracking-wider">Project (Optional)</Label>
                 <Select
-                  value={timesheetInvoiceForm.project_id}
-                  onValueChange={(value) => setTimesheetInvoiceForm(prev => ({ ...prev, project_id: value }))}
+                  value={timesheetInvoiceForm.project_id || '__all__'}
+                  onValueChange={(value) => setTimesheetInvoiceForm(prev => ({ ...prev, project_id: value === '__all__' ? '' : value }))}
                   disabled={!timesheetInvoiceForm.client_id}
                 >
                   <SelectTrigger className="mt-2">
