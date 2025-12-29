@@ -212,6 +212,39 @@ router.get('/auth/url', authenticate, requirePermission('can_sync_xero'), async 
 });
 
 // Handle Xero OAuth callback
+// Helper function to send response that works in both popup and full-page redirect
+function sendPopupOrRedirect(res: Response, frontendUrl: string, type: 'success' | 'error', message: string, errorParams?: string) {
+  const html = `
+    <!DOCTYPE html>
+    <html>
+      <head>
+        <title>Xero Connection ${type === 'success' ? 'Successful' : 'Error'}</title>
+      </head>
+      <body>
+        <script>
+          // Try to send message to parent window (popup mode)
+          if (window.opener) {
+            window.opener.postMessage({
+              type: type === 'success' ? 'XERO_OAUTH_SUCCESS' : 'XERO_OAUTH_ERROR',
+              message: ${JSON.stringify(message)}
+            }, window.location.origin);
+            window.close();
+          } else {
+            // Fallback: redirect if not in popup
+            ${type === 'success' 
+              ? `window.location.href = '${frontendUrl}/settings?xero_connected=true';`
+              : `window.location.href = '${frontendUrl}/settings${errorParams || ''}';`
+            }
+          }
+        </script>
+        <p>${type === 'success' ? 'Connection successful' : 'Connection failed'}. This window should close automatically.</p>
+        <p><a href="${frontendUrl}/settings">Click here if this window doesn't close</a></p>
+      </body>
+    </html>
+  `;
+  return res.send(html);
+}
+
 router.get('/callback', async (req, res) => {
   const { code, state, error, error_description } = req.query;
   
@@ -300,33 +333,13 @@ router.get('/callback', async (req, res) => {
         errorMessage = `${errorDescStr}\n\nClient ID: ${clientId || 'NOT SET'}\nRedirect URI: ${redirectUri || 'NOT SET'}`;
       }
       
-      // Send error message to parent window (for popup) or redirect (for full page)
-      const errorHtml = `
-        <!DOCTYPE html>
-        <html>
-          <head>
-            <title>Xero Connection Error</title>
-          </head>
-          <body>
-            <script>
-              // Try to send message to parent window (popup mode)
-              if (window.opener) {
-                window.opener.postMessage({
-                  type: 'XERO_OAUTH_ERROR',
-                  message: '${errorMessage.replace(/'/g, "\\'")}'
-                }, window.location.origin);
-                window.close();
-              } else {
-                // Fallback: redirect if not in popup
-                window.location.href = '${frontendUrl}/settings?xero_error=${encodeURIComponent(errorStr)}&xero_error_msg=${encodeURIComponent(errorMessage)}';
-              }
-            </script>
-            <p>Connection failed. This window should close automatically.</p>
-            <p><a href="${frontendUrl}/settings">Click here if this window doesn't close</a></p>
-          </body>
-        </html>
-      `;
-      return res.send(errorHtml);
+      return sendPopupOrRedirect(
+        res,
+        frontendUrl,
+        'error',
+        errorMessage,
+        `?xero_error=${encodeURIComponent(errorStr)}&xero_error_msg=${encodeURIComponent(errorMessage)}`
+      );
     }
 
     // Ensure code is a string
@@ -340,7 +353,13 @@ router.get('/callback', async (req, res) => {
     
     if (!codeStr) {
       console.error('[Xero] No authorization code received:', { query: req.query });
-      return res.redirect(`${frontendUrl}/settings?xero_error=no_code&xero_error_msg=${encodeURIComponent('No authorization code received from Xero')}`);
+      return sendPopupOrRedirect(
+        res,
+        frontendUrl,
+        'error',
+        'No authorization code received from Xero',
+        `?xero_error=no_code&xero_error_msg=${encodeURIComponent('No authorization code received from Xero')}`
+      );
     }
 
     // Get credentials from database settings
@@ -348,7 +367,13 @@ router.get('/callback', async (req, res) => {
 
     if (!clientId || !clientSecret) {
       console.error('[Xero] Missing credentials in callback');
-      return res.redirect(`${frontendUrl}/settings?xero_error=credentials_missing&xero_error_msg=${encodeURIComponent('Xero credentials not found. Please configure them in Settings.')}`);
+      return sendPopupOrRedirect(
+        res,
+        frontendUrl,
+        'error',
+        'Xero credentials not found. Please configure them in Settings.',
+        `?xero_error=credentials_missing&xero_error_msg=${encodeURIComponent('Xero credentials not found. Please configure them in Settings.')}`
+      );
     }
 
     // Ensure credentials are trimmed and valid
@@ -359,7 +384,13 @@ router.get('/callback', async (req, res) => {
     // Validate Client ID format before token exchange
     if (trimmedClientId.includes('@')) {
       console.error('[Xero] ERROR: Client ID is an email address during token exchange:', trimmedClientId);
-      return res.redirect(`${frontendUrl}/settings?xero_error=invalid_client_id&xero_error_msg=${encodeURIComponent('Client ID appears to be an email address. Please enter your 32-character Xero Client ID from the Xero Developer Portal.')}`);
+      return sendPopupOrRedirect(
+        res,
+        frontendUrl,
+        'error',
+        'Client ID appears to be an email address. Please enter your 32-character Xero Client ID from the Xero Developer Portal.',
+        `?xero_error=invalid_client_id&xero_error_msg=${encodeURIComponent('Client ID appears to be an email address. Please enter your 32-character Xero Client ID from the Xero Developer Portal.')}`
+      );
     }
     
     if (trimmedClientId.length !== 32) {
@@ -368,7 +399,13 @@ router.get('/callback', async (req, res) => {
         expected: 32,
         clientId: `${trimmedClientId.substring(0, 8)}...`
       });
-      return res.redirect(`${frontendUrl}/settings?xero_error=invalid_client_id&xero_error_msg=${encodeURIComponent(`Client ID must be exactly 32 characters (currently ${trimmedClientId.length}). Please verify your Client ID in Settings.`)}`);
+      return sendPopupOrRedirect(
+        res,
+        frontendUrl,
+        'error',
+        `Client ID must be exactly 32 characters (currently ${trimmedClientId.length}). Please verify your Client ID in Settings.`,
+        `?xero_error=invalid_client_id&xero_error_msg=${encodeURIComponent(`Client ID must be exactly 32 characters (currently ${trimmedClientId.length}). Please verify your Client ID in Settings.`)}`
+      );
     }
 
     // Log Client Secret info (first 4 and last 4 chars for debugging, but not full secret)
@@ -471,7 +508,13 @@ router.get('/callback', async (req, res) => {
       
       const fullErrorMessage = errorDetails ? `${errorMsg}\n\n${errorDetails}` : errorMsg;
       
-      return res.redirect(`${frontendUrl}/settings?xero_error=token_exchange_failed&xero_error_msg=${encodeURIComponent(fullErrorMessage)}&client_id=${encodeURIComponent(trimmedClientId)}&redirect_uri=${encodeURIComponent(trimmedRedirectUri)}`);
+      return sendPopupOrRedirect(
+        res,
+        frontendUrl,
+        'error',
+        fullErrorMessage,
+        `?xero_error=token_exchange_failed&xero_error_msg=${encodeURIComponent(fullErrorMessage)}&client_id=${encodeURIComponent(trimmedClientId)}&redirect_uri=${encodeURIComponent(trimmedRedirectUri)}`
+      );
     }
 
     interface XeroTokenResponse {
