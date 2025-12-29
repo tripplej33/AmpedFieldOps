@@ -246,11 +246,19 @@ router.get('/me', authenticate, async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
+    // Get permissions from database (more reliable than JWT)
+    const permResult = await query(
+      'SELECT permission FROM user_permissions WHERE user_id = $1 AND granted = true',
+      [req.user!.id]
+    );
+    const permissions = permResult.rows.map(p => p.permission);
+
     res.json({
       ...result.rows[0],
-      permissions: req.user!.permissions
+      permissions
     });
   } catch (error) {
+    console.error('Get current user error:', error);
     res.status(500).json({ error: 'Failed to fetch user' });
   }
 });
