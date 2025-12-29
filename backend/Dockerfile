@@ -40,11 +40,12 @@ COPY --from=builder /app/src ./src
 COPY docker-entrypoint.sh /app/docker-entrypoint.sh
 RUN chmod +x /app/docker-entrypoint.sh
 
-# Create uploads directory
-RUN mkdir -p uploads/logos
-
-# Set ownership
-RUN chown -R node:node /app
+# Create uploads directory and set ownership before switching user
+RUN mkdir -p uploads/logos && \
+    chown -R node:node /app/uploads && \
+    chown node:node /app/docker-entrypoint.sh && \
+    chown -R node:node /app/dist && \
+    chown -R node:node /app/src
 
 # Use non-root user
 USER node
