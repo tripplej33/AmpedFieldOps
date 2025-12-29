@@ -130,7 +130,6 @@ CREATE TABLE IF NOT EXISTS timesheets (
   synced BOOLEAN DEFAULT false,
   xero_timesheet_id VARCHAR(100),
   billing_status VARCHAR(20) DEFAULT 'unbilled' CHECK (billing_status IN ('unbilled', 'billed', 'paid')),
-  invoice_id UUID REFERENCES xero_invoices(id) ON DELETE SET NULL,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -197,6 +196,10 @@ CREATE TABLE IF NOT EXISTS xero_quotes (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Add invoice_id column to timesheets after xero_invoices table exists
+ALTER TABLE timesheets 
+ADD COLUMN IF NOT EXISTS invoice_id UUID REFERENCES xero_invoices(id) ON DELETE SET NULL;
 
 -- Activity Logs table
 CREATE TABLE IF NOT EXISTS activity_logs (
