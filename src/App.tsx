@@ -1,22 +1,24 @@
-import { Suspense } from "react";
+import { Suspense, lazy } from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { NotificationProvider } from "./contexts/NotificationContext";
 import { Toaster } from "./components/ui/sonner";
 import ErrorBoundary from "./components/ErrorBoundary";
 import DashboardLayout from "./components/layout/DashboardLayout";
-import Dashboard from "./components/pages/Dashboard";
-import Projects from "./components/pages/Projects";
-import Clients from "./components/pages/Clients";
-import Timesheets from "./components/pages/Timesheets";
-import Reports from "./components/pages/Reports";
-import Settings from "./components/pages/Settings";
-import Login from "./components/pages/Login";
-import ForgotPassword from "./components/pages/ForgotPassword";
-import UserSettings from "./components/pages/UserSettings";
-import Financials from "./components/pages/Financials";
-import Users from "./components/pages/Users";
-import ActivityTypes from "./components/pages/ActivityTypes";
+
+// Lazy load page components for code splitting
+const Dashboard = lazy(() => import("./components/pages/Dashboard"));
+const Projects = lazy(() => import("./components/pages/Projects"));
+const Clients = lazy(() => import("./components/pages/Clients"));
+const Timesheets = lazy(() => import("./components/pages/Timesheets"));
+const Reports = lazy(() => import("./components/pages/Reports"));
+const Settings = lazy(() => import("./components/pages/Settings"));
+const Login = lazy(() => import("./components/pages/Login"));
+const ForgotPassword = lazy(() => import("./components/pages/ForgotPassword"));
+const UserSettings = lazy(() => import("./components/pages/UserSettings"));
+const Financials = lazy(() => import("./components/pages/Financials"));
+const Users = lazy(() => import("./components/pages/Users"));
+const ActivityTypes = lazy(() => import("./components/pages/ActivityTypes"));
 
 // Protected route wrapper
 function ProtectedRoute({ children, permission }: { children: React.ReactNode; permission?: string }) {
