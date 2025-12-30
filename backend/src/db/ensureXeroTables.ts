@@ -40,9 +40,9 @@ export async function ensureXeroTables(): Promise<void> {
 }
 
 async function createTable(tableName: string): Promise<void> {
-  const tableDefinitions: Record<string, string> = {
-    'xero_invoices': `
-      CREATE TABLE IF NOT EXISTS xero_invoices (
+  const tableDefinitions: Record<string, string | string[]> = {
+    'xero_invoices': [
+      `CREATE TABLE IF NOT EXISTS xero_invoices (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         xero_invoice_id VARCHAR(100) UNIQUE NOT NULL,
         invoice_number VARCHAR(50),
@@ -59,10 +59,10 @@ async function createTable(tableName: string): Promise<void> {
         synced_at TIMESTAMP,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      );
-      ALTER TABLE xero_invoices ADD COLUMN IF NOT EXISTS paid_date DATE;
-      ALTER TABLE xero_invoices ADD COLUMN IF NOT EXISTS last_payment_date DATE;
-    `,
+      )`,
+      `ALTER TABLE xero_invoices ADD COLUMN IF NOT EXISTS paid_date DATE`,
+      `ALTER TABLE xero_invoices ADD COLUMN IF NOT EXISTS last_payment_date DATE`
+    ],
     'xero_quotes': `
       CREATE TABLE IF NOT EXISTS xero_quotes (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -214,6 +214,13 @@ async function createTable(tableName: string): Promise<void> {
     throw new Error(`No table definition found for ${tableName}`);
   }
 
-  await query(sql);
+  // Handle both single SQL string and array of SQL statements
+  if (Array.isArray(sql)) {
+    for (const statement of sql) {
+      await query(statement);
+    }
+  } else {
+    await query(sql);
+  }
 }
 
