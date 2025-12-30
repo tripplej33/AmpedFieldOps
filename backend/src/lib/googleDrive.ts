@@ -101,18 +101,26 @@ export async function getAuthorizedClient(userId?: string): Promise<OAuth2Client
 
 // Get Google Drive OAuth URL
 export function getAuthUrl(state?: string): string {
-  const oauth2Client = getOAuth2Client();
-  
-  const scopes = [
-    'https://www.googleapis.com/auth/drive.file' // Access to files created by the app
-  ];
+  try {
+    const oauth2Client = getOAuth2Client();
+    
+    const scopes = [
+      'https://www.googleapis.com/auth/drive.file' // Access to files created by the app
+    ];
 
-  return oauth2Client.generateAuthUrl({
-    access_type: 'offline',
-    scope: scopes,
-    prompt: 'consent',
-    state: state || ''
-  });
+    const authUrl = oauth2Client.generateAuthUrl({
+      access_type: 'offline',
+      scope: scopes,
+      prompt: 'consent',
+      state: state || '',
+      include_granted_scopes: true
+    });
+
+    return authUrl;
+  } catch (error: any) {
+    console.error('Failed to generate Google Drive auth URL:', error);
+    throw new Error(`Failed to generate auth URL: ${error.message}`);
+  }
 }
 
 // Exchange authorization code for tokens

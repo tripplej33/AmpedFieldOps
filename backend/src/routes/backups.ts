@@ -358,23 +358,35 @@ router.get('/google-drive/auth', authenticate, requirePermission('can_manage_use
 });
 
 // Handle Google Drive OAuth callback
-router.get('/google-drive/callback', authenticate, requirePermission('can_manage_users'), async (req: AuthRequest, res: Response) => {
+// Note: This endpoint should NOT require authentication as it's called by Google
+router.get('/google-drive/callback', async (req: any, res: Response) => {
   try {
-    const { code, state } = req.query;
+    const { code, state, error } = req.query;
 
-    if (!code || typeof code !== 'string') {
-      return res.status(400).json({ error: 'Authorization code missing' });
+    // Handle OAuth errors from Google
+    if (error) {
+      console.error('Google OAuth error:', error);
+      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+      return res.redirect(`${frontendUrl}/settings?tab=integrations&google_drive_error=${encodeURIComponent(error)}`);
     }
 
-    await exchangeCodeForTokens(code, req.user!.id);
+    if (!code || typeof code !== 'string') {
+      const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
+      return res.redirect(`${frontendUrl}/settings?tab=integrations&google_drive_error=${encodeURIComponent('Authorization code missing')}`);
+    }
 
-    // Redirect to frontend
+    // Use state as userId if provided, otherwise try to get from session/token
+    const userId = state || null;
+
+    await exchangeCodeForTokens(code, userId);
+
+    // Redirect to frontend with success
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-    res.redirect(`${frontendUrl}/settings?tab=backups&google_drive_connected=true`);
+    res.redirect(`${frontendUrl}/settings?tab=integrations&google_drive_connected=true`);
   } catch (error: any) {
     console.error('Google Drive callback error:', error);
     const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3000';
-    res.redirect(`${frontendUrl}/settings?tab=backups&google_drive_error=${encodeURIComponent(error.message)}`);
+    res.redirect(`${frontendUrl}/settings?tab=integrations&google_drive_error=${encodeURIComponent(error.message || 'Unknown error')}`);
   }
 });
 
