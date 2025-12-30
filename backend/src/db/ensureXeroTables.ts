@@ -44,7 +44,7 @@ async function createTable(tableName: string): Promise<void> {
     'xero_invoices': `
       CREATE TABLE IF NOT EXISTS xero_invoices (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        xero_invoice_id VARCHAR(100) UNIQUE,
+        xero_invoice_id VARCHAR(100) UNIQUE NOT NULL,
         invoice_number VARCHAR(50),
         client_id UUID REFERENCES clients(id) ON DELETE SET NULL,
         project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
@@ -55,18 +55,18 @@ async function createTable(tableName: string): Promise<void> {
         currency VARCHAR(10) DEFAULT 'USD',
         issue_date DATE,
         due_date DATE,
-        paid_date DATE,
-        last_payment_date DATE,
         line_items JSONB,
         synced_at TIMESTAMP,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )
+      );
+      ALTER TABLE xero_invoices ADD COLUMN IF NOT EXISTS paid_date DATE;
+      ALTER TABLE xero_invoices ADD COLUMN IF NOT EXISTS last_payment_date DATE;
     `,
     'xero_quotes': `
       CREATE TABLE IF NOT EXISTS xero_quotes (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-        xero_quote_id VARCHAR(100) UNIQUE,
+        xero_quote_id VARCHAR(100) UNIQUE NOT NULL,
         quote_number VARCHAR(50),
         client_id UUID REFERENCES clients(id) ON DELETE SET NULL,
         project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
