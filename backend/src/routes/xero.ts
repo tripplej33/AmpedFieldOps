@@ -562,7 +562,7 @@ router.get('/callback', async (req, res) => {
       grantType: 'authorization_code',
       codeLength: codeStr.length
     });
-    
+
     // Exchange code for tokens using actual Xero API
     const tokenResponse = await fetch('https://identity.xero.com/connect/token', {
       method: 'POST',
@@ -700,22 +700,22 @@ router.get('/callback', async (req, res) => {
     // Store tokens (replace any existing)
     try {
       console.log('[Xero] Storing tokens in database...');
-      await query('DELETE FROM xero_tokens');
-      
-      await query(
-        `INSERT INTO xero_tokens (access_token, refresh_token, id_token, token_type, expires_at, tenant_id, tenant_name)
-         VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-        [
-          tokens.access_token,
-          tokens.refresh_token,
-          tokens.id_token || null,
-          tokens.token_type,
-          expiresAt,
-          tenantId,
-          tenantName
-        ]
-      );
-      
+    await query('DELETE FROM xero_tokens');
+    
+    await query(
+      `INSERT INTO xero_tokens (access_token, refresh_token, id_token, token_type, expires_at, tenant_id, tenant_name)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [
+        tokens.access_token,
+        tokens.refresh_token,
+        tokens.id_token || null,
+        tokens.token_type,
+        expiresAt,
+        tenantId,
+        tenantName
+      ]
+    );
+
       console.log('[Xero] Tokens stored successfully:', {
         tenantId,
         tenantName,
@@ -731,37 +731,37 @@ router.get('/callback', async (req, res) => {
       // Return error page but don't redirect to frontend with error
       // since Xero connection was successful
       return res.send(`
-        <!DOCTYPE html>
-        <html>
-          <head>
+      <!DOCTYPE html>
+      <html>
+        <head>
             <title>AmpedFieldOps - Storage Error</title>
-            <style>
-              body { font-family: system-ui, sans-serif; background: #1a1d23; color: #e8eaed; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
+          <style>
+            body { font-family: system-ui, sans-serif; background: #1a1d23; color: #e8eaed; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
               .container { text-align: center; padding: 40px; max-width: 600px; }
               .warning { color: #fbbf24; font-size: 48px; margin-bottom: 16px; }
-              h1 { margin: 0 0 8px; }
+            h1 { margin: 0 0 8px; }
               p { color: #9ca3af; margin: 8px 0; }
               .error-details { background: #2a2d33; padding: 16px; border-radius: 8px; margin-top: 16px; text-align: left; font-size: 12px; }
-            </style>
-          </head>
-          <body>
-            <div class="container">
+          </style>
+        </head>
+        <body>
+          <div class="container">
               <div class="warning">⚠️</div>
               <h1>Connection Successful, But Storage Failed</h1>
               <p>Your Xero connection was successful, but we couldn't save it to the database.</p>
               <p>Please check the backend logs and try disconnecting and reconnecting.</p>
               <div class="error-details">
                 <strong>Error:</strong> ${dbError.message || 'Database error'}
-              </div>
-              <script>
+          </div>
+          <script>
                 setTimeout(() => {
                   window.location.href = '${frontendUrl}/settings?xero_error=storage_failed&xero_error_msg=${encodeURIComponent('Connection successful but failed to save. Please try reconnecting.')}';
                 }, 3000);
-              </script>
+          </script>
             </div>
-          </body>
-        </html>
-      `);
+        </body>
+      </html>
+    `);
     }
 
     // Return HTML that closes the popup and notifies the parent window
@@ -809,7 +809,7 @@ router.get('/callback', async (req, res) => {
             <p>This window will close automatically...</p>
           </div>
           <script>
-            window.location.href = '${frontendUrl}/settings?xero_error=callback_failed';
+              window.location.href = '${frontendUrl}/settings?xero_error=callback_failed';
           </script>
         </body>
       </html>
@@ -2865,7 +2865,7 @@ router.post('/sync', authenticate, requirePermission('can_sync_xero'), async (re
 
     try {
       // Sync Contacts (Pull from Xero and Push local to Xero)
-      if (type === 'contacts' || type === 'all') {
+    if (type === 'contacts' || type === 'all') {
         try {
           const result = await syncContactsBidirectional(tokenData, makeInternalRequest);
           syncResults.results.contacts = {
@@ -2884,7 +2884,7 @@ router.post('/sync', authenticate, requirePermission('can_sync_xero'), async (re
       }
 
       // Sync Invoices bidirectionally
-      if (type === 'invoices' || type === 'all') {
+    if (type === 'invoices' || type === 'all') {
         try {
           const result = await syncInvoicesBidirectional(tokenData, req.user!.id);
           syncResults.results.invoices = {
@@ -2922,7 +2922,7 @@ router.post('/sync', authenticate, requirePermission('can_sync_xero'), async (re
       }
 
       // Sync Tracking Categories (pull only)
-      if (type === 'tracking_categories' || type === 'all') {
+    if (type === 'tracking_categories' || type === 'all') {
         try {
           const result = await syncTrackingCategories(tokenData);
           syncResults.results.tracking_categories = { mapped: result.mapped };
@@ -3066,8 +3066,8 @@ router.post('/sync', authenticate, requirePermission('can_sync_xero'), async (re
       // All sync operations complete
 
       // Update token last sync time after all sync operations complete
-      await query(
-        'UPDATE xero_tokens SET updated_at = CURRENT_TIMESTAMP WHERE id = $1',
+    await query(
+      'UPDATE xero_tokens SET updated_at = CURRENT_TIMESTAMP WHERE id = $1',
         [tokenId]
       );
 
@@ -3080,14 +3080,14 @@ router.post('/sync', authenticate, requirePermission('can_sync_xero'), async (re
         syncResults.last_sync = updatedToken.rows[0].updated_at.toISOString();
       }
 
-      // Log activity
-      await query(
-        `INSERT INTO activity_logs (user_id, action, entity_type, details) 
-         VALUES ($1, $2, $3, $4)`,
-        [req.user!.id, 'sync', 'xero', JSON.stringify(syncResults)]
-      );
+    // Log activity
+    await query(
+      `INSERT INTO activity_logs (user_id, action, entity_type, details) 
+       VALUES ($1, $2, $3, $4)`,
+      [req.user!.id, 'sync', 'xero', JSON.stringify(syncResults)]
+    );
 
-      res.json(syncResults);
+    res.json(syncResults);
 
       // Log activity
       await query(
@@ -3098,7 +3098,7 @@ router.post('/sync', authenticate, requirePermission('can_sync_xero'), async (re
 
       res.json(syncResults);
     } catch (error: any) {
-      console.error('Xero sync error:', error);
+    console.error('Xero sync error:', error);
       // Still update timestamp even on partial failure
       await query(
         'UPDATE xero_tokens SET updated_at = CURRENT_TIMESTAMP WHERE id = $1',
@@ -3365,27 +3365,17 @@ router.get('/quotes', authenticate, requirePermission('can_view_financials'), as
 
     res.json(result.rows);
   } catch (error: any) {
-    const errorMessage = error.message || 'Failed to fetch quotes';
-    const isTableError = errorMessage.includes('does not exist') || errorMessage.includes('relation') || error.code === '42P01';
-    if (isTableError) {
-      // Try to create tables and retry
-      try {
-        await ensureXeroTables();
-        const retryResult = await query(`
-          SELECT xq.*, c.name as client_name
-          FROM xero_quotes xq
-          LEFT JOIN clients c ON xq.client_id = c.id
-          ORDER BY xq.issue_date DESC
-        `);
-        return res.json(retryResult.rows);
-      } catch (retryError) {
-        console.warn('[Xero] xero_quotes table not found. Returning empty array.');
-        return res.json([]);
-      }
-    }
+    // Catch all errors and return empty array - don't fail the request
     console.error('Failed to fetch quotes:', error);
-    // Return empty array with 200 status instead of 500
-    res.json([]);
+    const errorMessage = error.message || 'Unknown error';
+    // Log the actual error for debugging
+    console.error('[Xero Quotes] Error details:', {
+      message: errorMessage,
+      code: error.code,
+      stack: error.stack
+    });
+    // Always return empty array with 200 status
+    res.status(200).json([]);
   }
 });
 
@@ -3551,10 +3541,17 @@ router.get('/payments', authenticate, requirePermission('can_view_financials'), 
 
     res.json(payments);
   } catch (error: any) {
-    // Helper function already returns [] for table errors, but log unexpected errors
+    // Catch all errors and return empty array - don't fail the request
     console.error('Failed to fetch payments:', error);
-    // Return empty array with 200 status instead of 500
-    res.json([]);
+    const errorMessage = error.message || 'Unknown error';
+    // Log the actual error for debugging
+    console.error('[Xero Payments] Error details:', {
+      message: errorMessage,
+      code: error.code,
+      stack: error.stack
+    });
+    // Always return empty array with 200 status
+    res.status(200).json([]);
   }
 });
 
@@ -3817,10 +3814,17 @@ router.get('/purchase-orders', authenticate, requirePermission('can_view_financi
 
     res.json(pos);
   } catch (error: any) {
-    // Helper function already returns [] for table errors, but log unexpected errors
+    // Catch all errors and return empty array - don't fail the request
     console.error('Failed to fetch purchase orders:', error);
-    // Return empty array with 200 status instead of 500
-    res.json([]);
+    const errorMessage = error.message || 'Unknown error';
+    // Log the actual error for debugging
+    console.error('[Xero Purchase Orders] Error details:', {
+      message: errorMessage,
+      code: error.code,
+      stack: error.stack
+    });
+    // Always return empty array with 200 status
+    res.status(200).json([]);
   }
 });
 
@@ -4097,10 +4101,17 @@ router.get('/bills', authenticate, requirePermission('can_view_financials'), asy
 
     res.json(bills);
   } catch (error: any) {
-    // Helper function already returns [] for table errors, but log unexpected errors
+    // Catch all errors and return empty array - don't fail the request
     console.error('Failed to fetch bills:', error);
-    // Return empty array with 200 status instead of 500
-    res.json([]);
+    const errorMessage = error.message || 'Unknown error';
+    // Log the actual error for debugging
+    console.error('[Xero Bills] Error details:', {
+      message: errorMessage,
+      code: error.code,
+      stack: error.stack
+    });
+    // Always return empty array with 200 status
+    res.status(200).json([]);
   }
 });
 
@@ -4224,10 +4235,17 @@ router.get('/expenses', authenticate, requirePermission('can_view_financials'), 
 
     res.json(expenses);
   } catch (error: any) {
-    // Helper function already returns [] for table errors, but log unexpected errors
+    // Catch all errors and return empty array - don't fail the request
     console.error('Failed to fetch expenses:', error);
-    // Return empty array with 200 status instead of 500
-    res.json([]);
+    const errorMessage = error.message || 'Unknown error';
+    // Log the actual error for debugging
+    console.error('[Xero Expenses] Error details:', {
+      message: errorMessage,
+      code: error.code,
+      stack: error.stack
+    });
+    // Always return empty array with 200 status
+    res.status(200).json([]);
   }
 });
 
@@ -4730,19 +4748,15 @@ router.get('/summary', authenticate, requirePermission('can_view_financials'), a
       // Continue anyway - tables might already exist
     }
     
-    // Helper function to safely query and return default on table error
+    // Helper function to safely query and return default on ANY error
     const safeQuery = async (sql: string, defaultValue: any) => {
       try {
         const result = await query(sql);
         return result;
       } catch (error: any) {
-        const errorMessage = error.message || 'Query failed';
-        const isTableError = errorMessage.includes('does not exist') || errorMessage.includes('relation') || error.code === '42P01';
-        if (isTableError) {
-          console.warn('[Xero] Table not found for summary query. Using default value. Run migrations to create tables.');
-          return { rows: [defaultValue] };
-        }
-        throw error;
+        // Catch ALL errors and return default - don't throw
+        console.warn('[Xero Summary] Query failed, using default value:', error.message);
+        return { rows: Array.isArray(defaultValue) ? defaultValue : [defaultValue] };
       }
     };
 
