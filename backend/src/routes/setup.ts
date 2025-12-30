@@ -256,7 +256,7 @@ router.get('/branding', async (req, res) => {
   try {
     const settings = await query(
       `SELECT key, value FROM settings 
-       WHERE key IN ('company_name', 'company_logo') AND user_id IS NULL`
+       WHERE key IN ('company_name', 'company_logo', 'company_favicon') AND user_id IS NULL`
     );
 
     const result: any = {};
@@ -266,7 +266,8 @@ router.get('/branding', async (req, res) => {
 
     res.json({
       company_name: result.company_name || 'AmpedFieldOps',
-      company_logo: result.company_logo || null
+      company_logo: result.company_logo || null,
+      company_favicon: result.company_favicon || null
     });
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch branding' });

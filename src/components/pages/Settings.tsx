@@ -24,6 +24,7 @@ import { api } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import { updateFavicon } from '@/lib/favicon';
 
 export default function Settings() {
   const { hasPermission, user } = useAuth();
@@ -32,6 +33,7 @@ export default function Settings() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [isUploadingFavicon, setIsUploadingFavicon] = useState(false);
   const [isSendingTestEmail, setIsSendingTestEmail] = useState(false);
   const [testEmailAddress, setTestEmailAddress] = useState('');
   const [googleDriveConnected, setGoogleDriveConnected] = useState(false);
@@ -200,6 +202,11 @@ export default function Settings() {
     try {
       const settingsData = await api.getSettings();
       setSettings(settingsData);
+
+      // Update favicon if available
+      if (settingsData.company_favicon) {
+        updateFavicon(settingsData.company_favicon);
+      }
 
       // Always use current origin for redirect URI (never localhost in production)
       const currentRedirectUri = `${window.location.origin}/api/xero/callback`;
@@ -504,6 +511,25 @@ export default function Settings() {
     }
   };
 
+  const handleFaviconUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsUploadingFavicon(true);
+    try {
+      const result = await api.uploadFavicon(file);
+      setSettings((prev: any) => ({ ...prev, company_favicon: result.favicon_url }));
+      toast.success('Favicon updated');
+      
+      // Update the favicon link in the document head
+      updateFavicon(result.favicon_url);
+    } catch (error: any) {
+      toast.error(error.message || 'Upload failed');
+    } finally {
+      setIsUploadingFavicon(false);
+    }
+  };
+
   const handleSettingChange = async (key: string, value: any) => {
     try {
       await api.updateSetting(key, value, true);
@@ -734,31 +760,61 @@ export default function Settings() {
           <h3 className="text-lg font-bold mb-4">Company Branding</h3>
           
           <div className="space-y-4">
-            <div className="flex items-center gap-4">
-              <div className="w-20 h-20 rounded-lg bg-muted/30 border-2 border-dashed border-muted flex items-center justify-center overflow-hidden">
-                {settings.company_logo ? (
-                  <img src={settings.company_logo} alt="Logo" className="w-full h-full object-contain" />
-                ) : (
-                  <Upload className="w-8 h-8 text-muted-foreground" />
-                )}
+            <div className="space-y-4">
+              <div className="flex items-center gap-4">
+                <div className="w-20 h-20 rounded-lg bg-muted/30 border-2 border-dashed border-muted flex items-center justify-center overflow-hidden">
+                  {settings.company_logo ? (
+                    <img src={settings.company_logo} alt="Logo" className="w-full h-full object-contain" />
+                  ) : (
+                    <Upload className="w-8 h-8 text-muted-foreground" />
+                  )}
+                </div>
+                <div>
+                  <input
+                    type="file"
+                    id="logo-upload"
+                    accept="image/*"
+                    onChange={handleLogoUpload}
+                    className="hidden"
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => document.getElementById('logo-upload')?.click()}
+                    disabled={isUploading}
+                  >
+                    {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Upload Logo'}
+                  </Button>
+                  <p className="text-xs text-muted-foreground mt-1">PNG, JPG, SVG. Max 5MB.</p>
+                </div>
               </div>
-              <div>
-                <input
-                  type="file"
-                  id="logo-upload"
-                  accept="image/*"
-                  onChange={handleLogoUpload}
-                  className="hidden"
-                />
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => document.getElementById('logo-upload')?.click()}
-                  disabled={isUploading}
-                >
-                  {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Upload Logo'}
-                </Button>
-                <p className="text-xs text-muted-foreground mt-1">PNG, JPG, SVG. Max 5MB.</p>
+
+              <div className="flex items-center gap-4">
+                <div className="w-16 h-16 rounded-lg bg-muted/30 border-2 border-dashed border-muted flex items-center justify-center overflow-hidden">
+                  {settings.company_favicon ? (
+                    <img src={settings.company_favicon} alt="Favicon" className="w-full h-full object-contain" />
+                  ) : (
+                    <Upload className="w-6 h-6 text-muted-foreground" />
+                  )}
+                </div>
+                <div>
+                  <input
+                    type="file"
+                    id="favicon-upload"
+                    accept=".ico,image/png,image/svg+xml,image/jpeg"
+                    onChange={handleFaviconUpload}
+                    className="hidden"
+                  />
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => document.getElementById('favicon-upload')?.click()}
+                    disabled={isUploadingFavicon}
+                  >
+                    {isUploadingFavicon ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Upload Favicon'}
+                  </Button>
+                  <p className="text-xs text-muted-foreground mt-1">ICO, PNG, SVG. Max 2MB.</p>
+                </div>
               </div>
             </div>
 

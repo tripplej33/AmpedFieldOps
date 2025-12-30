@@ -98,6 +98,31 @@ export const logoUpload = multer({
   }
 });
 
+export const faviconUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => {
+      cb(null, path.join(__dirname, '../../uploads/logos'));
+    },
+    filename: (req, file, cb) => {
+      const ext = path.extname(file.originalname);
+      // Always save as favicon.ico or favicon.png for easier reference
+      const isIco = ext.toLowerCase() === '.ico';
+      cb(null, isIco ? 'favicon.ico' : `favicon-${Date.now()}${ext}`);
+    }
+  }),
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = ['image/x-icon', 'image/vnd.microsoft.icon', 'image/png', 'image/svg+xml', 'image/jpeg'];
+    if (allowedTypes.includes(file.mimetype) || file.originalname.toLowerCase().endsWith('.ico')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Invalid file type. Only ICO, PNG, SVG, or JPEG images are allowed for favicons.'));
+    }
+  },
+  limits: {
+    fileSize: 2 * 1024 * 1024 // 2MB (favicons should be small)
+  }
+});
+
 // File upload storage for project files with organized directory structure
 const fileUploadStorage = multer.diskStorage({
   destination: (req, file, cb) => {

@@ -232,7 +232,7 @@ class ApiClient {
   }
 
   async getBranding() {
-    return this.request<{ company_name: string; company_logo: string | null }>('/api/setup/branding');
+    return this.request<{ company_name: string; company_logo: string | null; company_favicon?: string | null }>('/api/setup/branding');
   }
 
   // Dashboard
@@ -572,6 +572,10 @@ class ApiClient {
 
   async uploadCompanyLogo(file: File) {
     return this.uploadFile('/api/settings/logo', file, 'logo');
+  }
+
+  async uploadFavicon(file: File) {
+    return this.uploadFile('/api/settings/favicon', file, 'favicon');
   }
 
   async sendTestEmail(email: string) {

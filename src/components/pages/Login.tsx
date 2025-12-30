@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Zap, Eye, EyeOff, Loader2, Database, Link2, CheckCircle2, XCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { updateFavicon } from '@/lib/favicon';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -17,9 +18,10 @@ export default function Login() {
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState('');
-  const [branding, setBranding] = useState<{ company_name: string; company_logo: string | null }>({
+  const [branding, setBranding] = useState<{ company_name: string; company_logo: string | null; company_favicon?: string | null }>({
     company_name: 'AmpedFieldOps',
-    company_logo: null
+    company_logo: null,
+    company_favicon: null
   });
   const [healthStatus, setHealthStatus] = useState<{
     database: { healthy: boolean; status: string };
@@ -37,6 +39,10 @@ export default function Login() {
       try {
         const data = await api.getBranding();
         setBranding(data);
+        // Update favicon if available
+        if (data.company_favicon) {
+          updateFavicon(data.company_favicon);
+        }
       } catch (error) {
         // Use defaults
       }

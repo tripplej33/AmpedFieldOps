@@ -1,10 +1,12 @@
-import { Suspense, lazy } from "react";
+import { Suspense, lazy, useEffect } from "react";
 import { Routes, Route, Navigate, useLocation } from "react-router-dom";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { NotificationProvider } from "./contexts/NotificationContext";
 import { Toaster } from "./components/ui/sonner";
 import ErrorBoundary from "./components/ErrorBoundary";
 import DashboardLayout from "./components/layout/DashboardLayout";
+import { loadFaviconFromSettings } from "./lib/favicon";
+import { api } from "./lib/api";
 
 // Lazy load page components for code splitting
 const Dashboard = lazy(() => import("./components/pages/Dashboard"));
@@ -118,6 +120,15 @@ function AppRoutes() {
 }
 
 function App() {
+  // Load favicon on app startup if user is authenticated
+  useEffect(() => {
+    const token = api.getToken();
+    if (token) {
+      // User is authenticated, try to load favicon
+      loadFaviconFromSettings(api);
+    }
+  }, []);
+
   return (
     <ErrorBoundary>
       <AuthProvider>

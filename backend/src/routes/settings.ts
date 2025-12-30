@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import { query } from '../db';
 import { authenticate, requireRole, AuthRequest } from '../middleware/auth';
-import { logoUpload } from '../middleware/upload';
+import { logoUpload, faviconUpload } from '../middleware/upload';
 import { clearEmailSettingsCache, sendTestEmail } from '../lib/email';
 import fs from 'fs';
 import path from 'path';
@@ -204,6 +204,45 @@ router.post('/logo', authenticate, requireRole('admin'), logoUpload.single('logo
     res.status(500).json({ 
       error: 'Failed to upload logo',
       message: env.NODE_ENV === 'development' ? error.message : 'An error occurred while uploading the logo'
+    });
+  }
+});
+
+// Upload favicon (admin only)
+router.post('/favicon', authenticate, requireRole('admin'), faviconUpload.single('favicon'), async (req: AuthRequest, res: Response) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No file uploaded' });
+    }
+
+    // Ensure the logos directory exists
+    const logosDir = path.join(__dirname, '../../uploads/logos');
+    if (!fs.existsSync(logosDir)) {
+      fs.mkdirSync(logosDir, { recursive: true });
+    }
+
+    const faviconUrl = `/uploads/logos/${req.file.filename}`;
+
+    await query(
+      `INSERT INTO settings (key, value, user_id)
+       VALUES ('company_favicon', $1, NULL)
+       ON CONFLICT (key, user_id) DO UPDATE SET value = $1, updated_at = CURRENT_TIMESTAMP`,
+      [faviconUrl]
+    );
+
+    // Log activity
+    await query(
+      `INSERT INTO activity_logs (user_id, action, entity_type, details) 
+       VALUES ($1, $2, $3, $4)`,
+      [req.user!.id, 'update', 'settings', JSON.stringify({ key: 'company_favicon', value: faviconUrl })]
+    );
+
+    res.json({ favicon_url: faviconUrl });
+  } catch (error: any) {
+    console.error('Favicon upload error:', error);
+    res.status(500).json({ 
+      error: 'Failed to upload favicon',
+      message: env.NODE_ENV === 'development' ? error.message : 'An error occurred while uploading the favicon'
     });
   }
 });
