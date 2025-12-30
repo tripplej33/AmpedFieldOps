@@ -311,9 +311,12 @@ router.get('/timesheet-images/:projectId', authenticate, async (req: AuthRequest
     });
 
     res.json(images);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Get timesheet images error:', error);
-    res.status(500).json({ error: 'Failed to fetch timesheet images' });
+    res.status(500).json({ 
+      error: 'Failed to fetch timesheet images',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 });
 
@@ -350,10 +353,20 @@ router.get('/timesheet-images', authenticate, async (req: AuthRequest, res: Resp
 
     const result = await query(sql, params);
 
-    res.json(result.rows);
-  } catch (error) {
+    // Convert numeric strings to numbers
+    const rows = result.rows.map((row: any) => ({
+      ...row,
+      timesheets_with_images: parseInt(row.timesheets_with_images) || 0,
+      total_images: parseInt(row.total_images) || 0
+    }));
+
+    res.json(rows);
+  } catch (error: any) {
     console.error('Get timesheet images summary error:', error);
-    res.status(500).json({ error: 'Failed to fetch timesheet images summary' });
+    res.status(500).json({ 
+      error: 'Failed to fetch timesheet images summary',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 });
 
@@ -404,9 +417,12 @@ router.get('/logos', authenticate, requirePermission('can_manage_settings'), asy
     validLogos.sort((a, b) => new Date(b.upload_date).getTime() - new Date(a.upload_date).getTime());
 
     res.json(validLogos);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Get logos error:', error);
-    res.status(500).json({ error: 'Failed to fetch logos' });
+    res.status(500).json({ 
+      error: 'Failed to fetch logos',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 });
 

@@ -365,15 +365,15 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
                   <div className="grid grid-cols-3 gap-4 pt-3 border-t border-border text-xs">
                     <div>
                       <span className="text-muted-foreground font-mono uppercase">POs: </span>
-                      <span className="font-bold">{projectFinancials.purchase_orders.total_count} (${(projectFinancials.purchase_orders.total_committed || 0).toFixed(0)})</span>
+                      <span className="font-bold">{projectFinancials.purchase_orders.total_count} (${(Number(projectFinancials.purchase_orders.total_committed) || 0).toFixed(0)})</span>
                     </div>
                     <div>
                       <span className="text-muted-foreground font-mono uppercase">Bills: </span>
-                      <span className="font-bold">{projectFinancials.bills.total_count} (${(projectFinancials.bills.total_amount || 0).toFixed(0)})</span>
+                      <span className="font-bold">{projectFinancials.bills.total_count} (${(Number(projectFinancials.bills.total_amount) || 0).toFixed(0)})</span>
                     </div>
                     <div>
                       <span className="text-muted-foreground font-mono uppercase">Expenses: </span>
-                      <span className="font-bold">{projectFinancials.expenses.total_count} (${(projectFinancials.expenses.total_amount || 0).toFixed(0)})</span>
+                      <span className="font-bold">{projectFinancials.expenses.total_count} (${(Number(projectFinancials.expenses.total_amount) || 0).toFixed(0)})</span>
                     </div>
                   </div>
                   {(projectFinancials.financials.available_budget || 0) < 0 && (

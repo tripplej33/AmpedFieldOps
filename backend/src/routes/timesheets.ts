@@ -93,9 +93,12 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
 
     const result = await query(sql, params);
     res.json(result.rows);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Get timesheets error:', error);
-    res.status(500).json({ error: 'Failed to fetch timesheets' });
+    res.status(500).json({ 
+      error: 'Failed to fetch timesheets',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 });
 
