@@ -255,7 +255,7 @@ async function runMigration() {
       
       // Run main migrations with error handling for duplicate types
       try {
-        await client.query(migrations);
+      await client.query(migrations);
       } catch (err: any) {
         // Handle duplicate type errors (23505) - safe to ignore when using IF NOT EXISTS
         // PostgreSQL creates composite types for tables, and sometimes they persist after table drops
@@ -278,8 +278,8 @@ async function runMigration() {
           const filePath = path.join(migrationsDir, file);
           const sql = fs.readFileSync(filePath, 'utf8');
           try {
-            console.log(`  Running migration: ${file}`);
-            await client.query(sql);
+          console.log(`  Running migration: ${file}`);
+          await client.query(sql);
           } catch (err: any) {
             console.error(`  ❌ Error in migration ${file}:`, err.message);
             // If it's a "already exists" error, it's usually safe to continue

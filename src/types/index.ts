@@ -180,6 +180,186 @@ export interface XeroQuote {
   synced_at: string;
 }
 
+export interface XeroPayment {
+  id: string;
+  xero_payment_id?: string;
+  invoice_id: string;
+  invoice_number?: string;
+  client_name?: string;
+  amount: number;
+  payment_date: string;
+  payment_method: 'CASH' | 'CHECK' | 'BANK_TRANSFER' | 'CREDIT_CARD' | 'ONLINE';
+  reference?: string;
+  account_code?: string;
+  currency: string;
+  created_at: string;
+}
+
+export interface BankTransaction {
+  id: string;
+  xero_bank_transaction_id?: string;
+  bank_account_code?: string;
+  bank_account_name?: string;
+  date: string;
+  amount: number;
+  type: 'RECEIVE' | 'SPEND';
+  description?: string;
+  reference?: string;
+  contact_name?: string;
+  reconciled: boolean;
+  payment_id?: string;
+  reconciled_date?: string;
+  created_at: string;
+}
+
+export interface PurchaseOrder {
+  id: string;
+  xero_po_id?: string;
+  po_number: string;
+  supplier_id: string;
+  supplier_name?: string;
+  project_id: string;
+  project_code?: string;
+  project_name?: string;
+  status: 'DRAFT' | 'SUBMITTED' | 'AUTHORISED' | 'BILLED' | 'CANCELLED';
+  date: string;
+  delivery_date?: string;
+  total_amount: number;
+  currency: string;
+  line_items: any[];
+  line_items_detail?: PurchaseOrderLineItem[];
+  bill_id?: string;
+  notes?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PurchaseOrderLineItem {
+  id: string;
+  po_id: string;
+  description: string;
+  quantity: number;
+  unit_amount: number;
+  account_code?: string;
+  cost_center_id?: string;
+  cost_center_code?: string;
+  cost_center_name?: string;
+  item_id?: string;
+  line_amount: number;
+}
+
+export interface Bill {
+  id: string;
+  xero_bill_id?: string;
+  bill_number: string;
+  supplier_id: string;
+  supplier_name?: string;
+  purchase_order_id?: string;
+  po_number?: string;
+  project_id?: string;
+  project_code?: string;
+  project_name?: string;
+  amount: number;
+  amount_paid: number;
+  amount_due: number;
+  currency: string;
+  date: string;
+  due_date?: string;
+  status: 'DRAFT' | 'SUBMITTED' | 'AUTHORISED' | 'PAID' | 'VOIDED';
+  paid_date?: string;
+  line_items: any[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Expense {
+  id: string;
+  xero_expense_id?: string;
+  project_id?: string;
+  project_code?: string;
+  project_name?: string;
+  cost_center_id?: string;
+  cost_center_code?: string;
+  cost_center_name?: string;
+  amount: number;
+  date: string;
+  description: string;
+  receipt_url?: string;
+  status: 'DRAFT' | 'SUBMITTED' | 'APPROVED' | 'PAID';
+  created_at: string;
+  updated_at: string;
+}
+
+export interface CreditNote {
+  id: string;
+  xero_credit_note_id?: string;
+  credit_note_number: string;
+  invoice_id: string;
+  invoice_number?: string;
+  client_name?: string;
+  amount: number;
+  date: string;
+  reason?: string;
+  status: 'DRAFT' | 'SUBMITTED' | 'AUTHORISED' | 'VOIDED';
+  created_at: string;
+  updated_at: string;
+}
+
+export interface XeroItem {
+  id: string;
+  xero_item_id: string;
+  code?: string;
+  name: string;
+  description?: string;
+  purchase_price: number;
+  sale_price: number;
+  stock_level: number;
+  is_tracked: boolean;
+  synced_at?: string;
+}
+
+export interface PaymentReminder {
+  id: string;
+  invoice_id: string;
+  invoice_number?: string;
+  client_name?: string;
+  sent_date: string;
+  reminder_type: string;
+  sent_to: string;
+  created_at: string;
+}
+
+export interface ProjectFinancials {
+  project: {
+    id: string;
+    code: string;
+    name: string;
+  };
+  financials: {
+    budget: number;
+    po_commitments: number;
+    actual_cost: number;
+    available_budget: number;
+  };
+  purchase_orders: {
+    total_count: number;
+    total_committed: number;
+    draft_count: number;
+    authorised_count: number;
+    billed_count: number;
+  };
+  bills: {
+    total_count: number;
+    total_amount: number;
+    total_paid: number;
+    total_due: number;
+  };
+  expenses: {
+    total_count: number;
+    total_amount: number;
+  };
+}
+
 export interface Setting {
   key: string;
   value: any;

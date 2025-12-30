@@ -677,6 +677,179 @@ class ApiClient {
     return this.request<any>('/api/xero/summary');
   }
 
+  // Payments
+  async getPayments(params?: { invoice_id?: string; date_from?: string; date_to?: string; payment_method?: string }) {
+    const searchParams = new URLSearchParams(params as Record<string, string>);
+    return this.request<any[]>(`/api/xero/payments?${searchParams}`);
+  }
+
+  async createPayment(data: { invoice_id: string; amount: number; payment_date: string; payment_method: string; reference?: string; account_code?: string; currency?: string }) {
+    return this.request<any>('/api/xero/payments', { method: 'POST', body: data });
+  }
+
+  async markInvoiceAsPaidXero(invoiceId: string, data?: { amount?: number; payment_date?: string; payment_method?: string; reference?: string; account_code?: string }) {
+    return this.request<any>(`/api/xero/invoices/${invoiceId}/mark-paid`, { method: 'PUT', body: data || {} });
+  }
+
+  // Bank Transactions
+  async getBankTransactions(params?: { date_from?: string; date_to?: string; reconciled?: boolean; payment_id?: string }) {
+    const searchParams = new URLSearchParams(params as Record<string, string>);
+    return this.request<any[]>(`/api/xero/bank-transactions?${searchParams}`);
+  }
+
+  async importBankTransactions(data?: { date_from?: string; date_to?: string }) {
+    return this.request<{ success: boolean; imported: number; message: string }>('/api/xero/bank-transactions', { method: 'POST', body: data || {} });
+  }
+
+  async reconcileTransaction(data: { transaction_id: string; payment_id: string }) {
+    return this.request<{ success: boolean; message: string }>('/api/xero/reconcile', { method: 'POST', body: data });
+  }
+
+  // Purchase Orders
+  async getPurchaseOrders(params?: { project_id?: string; supplier_id?: string; status?: string; date_from?: string; date_to?: string }) {
+    const searchParams = new URLSearchParams(params as Record<string, string>);
+    return this.request<any[]>(`/api/xero/purchase-orders?${searchParams}`);
+  }
+
+  async getPurchaseOrder(id: string) {
+    return this.request<any>(`/api/xero/purchase-orders/${id}`);
+  }
+
+  async getPurchaseOrdersByProject(projectId: string) {
+    return this.request<any[]>(`/api/xero/purchase-orders/project/${projectId}`);
+  }
+
+  async createPurchaseOrder(data: { supplier_id: string; project_id: string; date: string; delivery_date?: string; line_items: Array<{ description: string; quantity: number; unit_amount: number; account_code?: string; cost_center_id?: string; item_id?: string }>; notes?: string; currency?: string }) {
+    return this.request<any>('/api/xero/purchase-orders', { method: 'POST', body: data });
+  }
+
+  async updatePurchaseOrder(id: string, data: { status?: string }) {
+    return this.request<any>(`/api/xero/purchase-orders/${id}`, { method: 'PUT', body: data });
+  }
+
+  async convertPurchaseOrderToBill(poId: string) {
+    return this.request<any>(`/api/xero/purchase-orders/${poId}/convert-to-bill`, { method: 'POST' });
+  }
+
+  // Bills
+  async getBills(params?: { supplier_id?: string; project_id?: string; purchase_order_id?: string; status?: string; date_from?: string; date_to?: string }) {
+    const searchParams = new URLSearchParams(params as Record<string, string>);
+    return this.request<any[]>(`/api/xero/bills?${searchParams}`);
+  }
+
+  async createBill(data: { supplier_id: string; purchase_order_id?: string; project_id?: string; date: string; due_date?: string; line_items: Array<{ description: string; quantity: number; unit_amount: number; account_code?: string }>; reference?: string; currency?: string }) {
+    return this.request<any>('/api/xero/bills', { method: 'POST', body: data });
+  }
+
+  async markBillAsPaid(billId: string, data?: { amount?: number }) {
+    return this.request<any>(`/api/xero/bills/${billId}/pay`, { method: 'POST', body: data || {} });
+  }
+
+  // Expenses
+  async getExpenses(params?: { project_id?: string; cost_center_id?: string; status?: string; date_from?: string; date_to?: string }) {
+    const searchParams = new URLSearchParams(params as Record<string, string>);
+    return this.request<any[]>(`/api/xero/expenses?${searchParams}`);
+  }
+
+  async createExpense(data: { project_id?: string; cost_center_id?: string; amount: number; date: string; description: string; receipt_url?: string; currency?: string }) {
+    return this.request<any>('/api/xero/expenses', { method: 'POST', body: data });
+  }
+
+  // Credit Notes
+  async getCreditNotes(params?: { invoice_id?: string; date_from?: string; date_to?: string; status?: string }) {
+    const searchParams = new URLSearchParams(params as Record<string, string>);
+    return this.request<any[]>(`/api/xero/credit-notes?${searchParams}`);
+  }
+
+  async createCreditNote(data: { invoice_id: string; amount: number; date: string; reason?: string; description?: string; currency?: string }) {
+    return this.request<any>('/api/xero/credit-notes', { method: 'POST', body: data });
+  }
+
+  async applyCreditNote(creditNoteId: string) {
+    return this.request<{ success: boolean; message: string }>(`/api/xero/credit-notes/${creditNoteId}/apply`, { method: 'POST' });
+  }
+
+  // Items/Inventory
+  async getItems(params?: { search?: string; is_tracked?: boolean }) {
+    const searchParams = new URLSearchParams(params as Record<string, string>);
+    return this.request<any[]>(`/api/xero/items?${searchParams}`);
+  }
+
+  async getItem(id: string) {
+    return this.request<any>(`/api/xero/items/${id}`);
+  }
+
+  async syncItems() {
+    return this.request<{ success: boolean; synced: number; message: string }>('/api/xero/items/sync', { method: 'POST' });
+  }
+
+  async updateItemStock(itemId: string, stockLevel: number) {
+    return this.request<any>(`/api/xero/items/${itemId}/stock`, { method: 'PUT', body: { stock_level: stockLevel } });
+  }
+
+  // Payment Reminders
+  async getReminderSchedule() {
+    return this.request<any>('/api/xero/reminders/schedule');
+  }
+
+  async updateReminderSchedule(schedule: { days_after_due: number[]; email_template?: string; enabled: boolean }) {
+    return this.request<any>('/api/xero/reminders/schedule', { method: 'PUT', body: schedule });
+  }
+
+  async sendPaymentReminder(data: { invoice_id: string; reminder_type?: string }) {
+    return this.request<{ success: boolean; message: string }>('/api/xero/reminders/send', { method: 'POST', body: data });
+  }
+
+  async processPaymentReminders() {
+    return this.request<{ success: boolean; sent: number; failed: number }>('/api/xero/reminders/process', { method: 'POST' });
+  }
+
+  async getReminderHistory(params?: { invoice_id?: string; date_from?: string; date_to?: string }) {
+    const searchParams = new URLSearchParams(params as Record<string, string>);
+    return this.request<any[]>(`/api/xero/reminders/history?${searchParams}`);
+  }
+
+  // Financial Reports
+  async getProfitLossReport(params?: { date_from?: string; date_to?: string }) {
+    const searchParams = new URLSearchParams(params as Record<string, string>);
+    return this.request<any>(`/api/xero/reports/profit-loss?${searchParams}`);
+  }
+
+  async getBalanceSheetReport(params?: { date?: string }) {
+    const searchParams = new URLSearchParams(params as Record<string, string>);
+    return this.request<any>(`/api/xero/reports/balance-sheet?${searchParams}`);
+  }
+
+  async getCashFlowReport(params?: { date_from?: string; date_to?: string }) {
+    const searchParams = new URLSearchParams(params as Record<string, string>);
+    return this.request<any>(`/api/xero/reports/cash-flow?${searchParams}`);
+  }
+
+  async getAgedReceivablesReport(params?: { date?: string }) {
+    const searchParams = new URLSearchParams(params as Record<string, string>);
+    return this.request<any>(`/api/xero/reports/aged-receivables?${searchParams}`);
+  }
+
+  async getAgedPayablesReport(params?: { date?: string }) {
+    const searchParams = new URLSearchParams(params as Record<string, string>);
+    return this.request<any>(`/api/xero/reports/aged-payables?${searchParams}`);
+  }
+
+  // Webhooks
+  async getWebhookStatus() {
+    return this.request<any>('/api/xero/webhooks/status');
+  }
+
+  async getWebhookEvents(params?: { event_type?: string; processed?: boolean; date_from?: string; date_to?: string }) {
+    const searchParams = new URLSearchParams(params as Record<string, string>);
+    return this.request<any[]>(`/api/xero/webhooks/events?${searchParams}`);
+  }
+
+  // Project Financials
+  async getProjectFinancials(projectId: string) {
+    return this.request<any>(`/api/projects/${projectId}/financials`);
+  }
+
   // Troubleshooter
   async runTroubleshooter(category?: string) {
     return this.request<{

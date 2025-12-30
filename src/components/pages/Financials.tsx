@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import Header from '@/components/layout/Header';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -23,8 +23,17 @@ import {
   AlertCircle,
   ArrowRight,
   Trash2,
-  Loader2
+  Loader2,
+  ShoppingCart,
+  Receipt,
+  CreditCard
 } from 'lucide-react';
+import PaymentModal from '@/components/modals/PaymentModal';
+import PurchaseOrderModal from '@/components/modals/PurchaseOrderModal';
+import BillModal from '@/components/modals/BillModal';
+import ExpenseModal from '@/components/modals/ExpenseModal';
+import FinancialReportsTab from './FinancialReportsTab';
+import { XeroPayment, PurchaseOrder, Bill, Expense } from '@/types';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -38,9 +47,19 @@ interface LineItem {
 export default function Financials() {
   const [invoices, setInvoices] = useState<XeroInvoice[]>([]);
   const [quotes, setQuotes] = useState<XeroQuote[]>([]);
+  const [payments, setPayments] = useState<XeroPayment[]>([]);
+  const [purchaseOrders, setPurchaseOrders] = useState<PurchaseOrder[]>([]);
+  const [bills, setBills] = useState<Bill[]>([]);
+  const [expenses, setExpenses] = useState<Expense[]>([]);
   const [summary, setSummary] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [selectedInvoiceForPayment, setSelectedInvoiceForPayment] = useState<XeroInvoice | null>(null);
+  const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
+  const [isPOModalOpen, setIsPOModalOpen] = useState(false);
+  const [isBillModalOpen, setIsBillModalOpen] = useState(false);
+  const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
+  const [selectedPOForBill, setSelectedPOForBill] = useState<string | undefined>(undefined);
   
   // Create Invoice Modal state
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -73,13 +92,21 @@ export default function Financials() {
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const [invoicesData, quotesData, summaryData] = await Promise.all([
+      const [invoicesData, quotesData, summaryData, paymentsData, posData, billsData, expensesData] = await Promise.all([
         api.getXeroInvoices().catch(() => []),
         api.getXeroQuotes().catch(() => []),
-        api.getXeroFinancialSummary().catch(() => null)
+        api.getXeroFinancialSummary().catch(() => null),
+        api.getPayments().catch(() => []),
+        api.getPurchaseOrders().catch(() => []),
+        api.getBills().catch(() => []),
+        api.getExpenses().catch(() => [])
       ]);
       setInvoices(Array.isArray(invoicesData) ? invoicesData : []);
       setQuotes(Array.isArray(quotesData) ? quotesData : []);
+      setPayments(Array.isArray(paymentsData) ? paymentsData : []);
+      setPurchaseOrders(Array.isArray(posData) ? posData : []);
+      setBills(Array.isArray(billsData) ? billsData : []);
+      setExpenses(Array.isArray(expensesData) ? expensesData : []);
       setSummary(summaryData || {
         outstanding_invoices: 0,
         paid_this_month: 0,
@@ -388,9 +415,14 @@ export default function Financials() {
 
         {/* Tabs */}
         <Tabs defaultValue="invoices">
-          <TabsList className="grid w-full grid-cols-2 max-w-md">
+          <TabsList className="grid w-full grid-cols-7 max-w-5xl">
             <TabsTrigger value="invoices">Invoices</TabsTrigger>
             <TabsTrigger value="quotes">Quotes</TabsTrigger>
+            <TabsTrigger value="payments">Payments</TabsTrigger>
+            <TabsTrigger value="purchase-orders">Purchase Orders</TabsTrigger>
+            <TabsTrigger value="bills">Bills</TabsTrigger>
+            <TabsTrigger value="expenses">Expenses</TabsTrigger>
+            <TabsTrigger value="reports">Reports</TabsTrigger>
           </TabsList>
 
           {/* Invoices Tab */}
@@ -545,6 +577,266 @@ export default function Financials() {
                 </table>
               </div>
             </Card>
+          </TabsContent>
+
+          {/* Payments Tab */}
+          <TabsContent value="payments" className="mt-6">
+            <Card className="bg-card border-border overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-muted/50 border-b border-border">
+                    <tr>
+                      <th className="px-6 py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">Invoice #</th>
+                      <th className="px-6 py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">Client</th>
+                      <th className="px-6 py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">Date</th>
+                      <th className="px-6 py-4 text-right text-xs font-mono font-bold text-muted-foreground uppercase">Amount</th>
+                      <th className="px-6 py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">Method</th>
+                      <th className="px-6 py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">Reference</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {payments.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="px-6 py-12 text-center text-muted-foreground">
+                          No payments found.
+                        </td>
+                      </tr>
+                    ) : (
+                      payments.map((payment) => (
+                        <tr key={payment.id} className="hover:bg-muted/30 transition-colors">
+                          <td className="px-6 py-4 font-mono font-medium">{payment.invoice_number}</td>
+                          <td className="px-6 py-4">{payment.client_name}</td>
+                          <td className="px-6 py-4 font-mono text-sm text-muted-foreground">
+                            {new Date(payment.payment_date).toLocaleDateString()}
+                          </td>
+                          <td className="px-6 py-4 text-right font-mono font-bold">
+                            ${payment.amount.toFixed(2)}
+                          </td>
+                          <td className="px-6 py-4">{payment.payment_method.replace('_', ' ')}</td>
+                          <td className="px-6 py-4 text-muted-foreground">{payment.reference || '-'}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          </TabsContent>
+
+          {/* Purchase Orders Tab */}
+          <TabsContent value="purchase-orders" className="mt-6">
+            <Card className="bg-card border-border overflow-hidden">
+              <div className="p-4 border-b border-border flex items-center justify-between">
+                <h3 className="font-bold">Purchase Orders</h3>
+                <Button variant="outline" size="sm" onClick={() => setIsPOModalOpen(true)}>
+                  <Plus className="w-4 h-4 mr-2" />
+                  New PO
+                </Button>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-muted/50 border-b border-border">
+                    <tr>
+                      <th className="px-6 py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">PO #</th>
+                      <th className="px-6 py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">Supplier</th>
+                      <th className="px-6 py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">Project</th>
+                      <th className="px-6 py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">Date</th>
+                      <th className="px-6 py-4 text-right text-xs font-mono font-bold text-muted-foreground uppercase">Amount</th>
+                      <th className="px-6 py-4 text-center text-xs font-mono font-bold text-muted-foreground uppercase">Status</th>
+                      <th className="px-6 py-4 text-right text-xs font-mono font-bold text-muted-foreground uppercase">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {purchaseOrders.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="px-6 py-12 text-center text-muted-foreground">
+                          No purchase orders found.
+                        </td>
+                      </tr>
+                    ) : (
+                      purchaseOrders.map((po) => (
+                        <tr key={po.id} className="hover:bg-muted/30 transition-colors">
+                          <td className="px-6 py-4 font-mono font-medium">{po.po_number}</td>
+                          <td className="px-6 py-4">{po.supplier_name}</td>
+                          <td className="px-6 py-4">{po.project_name || po.project_code}</td>
+                          <td className="px-6 py-4 font-mono text-sm text-muted-foreground">
+                            {new Date(po.date).toLocaleDateString()}
+                          </td>
+                          <td className="px-6 py-4 text-right font-mono font-bold">
+                            ${po.total_amount.toFixed(2)}
+                          </td>
+                          <td className="px-6 py-4 text-center">
+                            {getStatusBadge(po.status)}
+                          </td>
+                          <td className="px-6 py-4 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              {po.status !== 'BILLED' && (
+                                <Button 
+                                  variant="ghost" 
+                                  size="sm"
+                                  onClick={() => {
+                                    setSelectedPOForBill(po.id);
+                                    setIsBillModalOpen(true);
+                                  }}
+                                >
+                                  Convert to Bill
+                                </Button>
+                              )}
+                              <Button variant="ghost" size="sm">View</Button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          </TabsContent>
+
+          {/* Bills Tab */}
+          <TabsContent value="bills" className="mt-6">
+            <Card className="bg-card border-border overflow-hidden">
+              <div className="p-4 border-b border-border flex items-center justify-between">
+                <h3 className="font-bold">Bills (Supplier Invoices)</h3>
+                <Button variant="outline" size="sm" onClick={() => {
+                  setSelectedPOForBill(undefined);
+                  setIsBillModalOpen(true);
+                }}>
+                  <Plus className="w-4 h-4 mr-2" />
+                  New Bill
+                </Button>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-muted/50 border-b border-border">
+                    <tr>
+                      <th className="px-6 py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">Bill #</th>
+                      <th className="px-6 py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">Supplier</th>
+                      <th className="px-6 py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">Project</th>
+                      <th className="px-6 py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">Date</th>
+                      <th className="px-6 py-4 text-right text-xs font-mono font-bold text-muted-foreground uppercase">Amount</th>
+                      <th className="px-6 py-4 text-right text-xs font-mono font-bold text-muted-foreground uppercase">Due</th>
+                      <th className="px-6 py-4 text-center text-xs font-mono font-bold text-muted-foreground uppercase">Status</th>
+                      <th className="px-6 py-4 text-right text-xs font-mono font-bold text-muted-foreground uppercase">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {bills.length === 0 ? (
+                      <tr>
+                        <td colSpan={8} className="px-6 py-12 text-center text-muted-foreground">
+                          No bills found.
+                        </td>
+                      </tr>
+                    ) : (
+                      bills.map((bill) => (
+                        <tr key={bill.id} className="hover:bg-muted/30 transition-colors">
+                          <td className="px-6 py-4 font-mono font-medium">{bill.bill_number}</td>
+                          <td className="px-6 py-4">{bill.supplier_name}</td>
+                          <td className="px-6 py-4">{bill.project_name || bill.project_code || '-'}</td>
+                          <td className="px-6 py-4 font-mono text-sm text-muted-foreground">
+                            {new Date(bill.date).toLocaleDateString()}
+                          </td>
+                          <td className="px-6 py-4 text-right font-mono font-bold">
+                            ${bill.amount.toFixed(2)}
+                          </td>
+                          <td className="px-6 py-4 text-right font-mono">
+                            ${bill.amount_due.toFixed(2)}
+                          </td>
+                          <td className="px-6 py-4 text-center">
+                            {getStatusBadge(bill.status)}
+                          </td>
+                          <td className="px-6 py-4 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              {bill.status !== 'PAID' && (
+                                <Button 
+                                  variant="ghost" 
+                                  size="sm"
+                                  onClick={async () => {
+                                    try {
+                                      await api.markBillAsPaid(bill.id, { amount: bill.amount_due });
+                                      toast.success('Bill marked as paid');
+                                      loadData();
+                                    } catch (error: any) {
+                                      toast.error(error.message || 'Failed to mark bill as paid');
+                                    }
+                                  }}
+                                >
+                                  Mark Paid
+                                </Button>
+                              )}
+                              <Button variant="ghost" size="sm">View</Button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          </TabsContent>
+
+          {/* Expenses Tab */}
+          <TabsContent value="expenses" className="mt-6">
+            <Card className="bg-card border-border overflow-hidden">
+              <div className="p-4 border-b border-border flex items-center justify-between">
+                <h3 className="font-bold">Expenses</h3>
+                <Button variant="outline" size="sm" onClick={() => setIsExpenseModalOpen(true)}>
+                  <Plus className="w-4 h-4 mr-2" />
+                  New Expense
+                </Button>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-muted/50 border-b border-border">
+                    <tr>
+                      <th className="px-6 py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">Date</th>
+                      <th className="px-6 py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">Description</th>
+                      <th className="px-6 py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">Project</th>
+                      <th className="px-6 py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">Cost Center</th>
+                      <th className="px-6 py-4 text-right text-xs font-mono font-bold text-muted-foreground uppercase">Amount</th>
+                      <th className="px-6 py-4 text-center text-xs font-mono font-bold text-muted-foreground uppercase">Status</th>
+                      <th className="px-6 py-4 text-right text-xs font-mono font-bold text-muted-foreground uppercase">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {expenses.length === 0 ? (
+                      <tr>
+                        <td colSpan={7} className="px-6 py-12 text-center text-muted-foreground">
+                          No expenses found.
+                        </td>
+                      </tr>
+                    ) : (
+                      expenses.map((expense) => (
+                        <tr key={expense.id} className="hover:bg-muted/30 transition-colors">
+                          <td className="px-6 py-4 font-mono text-sm text-muted-foreground">
+                            {new Date(expense.date).toLocaleDateString()}
+                          </td>
+                          <td className="px-6 py-4">{expense.description}</td>
+                          <td className="px-6 py-4">{expense.project_name || expense.project_code || '-'}</td>
+                          <td className="px-6 py-4">{expense.cost_center_name || expense.cost_center_code || '-'}</td>
+                          <td className="px-6 py-4 text-right font-mono font-bold">
+                            ${expense.amount.toFixed(2)}
+                          </td>
+                          <td className="px-6 py-4 text-center">
+                            {getStatusBadge(expense.status)}
+                          </td>
+                          <td className="px-6 py-4 text-right">
+                            <Button variant="ghost" size="sm">View</Button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          </TabsContent>
+
+          {/* Reports Tab */}
+          <TabsContent value="reports" className="mt-6">
+            <FinancialReportsTab />
           </TabsContent>
         </Tabs>
 
@@ -894,6 +1186,39 @@ export default function Financials() {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Payment Modal */}
+      <PaymentModal
+        invoice={selectedInvoiceForPayment}
+        open={isPaymentModalOpen}
+        onOpenChange={setIsPaymentModalOpen}
+        onPaymentRecorded={loadData}
+      />
+
+      {/* Purchase Order Modal */}
+      <PurchaseOrderModal
+        open={isPOModalOpen}
+        onOpenChange={setIsPOModalOpen}
+        onPurchaseOrderCreated={loadData}
+      />
+
+      {/* Bill Modal */}
+      <BillModal
+        purchaseOrderId={selectedPOForBill}
+        open={isBillModalOpen}
+        onOpenChange={(open) => {
+          setIsBillModalOpen(open);
+          if (!open) setSelectedPOForBill(undefined);
+        }}
+        onBillCreated={loadData}
+      />
+
+      {/* Expense Modal */}
+      <ExpenseModal
+        open={isExpenseModalOpen}
+        onOpenChange={setIsExpenseModalOpen}
+        onExpenseCreated={loadData}
+      />
     </>
   );
 }

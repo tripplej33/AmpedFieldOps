@@ -17,7 +17,8 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card } from '@/components/ui/card';
 import { api } from '@/lib/api';
-import { DollarSign, Clock, Calendar, Send, TrendingUp, Wrench, Loader2, Pencil, Plus, FolderOpen, Trash2 } from 'lucide-react';
+import { DollarSign, Clock, Calendar, Send, TrendingUp, Wrench, Loader2, Pencil, Plus, FolderOpen, Trash2, ShoppingCart, Receipt } from 'lucide-react';
+import { ProjectFinancials } from '@/types';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -36,6 +37,7 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
   const [isSaving, setIsSaving] = useState(false);
   const [clients, setClients] = useState<Client[]>([]);
   const [costCenters, setCostCenters] = useState<CostCenter[]>([]);
+  const [projectFinancials, setProjectFinancials] = useState<ProjectFinancials | null>(null);
   
   // Cost Center form
   const [showCostCenterForm, setShowCostCenterForm] = useState(false);
@@ -60,6 +62,7 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
       loadProjectTimesheets();
       loadClients();
       loadCostCenters();
+      loadProjectFinancials();
       // Reset edit form when project changes
       setEditForm({
         name: project.name,
@@ -72,6 +75,17 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
       setShowCostCenterForm(false);
     }
   }, [project, open]);
+
+  const loadProjectFinancials = async () => {
+    if (!project) return;
+    try {
+      const financials = await api.getProjectFinancials(project.id);
+      setProjectFinancials(financials);
+    } catch (error) {
+      console.error('Failed to load project financials:', error);
+      setProjectFinancials(null);
+    }
+  };
 
   const loadProjectTimesheets = async () => {
     if (!project) return;
@@ -261,45 +275,116 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
         <div className="space-y-6 py-4">
           {/* Budget Overview */}
           <Card className="p-6 bg-card border-border">
-            <div className="grid grid-cols-3 gap-6 mb-6">
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <DollarSign className="w-4 h-4 text-muted-foreground" />
-                  <span className="text-sm font-mono text-muted-foreground uppercase">Budget</span>
+            {projectFinancials ? (
+              <>
+                <div className="grid grid-cols-4 gap-4 mb-6">
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <DollarSign className="w-4 h-4 text-muted-foreground" />
+                      <span className="text-sm font-mono text-muted-foreground uppercase">Budget</span>
+                    </div>
+                    <p className="text-xl font-bold font-mono">${projectFinancials.financials.budget.toLocaleString()}</p>
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <ShoppingCart className="w-4 h-4 text-purple-400" />
+                      <span className="text-sm font-mono text-muted-foreground uppercase">PO Commitments</span>
+                    </div>
+                    <p className="text-xl font-bold font-mono text-purple-400">${projectFinancials.financials.po_commitments.toLocaleString()}</p>
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <Receipt className="w-4 h-4 text-electric" />
+                      <span className="text-sm font-mono text-muted-foreground uppercase">Actual Costs</span>
+                    </div>
+                    <p className="text-xl font-bold font-mono text-electric">${projectFinancials.financials.actual_cost.toLocaleString()}</p>
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <TrendingUp className="w-4 h-4 text-voltage" />
+                      <span className="text-sm font-mono text-muted-foreground uppercase">Available</span>
+                    </div>
+                    <p className={cn('text-xl font-bold font-mono', projectFinancials.financials.available_budget < 0 ? 'text-warning' : 'text-voltage')}>
+                      ${projectFinancials.financials.available_budget.toLocaleString()}
+                    </p>
+                  </div>
                 </div>
-                <p className="text-2xl font-bold font-mono">${project.budget.toLocaleString()}</p>
-              </div>
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <TrendingUp className="w-4 h-4 text-muted-foreground" />
-                  <span className="text-sm font-mono text-muted-foreground uppercase">Actual</span>
+                <div className="space-y-3">
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="font-mono text-muted-foreground">Budget Utilization</span>
+                      <span className={cn('font-mono font-bold', (projectFinancials.financials.actual_cost + projectFinancials.financials.po_commitments) / projectFinancials.financials.budget > 1 ? 'text-warning' : 'text-foreground')}>
+                        {projectFinancials.financials.budget > 0 
+                          ? Math.round(((projectFinancials.financials.actual_cost + projectFinancials.financials.po_commitments) / projectFinancials.financials.budget) * 100)
+                          : 0}%
+                      </span>
+                    </div>
+                    <Progress
+                      value={Math.min(((projectFinancials.financials.actual_cost + projectFinancials.financials.po_commitments) / projectFinancials.financials.budget) * 100, 100)}
+                      className={cn('h-3', (projectFinancials.financials.actual_cost + projectFinancials.financials.po_commitments) / projectFinancials.financials.budget > 1 ? '[&>div]:bg-warning' : '[&>div]:bg-electric')}
+                    />
+                  </div>
+                  <div className="grid grid-cols-3 gap-4 pt-3 border-t border-border text-xs">
+                    <div>
+                      <span className="text-muted-foreground font-mono uppercase">POs: </span>
+                      <span className="font-bold">{projectFinancials.purchase_orders.total_count} (${projectFinancials.purchase_orders.total_committed.toFixed(0)})</span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground font-mono uppercase">Bills: </span>
+                      <span className="font-bold">{projectFinancials.bills.total_count} (${projectFinancials.bills.total_amount.toFixed(0)})</span>
+                    </div>
+                    <div>
+                      <span className="text-muted-foreground font-mono uppercase">Expenses: </span>
+                      <span className="font-bold">{projectFinancials.expenses.total_count} (${projectFinancials.expenses.total_amount.toFixed(0)})</span>
+                    </div>
+                  </div>
+                  {projectFinancials.financials.available_budget < 0 && (
+                    <p className="text-xs text-warning font-mono">⚠ Project is over budget</p>
+                  )}
                 </div>
-                <p className="text-2xl font-bold font-mono text-electric">${(project.actual_cost || 0).toLocaleString()}</p>
-              </div>
-              <div>
-                <div className="flex items-center gap-2 mb-2">
-                  <Clock className="w-4 h-4 text-muted-foreground" />
-                  <span className="text-sm font-mono text-muted-foreground uppercase">Hours</span>
+              </>
+            ) : (
+              <>
+                <div className="grid grid-cols-3 gap-6 mb-6">
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <DollarSign className="w-4 h-4 text-muted-foreground" />
+                      <span className="text-sm font-mono text-muted-foreground uppercase">Budget</span>
+                    </div>
+                    <p className="text-2xl font-bold font-mono">${project.budget.toLocaleString()}</p>
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <TrendingUp className="w-4 h-4 text-muted-foreground" />
+                      <span className="text-sm font-mono text-muted-foreground uppercase">Actual</span>
+                    </div>
+                    <p className="text-2xl font-bold font-mono text-electric">${(project.actual_cost || 0).toLocaleString()}</p>
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 mb-2">
+                      <Clock className="w-4 h-4 text-muted-foreground" />
+                      <span className="text-sm font-mono text-muted-foreground uppercase">Hours</span>
+                    </div>
+                    <p className="text-2xl font-bold font-mono text-voltage">{totalHours}h</p>
+                  </div>
                 </div>
-                <p className="text-2xl font-bold font-mono text-voltage">{totalHours}h</p>
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <div className="flex items-center justify-between text-sm">
-                <span className="font-mono text-muted-foreground">Budget Utilization</span>
-                <span className={cn('font-mono font-bold', isOverBudget ? 'text-warning' : 'text-foreground')}>
-                  {Math.round(progress)}%
-                </span>
-              </div>
-              <Progress
-                value={Math.min(progress, 100)}
-                className={cn('h-3', isOverBudget ? '[&>div]:bg-warning' : '[&>div]:bg-electric')}
-              />
-              {isOverBudget && (
-                <p className="text-xs text-warning font-mono">⚠ Project is over budget</p>
-              )}
-            </div>
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="font-mono text-muted-foreground">Budget Utilization</span>
+                    <span className={cn('font-mono font-bold', isOverBudget ? 'text-warning' : 'text-foreground')}>
+                      {Math.round(progress)}%
+                    </span>
+                  </div>
+                  <Progress
+                    value={Math.min(progress, 100)}
+                    className={cn('h-3', isOverBudget ? '[&>div]:bg-warning' : '[&>div]:bg-electric')}
+                  />
+                  {isOverBudget && (
+                    <p className="text-xs text-warning font-mono">⚠ Project is over budget</p>
+                  )}
+                </div>
+              </>
+            )}
           </Card>
 
           {/* Tabs */}
