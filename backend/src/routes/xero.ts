@@ -1343,7 +1343,7 @@ router.post('/sync', authenticate, requirePermission('can_sync_xero'), async (re
     };
 
     // Helper to make internal API calls
-    const makeInternalRequest = async (method: string, path: string, body?: any) => {
+    const makeInternalRequest = async <T = any>(method: string, path: string, body?: any): Promise<T> => {
       const baseUrl = process.env.BACKEND_URL || `http://localhost:${process.env.PORT || 3001}`;
       const url = `${baseUrl}${path}`;
       const options: RequestInit = {
@@ -1361,7 +1361,7 @@ router.post('/sync', authenticate, requirePermission('can_sync_xero'), async (re
         const errorText = await response.text();
         throw new Error(`Sync operation failed: ${errorText}`);
       }
-      return response.json();
+      return response.json() as T;
     };
 
     try {
@@ -1369,7 +1369,7 @@ router.post('/sync', authenticate, requirePermission('can_sync_xero'), async (re
       if (type === 'contacts' || type === 'all') {
         try {
           // Pull contacts from Xero
-          const pullResult = await makeInternalRequest('POST', '/api/xero/contacts/pull');
+          const pullResult = await makeInternalRequest<{ created?: number; updated?: number; skipped?: number }>('POST', '/api/xero/contacts/pull');
           syncResults.results.contacts = {
             synced: (pullResult.created || 0) + (pullResult.updated || 0),
             created: pullResult.created || 0,
@@ -1377,7 +1377,7 @@ router.post('/sync', authenticate, requirePermission('can_sync_xero'), async (re
           };
 
           // Push local clients to Xero
-          const pushResult = await makeInternalRequest('POST', '/api/xero/contacts/push-all');
+          const pushResult = await makeInternalRequest<{ results?: { total?: number; created?: number; failed?: number } }>('POST', '/api/xero/contacts/push-all');
           if (pushResult.results) {
             syncResults.results.contacts = {
               ...syncResults.results.contacts,

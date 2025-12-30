@@ -1,6 +1,7 @@
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import fs from 'fs/promises';
+import { createWriteStream, createReadStream } from 'fs';
 import path from 'path';
 import archiver from 'archiver';
 import { query } from '../db';
@@ -182,30 +183,30 @@ export async function createBackup(options: BackupOptions): Promise<BackupResult
 
     const backupId = backupResult.rows[0].id;
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    let backupFiles: string[] = [];
+    let backupFileList: string[] = [];
     let finalBackupPath: string;
 
     try {
       if (type === 'database' || type === 'full') {
         const dbBackup = await backupDatabase();
-        backupFiles.push(dbBackup);
+        backupFileList.push(dbBackup);
       }
 
       if (type === 'files' || type === 'full') {
         const filesBackup = await backupFiles();
-        backupFiles.push(filesBackup);
+        backupFileList.push(filesBackup);
       }
 
       // If multiple files, compress into single archive
-      if (backupFiles.length > 1) {
+      if (backupFileList.length > 1) {
         finalBackupPath = path.join(BACKUP_DIR, `backup-${backupId}-${timestamp}.tar.gz`);
-        await compressBackup(backupFiles, finalBackupPath);
+        await compressBackup(backupFileList, finalBackupPath);
         // Clean up individual files
-        for (const file of backupFiles) {
+        for (const file of backupFileList) {
           await fs.unlink(file).catch(() => {});
         }
       } else {
-        finalBackupPath = backupFiles[0];
+        finalBackupPath = backupFileList[0];
       }
 
       // Get file size

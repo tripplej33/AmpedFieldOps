@@ -1,6 +1,5 @@
 import { Router, Response } from 'express';
-import { authenticate, AuthRequest } from '../middleware/auth';
-import { requirePermission } from '../middleware/permissions';
+import { authenticate, requirePermission, AuthRequest } from '../middleware/auth';
 import { query } from '../db';
 import { createBackup, cleanupOldBackups, getBackupFileStream } from '../lib/backup';
 import { 
