@@ -40,7 +40,7 @@ export async function createExpenseInXero(
         Description: expenseData.description,
         Quantity: 1,
         UnitAmount: expenseData.amount,
-        Tracking: trackingCategories,
+        Tracking: trackingCategories?.map(tc => ({ Name: tc.name, Option: tc.option })),
       }],
       Reference: expenseData.description,
     };

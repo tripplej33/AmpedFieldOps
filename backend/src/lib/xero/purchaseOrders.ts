@@ -52,7 +52,7 @@ export async function createPurchaseOrderInXero(
         UnitAmount: item.unit_amount,
         AccountCode: item.account_code,
         ItemCode: item.item_id,
-        Tracking: trackingCategories,
+        Tracking: trackingCategories?.map(tc => ({ Name: tc.name, Option: tc.option })),
       })),
       Reference: poData.notes,
     };

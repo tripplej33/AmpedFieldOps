@@ -299,3 +299,43 @@ This is an automated test message from AmpedFieldOps.
   }
 }
 
+// Generic email sending function
+export async function sendEmail(options: {
+  to: string;
+  subject: string;
+  text: string;
+  html?: string;
+}): Promise<boolean> {
+  const dbSettings = await getEmailSettings();
+  const smtpFrom = dbSettings.smtp_from || process.env.SMTP_FROM || process.env.SMTP_USER || 'noreply@ampedfieldops.com';
+
+  const mailOptions = {
+    from: smtpFrom,
+    to: options.to,
+    subject: options.subject,
+    text: options.text,
+    html: options.html || options.text,
+  };
+
+  const emailTransporter = await getTransporter();
+
+  if (!emailTransporter) {
+    // Log email details instead of sending
+    console.log('\n=== EMAIL (NOT SENT - SMTP NOT CONFIGURED) ===');
+    console.log('To:', options.to);
+    console.log('Subject:', options.subject);
+    console.log('Body:', options.text);
+    console.log('================================================\n');
+    return false;
+  }
+
+  try {
+    await emailTransporter.sendMail(mailOptions);
+    console.log(`[Email] Email sent to ${options.to}`);
+    return true;
+  } catch (error) {
+    console.error('[Email] Failed to send email:', error);
+    return false;
+  }
+}
+
