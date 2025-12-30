@@ -3296,11 +3296,16 @@ router.get('/quotes', authenticate, requirePermission('can_view_financials'), as
 
     res.json(result.rows);
   } catch (error: any) {
-    console.error('Failed to fetch quotes:', error);
     const errorMessage = error.message || 'Failed to fetch quotes';
     const isTableError = errorMessage.includes('does not exist') || errorMessage.includes('relation') || error.code === '42P01';
+    if (isTableError) {
+      // Return empty array instead of error - tables will be created when migrations run
+      console.warn('[Xero] xero_quotes table not found. Returning empty array. Run migrations to create tables.');
+      return res.json([]);
+    }
+    console.error('Failed to fetch quotes:', error);
     res.status(500).json({ 
-      error: isTableError ? 'Database tables not found. Please run migrations.' : 'Failed to fetch quotes',
+      error: 'Failed to fetch quotes',
       details: env.NODE_ENV === 'development' ? errorMessage : undefined
     });
   }
@@ -4585,51 +4590,46 @@ router.get('/webhooks/events', authenticate, requirePermission('can_view_financi
 // Get financial summary
 router.get('/summary', authenticate, requirePermission('can_view_financials'), async (req: AuthRequest, res: Response) => {
   try {
+    // Helper function to safely query and return default on table error
+    const safeQuery = async (sql: string, defaultValue: any) => {
+      try {
+        const result = await query(sql);
+        return result;
+      } catch (error: any) {
+        const errorMessage = error.message || 'Query failed';
+        const isTableError = errorMessage.includes('does not exist') || errorMessage.includes('relation') || error.code === '42P01';
+        if (isTableError) {
+          console.warn('[Xero] Table not found for summary query. Using default value. Run migrations to create tables.');
+          return { rows: [defaultValue] };
+        }
+        throw error;
+      }
+    };
+
     // Outstanding invoices
-    const outstanding = await query(`
+    const outstanding = await safeQuery(`
       SELECT COALESCE(SUM(amount_due), 0) as total
       FROM xero_invoices
       WHERE status IN ('AUTHORISED', 'SUBMITTED')
-    `).catch((error: any) => {
-      const errorMessage = error.message || 'Failed to query invoices';
-      const isTableError = errorMessage.includes('does not exist') || errorMessage.includes('relation') || error.code === '42P01';
-      if (isTableError) {
-        throw new Error('Database tables not found. Please run migrations: docker exec -it ampedfieldops-backend-1 node dist/db/migrate.js');
-      }
-      throw error;
-    });
+    `, { total: '0' });
 
     // Paid this month
-    const paidThisMonth = await query(`
+    const paidThisMonth = await safeQuery(`
       SELECT COALESCE(SUM(amount_paid), 0) as total
       FROM xero_invoices
       WHERE status = 'PAID'
       AND updated_at >= date_trunc('month', CURRENT_DATE)
-    `).catch((error: any) => {
-      const errorMessage = error.message || 'Failed to query invoices';
-      const isTableError = errorMessage.includes('does not exist') || errorMessage.includes('relation') || error.code === '42P01';
-      if (isTableError) {
-        throw new Error('Database tables not found. Please run migrations: docker exec -it ampedfieldops-backend-1 node dist/db/migrate.js');
-      }
-      throw error;
-    });
+    `, { total: '0' });
 
     // Pending quotes
-    const pendingQuotes = await query(`
+    const pendingQuotes = await safeQuery(`
       SELECT COALESCE(SUM(total), 0) as total, COUNT(*) as count
       FROM xero_quotes
       WHERE status = 'PENDING'
-    `).catch((error: any) => {
-      const errorMessage = error.message || 'Failed to query quotes';
-      const isTableError = errorMessage.includes('does not exist') || errorMessage.includes('relation') || error.code === '42P01';
-      if (isTableError) {
-        throw new Error('Database tables not found. Please run migrations: docker exec -it ampedfieldops-backend-1 node dist/db/migrate.js');
-      }
-      throw error;
-    });
+    `, { total: '0', count: '0' });
 
     // Revenue last 6 months
-    const revenueByMonth = await query(`
+    const revenueByMonth = await safeQuery(`
       SELECT 
         date_trunc('month', issue_date) as month,
         COALESCE(SUM(total), 0) as total
@@ -4638,17 +4638,10 @@ router.get('/summary', authenticate, requirePermission('can_view_financials'), a
       AND issue_date >= CURRENT_DATE - INTERVAL '6 months'
       GROUP BY date_trunc('month', issue_date)
       ORDER BY month ASC
-    `).catch((error: any) => {
-      const errorMessage = error.message || 'Failed to query invoices';
-      const isTableError = errorMessage.includes('does not exist') || errorMessage.includes('relation') || error.code === '42P01';
-      if (isTableError) {
-        throw new Error('Database tables not found. Please run migrations: docker exec -it ampedfieldops-backend-1 node dist/db/migrate.js');
-      }
-      throw error;
-    });
+    `, []);
 
     // Top clients by revenue
-    const topClients = await query(`
+    const topClients = await safeQuery(`
       SELECT 
         c.id, c.name,
         COALESCE(SUM(xi.total), 0) as total_revenue
@@ -4657,14 +4650,7 @@ router.get('/summary', authenticate, requirePermission('can_view_financials'), a
       GROUP BY c.id, c.name
       ORDER BY total_revenue DESC
       LIMIT 5
-    `).catch((error: any) => {
-      const errorMessage = error.message || 'Failed to query clients';
-      const isTableError = errorMessage.includes('does not exist') || errorMessage.includes('relation') || error.code === '42P01';
-      if (isTableError) {
-        throw new Error('Database tables not found. Please run migrations: docker exec -it ampedfieldops-backend-1 node dist/db/migrate.js');
-      }
-      throw error;
-    });
+    `, []);
 
     res.json({
       outstanding_invoices: parseFloat(outstanding.rows[0].total) || 0,
@@ -4679,10 +4665,13 @@ router.get('/summary', authenticate, requirePermission('can_view_financials'), a
   } catch (error: any) {
     console.error('Failed to fetch financial summary:', error);
     const errorMessage = error.message || 'Failed to fetch financial summary';
-    const isTableError = errorMessage.includes('does not exist') || errorMessage.includes('relation') || error.code === '42P01' || errorMessage.includes('Database tables not found');
-    res.status(500).json({ 
-      error: isTableError ? 'Database tables not found. Please run migrations: docker exec -it ampedfieldops-backend-1 node dist/db/migrate.js' : 'Failed to fetch financial summary',
-      details: env.NODE_ENV === 'development' ? errorMessage : undefined
+    // Return empty summary instead of error
+    res.json({
+      outstanding_invoices: 0,
+      paid_this_month: 0,
+      pending_quotes: { total: 0, count: 0 },
+      revenue_by_month: [],
+      top_clients: []
     });
   }
 });

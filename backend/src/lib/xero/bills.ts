@@ -221,7 +221,9 @@ export async function getBills(filters: {
     const errorMessage = error.message || 'Failed to fetch bills';
     const isTableError = errorMessage.includes('does not exist') || errorMessage.includes('relation') || error.code === '42P01';
     if (isTableError) {
-      throw new Error('Database tables not found. Please run migrations: docker exec -it ampedfieldops-backend-1 node dist/db/migrate.js');
+      // Return empty array instead of error - tables will be created when migrations run
+      console.warn('[Xero] xero_bills table not found. Returning empty array. Run migrations to create tables.');
+      return [];
     }
     throw error;
   }
