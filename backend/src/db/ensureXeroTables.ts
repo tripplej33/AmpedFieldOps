@@ -6,6 +6,8 @@ import { query } from './index';
  */
 export async function ensureXeroTables(): Promise<void> {
   const tables = [
+    'xero_invoices',
+    'xero_quotes',
     'xero_purchase_orders',
     'xero_purchase_order_line_items',
     'xero_bills',
@@ -39,6 +41,46 @@ export async function ensureXeroTables(): Promise<void> {
 
 async function createTable(tableName: string): Promise<void> {
   const tableDefinitions: Record<string, string> = {
+    'xero_invoices': `
+      CREATE TABLE IF NOT EXISTS xero_invoices (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        xero_invoice_id VARCHAR(100) UNIQUE,
+        invoice_number VARCHAR(50),
+        client_id UUID REFERENCES clients(id) ON DELETE SET NULL,
+        project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
+        status VARCHAR(50),
+        amount_due DECIMAL(15,2),
+        amount_paid DECIMAL(15,2),
+        total DECIMAL(15,2),
+        currency VARCHAR(10) DEFAULT 'USD',
+        issue_date DATE,
+        due_date DATE,
+        paid_date DATE,
+        last_payment_date DATE,
+        line_items JSONB,
+        synced_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `,
+    'xero_quotes': `
+      CREATE TABLE IF NOT EXISTS xero_quotes (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        xero_quote_id VARCHAR(100) UNIQUE,
+        quote_number VARCHAR(50),
+        client_id UUID REFERENCES clients(id) ON DELETE SET NULL,
+        project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
+        status VARCHAR(50),
+        total DECIMAL(15,2),
+        currency VARCHAR(10) DEFAULT 'USD',
+        issue_date DATE,
+        expiry_date DATE,
+        line_items JSONB,
+        synced_at TIMESTAMP,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `,
     'xero_purchase_orders': `
       CREATE TABLE IF NOT EXISTS xero_purchase_orders (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
