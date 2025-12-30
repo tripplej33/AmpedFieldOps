@@ -1932,20 +1932,10 @@ async function syncPurchaseOrdersBidirectional(
             }
           }
 
-          // If no project found, try to get any project (for uncategorized POs)
+          // If no project found, purchase order will be imported without project_id
+          // User can link it manually later
           if (!projectId) {
-            const anyProjectResult = await query(
-              `SELECT id FROM projects ORDER BY created_at DESC LIMIT 1`
-            );
-            if (anyProjectResult.rows.length > 0) {
-              projectId = anyProjectResult.rows[0].id;
-            }
-          }
-
-          // Skip if still no project found (project_id is NOT NULL)
-          if (!projectId) {
-            console.warn(`[Xero] Skipping purchase order ${po.PurchaseOrderNumber}: No project found to link it to`);
-            continue;
+            console.log(`[Xero] Importing purchase order ${po.PurchaseOrderNumber} without project - can be linked manually later`);
           }
 
           await query(
@@ -3807,19 +3797,53 @@ router.get('/purchase-orders/:id', authenticate, requirePermission('can_view_fin
 
 router.put('/purchase-orders/:id', authenticate, requirePermission('can_sync_xero'), async (req: AuthRequest, res: Response) => {
   try {
-    const { status } = req.body;
+    const { status, project_id } = req.body;
 
-    if (!status) {
-      return res.status(400).json({ error: 'Status is required' });
+    const updates: string[] = [];
+    const values: any[] = [];
+    let paramCount = 1;
+
+    if (status) {
+      updates.push(`status = $${paramCount++}`);
+      values.push(status);
     }
 
-    await updatePurchaseOrderStatus(req.params.id, status);
+    if (project_id !== undefined) {
+      // Allow setting project_id to null to unlink
+      if (project_id === null || project_id === '') {
+        updates.push(`project_id = NULL`);
+      } else {
+        // Verify project exists
+        const projectResult = await query('SELECT id FROM projects WHERE id = $1', [project_id]);
+        if (projectResult.rows.length === 0) {
+          return res.status(404).json({ error: 'Project not found' });
+        }
+        updates.push(`project_id = $${paramCount++}`);
+        values.push(project_id);
+      }
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ error: 'No updates provided. Provide status and/or project_id' });
+    }
+
+    updates.push('updated_at = CURRENT_TIMESTAMP');
+    values.push(req.params.id);
+
+    await query(
+      `UPDATE xero_purchase_orders SET ${updates.join(', ')} WHERE id = $${paramCount}`,
+      values
+    );
 
     // Log activity
+    const logDetails: any = {};
+    if (status) logDetails.status = status;
+    if (project_id !== undefined) logDetails.project_id = project_id;
+
     await query(
       `INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) 
        VALUES ($1, $2, $3, $4, $5)`,
-      [req.user!.id, 'update', 'purchase_order', req.params.id, JSON.stringify({ status })]
+      [req.user!.id, 'update', 'purchase_order', req.params.id, JSON.stringify(logDetails)]
     );
 
     const po = await getPurchaseOrderById(req.params.id);

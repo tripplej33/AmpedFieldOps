@@ -212,7 +212,7 @@ CREATE TABLE IF NOT EXISTS xero_purchase_orders (
   xero_po_id VARCHAR(100) UNIQUE,
   po_number VARCHAR(50),
   supplier_id UUID REFERENCES clients(id) ON DELETE SET NULL,
-  project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
   status VARCHAR(50) DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'SUBMITTED', 'AUTHORISED', 'BILLED', 'CANCELLED')),
   date DATE NOT NULL,
   delivery_date DATE,
@@ -225,6 +225,19 @@ CREATE TABLE IF NOT EXISTS xero_purchase_orders (
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Make project_id nullable if it was created as NOT NULL (for existing databases)
+DO $$ 
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns 
+    WHERE table_name = 'xero_purchase_orders' 
+    AND column_name = 'project_id' 
+    AND is_nullable = 'NO'
+  ) THEN
+    ALTER TABLE xero_purchase_orders ALTER COLUMN project_id DROP NOT NULL;
+  END IF;
+END $$;
 
 -- Purchase Order Line Items table
 CREATE TABLE IF NOT EXISTS xero_purchase_order_line_items (
