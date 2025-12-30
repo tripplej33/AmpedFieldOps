@@ -1,4 +1,6 @@
 import { query } from '../../db';
+import { fetchWithRateLimit } from './rateLimiter';
+import { parseXeroError, getErrorMessage } from './errorHandler';
 
 export interface XeroItem {
   ItemID: string;
@@ -22,7 +24,7 @@ export async function syncItemsFromXero(
   tokenData: { accessToken: string; tenantId: string }
 ): Promise<number> {
   try {
-    const response = await fetch('https://api.xero.com/api.xro/2.0/Items', {
+    const response = await fetchWithRateLimit('https://api.xero.com/api.xro/2.0/Items', {
       headers: {
         'Authorization': `Bearer ${tokenData.accessToken}`,
         'Xero-Tenant-Id': tokenData.tenantId,
@@ -31,9 +33,10 @@ export async function syncItemsFromXero(
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Xero items fetch failed:', errorText);
-      return 0;
+      const error = await parseXeroError(response);
+      const errorMessage = getErrorMessage(error);
+      console.error('Xero items fetch failed:', errorMessage, error);
+      throw new Error(errorMessage);
     }
 
     interface XeroItemsResponse {

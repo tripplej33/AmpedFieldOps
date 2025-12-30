@@ -1,4 +1,6 @@
 import { query } from '../../db';
+import { fetchWithRateLimit } from './rateLimiter';
+import { parseXeroError, getErrorMessage } from './errorHandler';
 
 export interface BankTransaction {
   id: string;
@@ -41,7 +43,7 @@ export async function importBankTransactions(
       url += '?' + params.toString();
     }
 
-    const response = await fetch(url, {
+    const response = await fetchWithRateLimit(url, {
       headers: {
         'Authorization': `Bearer ${tokenData.accessToken}`,
         'Xero-Tenant-Id': tokenData.tenantId,

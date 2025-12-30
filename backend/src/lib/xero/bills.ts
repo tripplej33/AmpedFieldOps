@@ -1,4 +1,6 @@
 import { query } from '../../db';
+import { fetchWithRateLimit } from './rateLimiter';
+import { parseXeroError, getErrorMessage } from './errorHandler';
 
 export interface CreateBillData {
   supplier_id: string;
@@ -51,7 +53,14 @@ export async function createBillInXero(
       Reference: billData.reference,
     };
 
-    const response = await fetch('https://api.xero.com/api.xro/2.0/Invoices', {
+    // Xero Bills are created using the Invoices endpoint with Type: 'ACCPAY'
+    // This is the correct approach per Xero API documentation
+    const xeroBillWithType = {
+      ...xeroBill,
+      Type: 'ACCPAY' // Accounts Payable (Bill)
+    };
+
+    const response = await fetchWithRateLimit('https://api.xero.com/api.xro/2.0/Invoices', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${tokenData.accessToken}`,
@@ -59,27 +68,28 @@ export async function createBillInXero(
         'Content-Type': 'application/json',
         'Accept': 'application/json',
       },
-      body: JSON.stringify({ Invoices: [xeroBill] }),
+      body: JSON.stringify({ Invoices: [xeroBillWithType] }),
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Xero bill creation failed:', errorText);
-      return null;
+      const error = await parseXeroError(response);
+      const errorMessage = getErrorMessage(error);
+      console.error('Xero bill creation failed:', errorMessage, error);
+      throw new Error(errorMessage);
     }
 
     const result = await response.json() as { Invoices: Array<{ InvoiceID: string; Date: string; Total: number; Type: string }> };
     const invoice = result.Invoices?.[0];
     
-    // Xero uses the same Invoices endpoint for bills, but we need to check the Type
+    // Verify it's a bill (ACCPAY type)
     if (invoice && invoice.Type === 'ACCPAY') {
       return invoice;
     }
     
-    return null;
+    throw new Error('Created invoice is not a bill (Type is not ACCPAY)');
   } catch (error) {
     console.error('Error creating bill in Xero:', error);
-    return null;
+    throw error;
   }
 }
 

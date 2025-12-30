@@ -1,4 +1,6 @@
 import { query } from '../../db';
+import { fetchWithRateLimit } from './rateLimiter';
+import { parseXeroError, getErrorMessage } from './errorHandler';
 
 export interface CreatePaymentData {
   invoice_id: string;
@@ -52,7 +54,7 @@ export async function createPaymentInXero(
       xeroPayment.Account = { Code: paymentData.account_code };
     }
 
-    const response = await fetch('https://api.xero.com/api.xro/2.0/Payments', {
+    const response = await fetchWithRateLimit('https://api.xero.com/api.xro/2.0/Payments', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${tokenData.accessToken}`,
@@ -64,16 +66,17 @@ export async function createPaymentInXero(
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Xero payment creation failed:', errorText);
-      return null;
+      const error = await parseXeroError(response);
+      const errorMessage = getErrorMessage(error);
+      console.error('Xero payment creation failed:', errorMessage, error);
+      throw new Error(errorMessage);
     }
 
     const result = await response.json() as { Payments: Array<{ PaymentID: string; Date: string; Amount: number }> };
     return result.Payments?.[0] || null;
   } catch (error) {
     console.error('Error creating payment in Xero:', error);
-    return null;
+    throw error;
   }
 }
 

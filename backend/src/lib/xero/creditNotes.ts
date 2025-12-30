@@ -1,4 +1,6 @@
 import { query } from '../../db';
+import { fetchWithRateLimit } from './rateLimiter';
+import { parseXeroError, getErrorMessage } from './errorHandler';
 
 export interface CreateCreditNoteData {
   invoice_id: string;
@@ -46,7 +48,7 @@ export async function createCreditNoteInXero(
       Reference: creditNoteData.reason,
     };
 
-    const response = await fetch('https://api.xero.com/api.xro/2.0/CreditNotes', {
+    const response = await fetchWithRateLimit('https://api.xero.com/api.xro/2.0/CreditNotes', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${tokenData.accessToken}`,
@@ -58,16 +60,17 @@ export async function createCreditNoteInXero(
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Xero credit note creation failed:', errorText);
-      return null;
+      const error = await parseXeroError(response);
+      const errorMessage = getErrorMessage(error);
+      console.error('Xero credit note creation failed:', errorMessage, error);
+      throw new Error(errorMessage);
     }
 
     const result = await response.json() as { CreditNotes: Array<{ CreditNoteID: string; Date: string; Total: number }> };
     return result.CreditNotes?.[0] || null;
   } catch (error) {
     console.error('Error creating credit note in Xero:', error);
-    return null;
+    throw error;
   }
 }
 
@@ -84,7 +87,7 @@ export async function applyCreditNoteToInvoice(
     // This endpoint is for explicit allocation if needed
     // The allocation happens via the Allocations endpoint
     
-    const response = await fetch(`https://api.xero.com/api.xro/2.0/CreditNotes/${creditNoteXeroId}/Allocations`, {
+    const response = await fetchWithRateLimit(`https://api.xero.com/api.xro/2.0/CreditNotes/${creditNoteXeroId}/Allocations`, {
       method: 'PUT',
       headers: {
         'Authorization': `Bearer ${tokenData.accessToken}`,
@@ -100,10 +103,17 @@ export async function applyCreditNoteToInvoice(
       }),
     });
 
-    return response.ok;
+    if (!response.ok) {
+      const error = await parseXeroError(response);
+      const errorMessage = getErrorMessage(error);
+      console.error('Xero credit note allocation failed:', errorMessage, error);
+      throw new Error(errorMessage);
+    }
+
+    return true;
   } catch (error) {
     console.error('Error applying credit note to invoice:', error);
-    return false;
+    throw error;
   }
 }
 

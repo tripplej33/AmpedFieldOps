@@ -3,6 +3,8 @@ import { query } from '../db';
 import { authenticate, requirePermission, AuthRequest } from '../middleware/auth';
 import { env } from '../config/env';
 import { ensureXeroTables } from '../db/ensureXeroTables';
+import { fetchWithRateLimit } from '../lib/xero/rateLimiter';
+import { parseXeroError, getErrorMessage } from '../lib/xero/errorHandler';
 import { createPaymentInXero, storePayment, getPayments, CreatePaymentData } from '../lib/xero/payments';
 import { importBankTransactions, getBankTransactions, reconcileTransaction } from '../lib/xero/bankTransactions';
 import { 
@@ -668,7 +670,7 @@ router.get('/callback', async (req, res) => {
     
     try {
       console.log('[Xero] Fetching Xero connections...');
-      const connectionsResponse = await fetch('https://api.xero.com/connections', {
+      const connectionsResponse = await fetchWithRateLimit('https://api.xero.com/connections', {
         headers: {
           'Authorization': `Bearer ${tokens.access_token}`,
           'Content-Type': 'application/json'
@@ -934,24 +936,47 @@ async function getValidAccessToken(): Promise<{ accessToken: string; tenantId: s
       });
 
       if (!refreshResponse.ok) {
-        console.error('Token refresh failed');
+        const errorText = await refreshResponse.text();
+        let errorData: any = {};
+        try {
+          errorData = JSON.parse(errorText);
+        } catch {
+          errorData = { error: errorText };
+        }
+        
+        console.error('Token refresh failed:', {
+          status: refreshResponse.status,
+          error: errorData.error || errorData.error_description || 'Unknown error',
+          details: errorData
+        });
+        
+        // If refresh token is invalid/expired, clear tokens so user can reconnect
+        if (errorData.error === 'invalid_grant' || refreshResponse.status === 401) {
+          console.warn('[Xero] Refresh token expired or invalid. Clearing tokens.');
+          await query('DELETE FROM xero_tokens WHERE id = $1', [token.id]);
+        }
+        
         return null;
       }
 
       interface RefreshTokenResponse {
         access_token: string;
-        refresh_token: string;
+        refresh_token: string; // Xero uses rotating refresh tokens - this is the NEW token
         expires_in: number;
       }
 
       const newTokens = await refreshResponse.json() as RefreshTokenResponse;
       const newExpiresAt = new Date(Date.now() + newTokens.expires_in * 1000);
 
+      // IMPORTANT: Xero uses rotating refresh tokens
+      // The refresh_token in the response is a NEW token that must be used for the next refresh
+      // We MUST update the refresh_token in the database
       await query(
         `UPDATE xero_tokens SET access_token = $1, refresh_token = $2, expires_at = $3, updated_at = CURRENT_TIMESTAMP WHERE id = $4`,
         [newTokens.access_token, newTokens.refresh_token, newExpiresAt, token.id]
       );
 
+      console.log('[Xero] Token refreshed successfully. New refresh token stored (rotating tokens).');
       return { accessToken: newTokens.access_token, tenantId: token.tenant_id };
     } catch (e) {
       console.error('Token refresh error:', e);
@@ -1097,7 +1122,7 @@ router.post('/contacts/pull', authenticate, requirePermission('can_sync_xero'), 
     }
 
     // Fetch contacts from Xero
-    const contactsResponse = await fetch('https://api.xero.com/api.xro/2.0/Contacts?where=IsCustomer==true', {
+    const contactsResponse = await fetchWithRateLimit('https://api.xero.com/api.xro/2.0/Contacts?where=IsCustomer==true', {
       headers: {
         'Authorization': `Bearer ${tokenData.accessToken}`,
         'Xero-Tenant-Id': tokenData.tenantId,
@@ -1107,9 +1132,10 @@ router.post('/contacts/pull', authenticate, requirePermission('can_sync_xero'), 
     });
 
     if (!contactsResponse.ok) {
-      const errorText = await contactsResponse.text();
-      console.error('Xero contacts fetch failed:', errorText);
-      return res.status(400).json({ error: 'Failed to fetch contacts from Xero' });
+      const error = await parseXeroError(contactsResponse);
+      const errorMessage = getErrorMessage(error);
+      console.error('Xero contacts fetch failed:', errorMessage, error);
+      return res.status(400).json({ error: errorMessage });
     }
 
     interface XeroContactsResponse {
@@ -1276,7 +1302,7 @@ router.post('/contacts/push/:clientId', authenticate, requirePermission('can_syn
 
     // If client already has xero_contact_id, update existing contact
     if (client.xero_contact_id) {
-      const updateResponse = await fetch(`https://api.xero.com/api.xro/2.0/Contacts/${client.xero_contact_id}`, {
+      const updateResponse = await fetchWithRateLimit(`https://api.xero.com/api.xro/2.0/Contacts/${client.xero_contact_id}`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${tokenData.accessToken}`,
@@ -1288,9 +1314,10 @@ router.post('/contacts/push/:clientId', authenticate, requirePermission('can_syn
       });
 
       if (!updateResponse.ok) {
-        const errorText = await updateResponse.text();
-        console.error('Xero contact update failed:', errorText);
-        return res.status(400).json({ error: 'Failed to update contact in Xero' });
+        const error = await parseXeroError(updateResponse);
+        const errorMessage = getErrorMessage(error);
+        console.error('Xero contact update failed:', errorMessage, error);
+        return res.status(400).json({ error: errorMessage });
       }
 
       res.json({
@@ -1300,7 +1327,7 @@ router.post('/contacts/push/:clientId', authenticate, requirePermission('can_syn
       });
     } else {
       // Create new contact in Xero
-      const createResponse = await fetch('https://api.xero.com/api.xro/2.0/Contacts', {
+      const createResponse = await fetchWithRateLimit('https://api.xero.com/api.xro/2.0/Contacts', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${tokenData.accessToken}`,
@@ -1402,7 +1429,7 @@ router.post('/contacts/push-all', authenticate, requirePermission('can_sync_xero
       }
 
       try {
-        const createResponse = await fetch('https://api.xero.com/api.xro/2.0/Contacts', {
+        const createResponse = await fetchWithRateLimit('https://api.xero.com/api.xro/2.0/Contacts', {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${tokenData.accessToken}`,
@@ -1428,6 +1455,8 @@ router.post('/contacts/push-all', authenticate, requirePermission('can_sync_xero
             created++;
           }
         } else {
+          const error = await parseXeroError(createResponse);
+          console.error('Failed to push contact to Xero:', getErrorMessage(error), error);
           failed++;
         }
       } catch (e) {
@@ -1501,7 +1530,7 @@ async function syncInvoicesBidirectional(
 
   try {
     // Fetch invoices from Xero
-    const invoicesResponse = await fetch('https://api.xero.com/api.xro/2.0/Invoices', {
+    const invoicesResponse = await fetchWithRateLimit('https://api.xero.com/api.xro/2.0/Invoices', {
       headers: {
         'Authorization': `Bearer ${tokenData.accessToken}`,
         'Xero-Tenant-Id': tokenData.tenantId,
@@ -1587,7 +1616,7 @@ async function syncInvoicesBidirectional(
       for (const localInvoice of missingInvoices) {
         try {
           const invoicePayload = await buildXeroInvoicePayload(localInvoice);
-          const createResponse = await fetch('https://api.xero.com/api.xro/2.0/Invoices', {
+          const createResponse = await fetchWithRateLimit('https://api.xero.com/api.xro/2.0/Invoices', {
             method: 'POST',
             headers: {
               'Authorization': `Bearer ${tokenData.accessToken}`,
@@ -1659,7 +1688,7 @@ async function syncQuotesBidirectional(
   const result: SyncResult = { pulled: { created: 0, updated: 0 }, pushed: { created: 0, failed: 0 } };
 
   try {
-    const quotesResponse = await fetch('https://api.xero.com/api.xro/2.0/Quotes', {
+    const quotesResponse = await fetchWithRateLimit('https://api.xero.com/api.xro/2.0/Quotes', {
       headers: {
         'Authorization': `Bearer ${tokenData.accessToken}`,
         'Xero-Tenant-Id': tokenData.tenantId,
@@ -1743,7 +1772,7 @@ async function syncQuotesBidirectional(
       for (const localQuote of missingQuotes) {
         try {
           const quotePayload = await buildXeroQuotePayload(localQuote);
-          const createResponse = await fetch('https://api.xero.com/api.xro/2.0/Quotes', {
+          const createResponse = await fetchWithRateLimit('https://api.xero.com/api.xro/2.0/Quotes', {
             method: 'POST',
             headers: {
               'Authorization': `Bearer ${tokenData.accessToken}`,
@@ -1803,7 +1832,7 @@ async function syncItemsBidirectional(
     const localItems = localItemsResult.rows;
 
     // Get items from Xero to check which are missing
-    const itemsResponse = await fetch('https://api.xero.com/api.xro/2.0/Items', {
+    const itemsResponse = await fetchWithRateLimit('https://api.xero.com/api.xro/2.0/Items', {
       headers: {
         'Authorization': `Bearer ${tokenData.accessToken}`,
         'Xero-Tenant-Id': tokenData.tenantId,
@@ -1828,7 +1857,7 @@ async function syncItemsBidirectional(
           IsTrackedAsInventory: localItem.is_tracked || false
         };
 
-        const createResponse = await fetch('https://api.xero.com/api.xro/2.0/Items', {
+        const createResponse = await fetchWithRateLimit('https://api.xero.com/api.xro/2.0/Items', {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${tokenData.accessToken}`,
@@ -1876,7 +1905,7 @@ async function syncPurchaseOrdersBidirectional(
 
   try {
     // Pull purchase orders from Xero
-    const poResponse = await fetch('https://api.xero.com/api.xro/2.0/PurchaseOrders', {
+    const poResponse = await fetchWithRateLimit('https://api.xero.com/api.xro/2.0/PurchaseOrders', {
       headers: {
         'Authorization': `Bearer ${tokenData.accessToken}`,
         'Xero-Tenant-Id': tokenData.tenantId,
@@ -2015,7 +2044,7 @@ async function syncPurchaseOrdersBidirectional(
           Reference: localPO.notes || null
         };
 
-        const createResponse = await fetch('https://api.xero.com/api.xro/2.0/PurchaseOrders', {
+        const createResponse = await fetchWithRateLimit('https://api.xero.com/api.xro/2.0/PurchaseOrders', {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${tokenData.accessToken}`,
@@ -2063,7 +2092,10 @@ async function syncBillsBidirectional(
 
   try {
     // Pull bills from Xero
-    const billsResponse = await fetch('https://api.xero.com/api.xro/2.0/Bills', {
+    // Note: Xero doesn't have a dedicated /Bills endpoint
+    // Bills are Invoices with Type='ACCPAY' (Accounts Payable)
+    // We'll fetch all invoices and filter for ACCPAY type
+    const billsResponse = await fetchWithRateLimit('https://api.xero.com/api.xro/2.0/Invoices?where=Type=="ACCPAY"', {
       headers: {
         'Authorization': `Bearer ${tokenData.accessToken}`,
         'Xero-Tenant-Id': tokenData.tenantId,
@@ -2074,8 +2106,19 @@ async function syncBillsBidirectional(
     let bills: any[] = [];
 
     if (billsResponse.ok) {
-      const billsData = await billsResponse.json() as { Bills?: any[] };
-      bills = billsData.Bills || [];
+      const billsData = await billsResponse.json() as { Invoices?: any[] };
+      // Map invoices to bills format for consistency
+      bills = (billsData.Invoices || []).map(inv => ({
+        BillID: inv.InvoiceID,
+        BillNumber: inv.InvoiceNumber,
+        Contact: inv.Contact,
+        Status: inv.Status,
+        Total: inv.Total,
+        AmountDue: inv.AmountDue,
+        Date: inv.Date,
+        DueDate: inv.DueDate,
+        LineItems: inv.LineItems
+      }));
 
       // Pull: Import/update bills from Xero
       for (const bill of bills) {
@@ -2119,8 +2162,8 @@ async function syncBillsBidirectional(
              (xero_bill_id, bill_number, supplier_id, status, amount, amount_due, date, due_date, synced_at)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CURRENT_TIMESTAMP)`,
             [
-              bill.BillID,
-              bill.BillNumber,
+              bill.BillID || bill.InvoiceID, // Handle both formats
+              bill.BillNumber || bill.InvoiceNumber, // Handle both formats
               supplierId,
               bill.Status,
               bill.Total || 0,
@@ -2174,7 +2217,9 @@ async function syncBillsBidirectional(
           }
         }
 
+        // Xero Bills are created using the Invoices endpoint with Type: 'ACCPAY'
         const billPayload = {
+          Type: 'ACCPAY', // Accounts Payable (Bill)
           Contact: { ContactID: supplierXeroId },
           Date: localBill.date || new Date().toISOString().split('T')[0],
           DueDate: localBill.due_date || null,
@@ -2187,7 +2232,7 @@ async function syncBillsBidirectional(
           Status: localBill.status || 'AUTHORISED'
         };
 
-        const createResponse = await fetch('https://api.xero.com/api.xro/2.0/Bills', {
+        const createResponse = await fetchWithRateLimit('https://api.xero.com/api.xro/2.0/Invoices', {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${tokenData.accessToken}`,
@@ -2195,24 +2240,27 @@ async function syncBillsBidirectional(
             'Content-Type': 'application/json',
             'Accept': 'application/json'
           },
-          body: JSON.stringify({ Bills: [billPayload] })
+          body: JSON.stringify({ Invoices: [billPayload] })
         });
 
         if (createResponse.ok) {
-          const createResult = await createResponse.json() as { Bills?: Array<{ BillID: string }> };
-          const xeroBillId = createResult.Bills?.[0]?.BillID;
-          if (xeroBillId) {
+          const createResult = await createResponse.json() as { Invoices?: Array<{ InvoiceID: string; Type: string }> };
+          const xeroInvoice = createResult.Invoices?.[0];
+          // Verify it's a bill (ACCPAY type)
+          if (xeroInvoice && xeroInvoice.Type === 'ACCPAY') {
             await query(
               `UPDATE xero_bills SET xero_bill_id = $1, synced_at = CURRENT_TIMESTAMP WHERE id = $2`,
-              [xeroBillId, localBill.id]
+              [xeroInvoice.InvoiceID, localBill.id]
             );
             result.pushed.created++;
           } else {
+            console.error('Created invoice is not a bill (Type is not ACCPAY)');
             result.pushed.failed++;
           }
         } else {
-          const errorText = await createResponse.text();
-          console.error('Failed to push bill to Xero:', errorText);
+          const error = await parseXeroError(createResponse);
+          const errorMessage = getErrorMessage(error);
+          console.error('Failed to push bill to Xero:', errorMessage, error);
           result.pushed.failed++;
         }
       } catch (pushError: any) {
@@ -2235,7 +2283,10 @@ async function syncExpensesBidirectional(
 
   try {
     // Pull receipts/expenses from Xero
-    const receiptsResponse = await fetch('https://api.xero.com/api.xro/2.0/Receipts', {
+    // Note: Xero uses /ExpenseClaims for expense claims, not /Receipts
+    // Receipts are different - they're for recording cash transactions
+    // We should use /ExpenseClaims for expense management
+    const receiptsResponse = await fetchWithRateLimit('https://api.xero.com/api.xro/2.0/ExpenseClaims', {
       headers: {
         'Authorization': `Bearer ${tokenData.accessToken}`,
         'Xero-Tenant-Id': tokenData.tenantId,
@@ -2246,8 +2297,16 @@ async function syncExpensesBidirectional(
     let receipts: any[] = [];
 
     if (receiptsResponse.ok) {
-      const receiptsData = await receiptsResponse.json() as { Receipts?: any[] };
-      receipts = receiptsData.Receipts || [];
+      const receiptsData = await receiptsResponse.json() as { ExpenseClaims?: any[] };
+      // Map ExpenseClaims to receipts format for consistency
+      receipts = (receiptsData.ExpenseClaims || []).map(ec => ({
+        ReceiptID: ec.ExpenseClaimID,
+        ReceiptNumber: ec.ExpenseClaimNumber,
+        Date: ec.Date,
+        Total: ec.Total,
+        Status: ec.Status,
+        LineItems: ec.LineItems
+      }));
 
       // Pull: Import/update expenses from Xero
       for (const receipt of receipts) {
@@ -2312,7 +2371,7 @@ async function syncExpensesBidirectional(
           Reference: localExpense.description || null
         };
 
-        const createResponse = await fetch('https://api.xero.com/api.xro/2.0/Receipts', {
+        const createResponse = await fetchWithRateLimit('https://api.xero.com/api.xro/2.0/ExpenseClaims', {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${tokenData.accessToken}`,
@@ -2320,12 +2379,12 @@ async function syncExpensesBidirectional(
             'Content-Type': 'application/json',
             'Accept': 'application/json'
           },
-          body: JSON.stringify({ Receipts: [receiptPayload] })
+          body: JSON.stringify({ ExpenseClaims: [receiptPayload] })
         });
 
         if (createResponse.ok) {
-          const createResult = await createResponse.json() as { Receipts?: Array<{ ReceiptID: string }> };
-          const xeroExpenseId = createResult.Receipts?.[0]?.ReceiptID;
+          const createResult = await createResponse.json() as { ExpenseClaims?: Array<{ ExpenseClaimID: string }> };
+          const xeroExpenseId = createResult.ExpenseClaims?.[0]?.ExpenseClaimID;
           if (xeroExpenseId) {
             await query(
               `UPDATE xero_expenses SET xero_expense_id = $1, synced_at = CURRENT_TIMESTAMP WHERE id = $2`,
@@ -2336,8 +2395,9 @@ async function syncExpensesBidirectional(
             result.pushed.failed++;
           }
         } else {
-          const errorText = await createResponse.text();
-          console.error('Failed to push expense to Xero:', errorText);
+          const error = await parseXeroError(createResponse);
+          const errorMessage = getErrorMessage(error);
+          console.error('Failed to push expense to Xero:', errorMessage, error);
           result.pushed.failed++;
         }
       } catch (pushError: any) {
@@ -2360,7 +2420,7 @@ async function syncPaymentsBidirectional(
 
   try {
     // Pull payments from Xero
-    const paymentsResponse = await fetch('https://api.xero.com/api.xro/2.0/Payments', {
+    const paymentsResponse = await fetchWithRateLimit('https://api.xero.com/api.xro/2.0/Payments', {
       headers: {
         'Authorization': `Bearer ${tokenData.accessToken}`,
         'Xero-Tenant-Id': tokenData.tenantId,
@@ -2463,7 +2523,7 @@ async function syncPaymentsBidirectional(
           Reference: localPayment.reference || null
         };
 
-        const createResponse = await fetch('https://api.xero.com/api.xro/2.0/Payments', {
+        const createResponse = await fetchWithRateLimit('https://api.xero.com/api.xro/2.0/Payments', {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${tokenData.accessToken}`,
@@ -2511,7 +2571,7 @@ async function syncCreditNotesBidirectional(
 
   try {
     // Pull credit notes from Xero
-    const creditNotesResponse = await fetch('https://api.xero.com/api.xro/2.0/CreditNotes', {
+    const creditNotesResponse = await fetchWithRateLimit('https://api.xero.com/api.xro/2.0/CreditNotes', {
       headers: {
         'Authorization': `Bearer ${tokenData.accessToken}`,
         'Xero-Tenant-Id': tokenData.tenantId,
@@ -2622,7 +2682,7 @@ async function syncCreditNotesBidirectional(
           }]
         };
 
-        const createResponse = await fetch('https://api.xero.com/api.xro/2.0/CreditNotes', {
+        const createResponse = await fetchWithRateLimit('https://api.xero.com/api.xro/2.0/CreditNotes', {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${tokenData.accessToken}`,
@@ -2670,7 +2730,7 @@ async function syncBankTransactions(
 
   try {
     // Pull bank transactions from Xero
-    const bankTransactionsResponse = await fetch('https://api.xero.com/api.xro/2.0/BankTransactions', {
+    const bankTransactionsResponse = await fetchWithRateLimit('https://api.xero.com/api.xro/2.0/BankTransactions', {
       headers: {
         'Authorization': `Bearer ${tokenData.accessToken}`,
         'Xero-Tenant-Id': tokenData.tenantId,
@@ -2755,7 +2815,7 @@ async function syncTrackingCategories(
   let mapped = 0;
 
   try {
-    const trackingResponse = await fetch('https://api.xero.com/api.xro/2.0/TrackingCategories', {
+    const trackingResponse = await fetchWithRateLimit('https://api.xero.com/api.xro/2.0/TrackingCategories', {
       headers: {
         'Authorization': `Bearer ${tokenData.accessToken}`,
         'Xero-Tenant-Id': tokenData.tenantId,

@@ -1,4 +1,6 @@
 import { query } from '../../db';
+import { fetchWithRateLimit } from './rateLimiter';
+import { parseXeroError, getErrorMessage } from './errorHandler';
 
 export interface CreatePurchaseOrderData {
   supplier_id: string;
@@ -57,7 +59,7 @@ export async function createPurchaseOrderInXero(
       Reference: poData.notes,
     };
 
-    const response = await fetch('https://api.xero.com/api.xro/2.0/PurchaseOrders', {
+    const response = await fetchWithRateLimit('https://api.xero.com/api.xro/2.0/PurchaseOrders', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${tokenData.accessToken}`,
@@ -69,16 +71,17 @@ export async function createPurchaseOrderInXero(
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Xero purchase order creation failed:', errorText);
-      return null;
+      const error = await parseXeroError(response);
+      const errorMessage = getErrorMessage(error);
+      console.error('Xero purchase order creation failed:', errorMessage, error);
+      throw new Error(errorMessage);
     }
 
     const result = await response.json() as { PurchaseOrders: Array<{ PurchaseOrderID: string; Date: string; Total: number }> };
     return result.PurchaseOrders?.[0] || null;
   } catch (error) {
     console.error('Error creating purchase order in Xero:', error);
-    return null;
+    throw error;
   }
 }
 

@@ -1,4 +1,6 @@
 import { query } from '../../db';
+import { fetchWithRateLimit } from './rateLimiter';
+import { parseXeroError, getErrorMessage } from './errorHandler';
 
 /**
  * Get Profit & Loss report from Xero
@@ -24,7 +26,7 @@ export async function getProfitLossReport(
       url += '?' + params.toString();
     }
 
-    const response = await fetch(url, {
+    const response = await fetchWithRateLimit(url, {
       headers: {
         'Authorization': `Bearer ${tokenData.accessToken}`,
         'Xero-Tenant-Id': tokenData.tenantId,
@@ -33,8 +35,9 @@ export async function getProfitLossReport(
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Xero P&L report fetch failed:', errorText);
+      const error = await parseXeroError(response);
+      const errorMessage = getErrorMessage(error);
+      console.error('Xero P&L report fetch failed:', errorMessage, error);
       return null;
     }
 
@@ -65,7 +68,7 @@ export async function getBalanceSheetReport(
       url += '?' + params.toString();
     }
 
-    const response = await fetch(url, {
+    const response = await fetchWithRateLimit(url, {
       headers: {
         'Authorization': `Bearer ${tokenData.accessToken}`,
         'Xero-Tenant-Id': tokenData.tenantId,
@@ -74,9 +77,10 @@ export async function getBalanceSheetReport(
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Xero Balance Sheet report fetch failed:', errorText);
-      return null;
+      const error = await parseXeroError(response);
+      const errorMessage = getErrorMessage(error);
+      console.error('Xero Balance Sheet report fetch failed:', errorMessage, error);
+      throw new Error(errorMessage);
     }
 
     return await response.json();
@@ -109,7 +113,7 @@ export async function getCashFlowReport(
       url += '?' + params.toString();
     }
 
-    const response = await fetch(url, {
+    const response = await fetchWithRateLimit(url, {
       headers: {
         'Authorization': `Bearer ${tokenData.accessToken}`,
         'Xero-Tenant-Id': tokenData.tenantId,
@@ -118,9 +122,10 @@ export async function getCashFlowReport(
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Xero Cash Flow report fetch failed:', errorText);
-      return null;
+      const error = await parseXeroError(response);
+      const errorMessage = getErrorMessage(error);
+      console.error('Xero Cash Flow report fetch failed:', errorMessage, error);
+      throw new Error(errorMessage);
     }
 
     return await response.json();
@@ -149,7 +154,7 @@ export async function getAgedReceivablesReport(
       url += '?' + params.toString();
     }
 
-    const response = await fetch(url, {
+    const response = await fetchWithRateLimit(url, {
       headers: {
         'Authorization': `Bearer ${tokenData.accessToken}`,
         'Xero-Tenant-Id': tokenData.tenantId,
@@ -158,9 +163,10 @@ export async function getAgedReceivablesReport(
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Xero Aged Receivables report fetch failed:', errorText);
-      return null;
+      const error = await parseXeroError(response);
+      const errorMessage = getErrorMessage(error);
+      console.error('Xero Aged Receivables report fetch failed:', errorMessage, error);
+      throw new Error(errorMessage);
     }
 
     return await response.json();
@@ -189,7 +195,7 @@ export async function getAgedPayablesReport(
       url += '?' + params.toString();
     }
 
-    const response = await fetch(url, {
+    const response = await fetchWithRateLimit(url, {
       headers: {
         'Authorization': `Bearer ${tokenData.accessToken}`,
         'Xero-Tenant-Id': tokenData.tenantId,
@@ -198,9 +204,10 @@ export async function getAgedPayablesReport(
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Xero Aged Payables report fetch failed:', errorText);
-      return null;
+      const error = await parseXeroError(response);
+      const errorMessage = getErrorMessage(error);
+      console.error('Xero Aged Payables report fetch failed:', errorMessage, error);
+      throw new Error(errorMessage);
     }
 
     return await response.json();

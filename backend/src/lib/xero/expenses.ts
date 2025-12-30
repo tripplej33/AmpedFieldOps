@@ -1,4 +1,6 @@
 import { query } from '../../db';
+import { fetchWithRateLimit } from './rateLimiter';
+import { parseXeroError, getErrorMessage } from './errorHandler';
 
 export interface CreateExpenseData {
   project_id?: string;
@@ -45,7 +47,7 @@ export async function createExpenseInXero(
       Reference: expenseData.description,
     };
 
-    const response = await fetch('https://api.xero.com/api.xro/2.0/ExpenseClaims', {
+    const response = await fetchWithRateLimit('https://api.xero.com/api.xro/2.0/ExpenseClaims', {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${tokenData.accessToken}`,
@@ -57,16 +59,17 @@ export async function createExpenseInXero(
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error('Xero expense creation failed:', errorText);
-      return null;
+      const error = await parseXeroError(response);
+      const errorMessage = getErrorMessage(error);
+      console.error('Xero expense creation failed:', errorMessage, error);
+      throw new Error(errorMessage);
     }
 
     const result = await response.json() as { ExpenseClaims: Array<{ ExpenseClaimID: string; Date: string; Total: number }> };
     return result.ExpenseClaims?.[0] || null;
   } catch (error) {
     console.error('Error creating expense in Xero:', error);
-    return null;
+    throw error;
   }
 }
 
