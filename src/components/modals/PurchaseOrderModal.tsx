@@ -335,7 +335,6 @@ export default function PurchaseOrderModal({ projectId: initialProjectId, open, 
                         <SelectValue placeholder="Select" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="">None</SelectItem>
                         {costCenters.map(cc => (
                           <SelectItem key={cc.id} value={cc.id}>
                             {cc.code}

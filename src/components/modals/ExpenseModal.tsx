@@ -163,7 +163,6 @@ export default function ExpenseModal({ projectId: initialProjectId, open, onOpen
                 <SelectValue placeholder="Select project (optional)" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="">None</SelectItem>
                 {projects.map(project => (
                   <SelectItem key={project.id} value={project.id}>
                     {project.code} - {project.name}
@@ -190,7 +189,6 @@ export default function ExpenseModal({ projectId: initialProjectId, open, onOpen
                   <SelectValue placeholder="Select cost center (optional)" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">None</SelectItem>
                   {costCenters.map(cc => (
                     <SelectItem key={cc.id} value={cc.id}>
                       {cc.code} - {cc.name}

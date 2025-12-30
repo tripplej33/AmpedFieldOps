@@ -230,7 +230,6 @@ export default function BillModal({ purchaseOrderId, open, onOpenChange, onBillC
                   <SelectValue placeholder="Select PO (optional)" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">None</SelectItem>
                   {purchaseOrders
                     .filter(po => po.status !== 'BILLED')
                     .map(po => (
@@ -260,7 +259,6 @@ export default function BillModal({ purchaseOrderId, open, onOpenChange, onBillC
                   <SelectValue placeholder="Select project (optional)" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">None</SelectItem>
                   {projects.map(project => (
                     <SelectItem key={project.id} value={project.id}>
                       {project.code} - {project.name}

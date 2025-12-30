@@ -313,32 +313,32 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
                   <div className="space-y-2">
                     <div className="flex items-center justify-between text-sm">
                       <span className="font-mono text-muted-foreground">Budget Utilization</span>
-                      <span className={cn('font-mono font-bold', (projectFinancials.financials.actual_cost + projectFinancials.financials.po_commitments) / projectFinancials.financials.budget > 1 ? 'text-warning' : 'text-foreground')}>
-                        {projectFinancials.financials.budget > 0 
-                          ? Math.round(((projectFinancials.financials.actual_cost + projectFinancials.financials.po_commitments) / projectFinancials.financials.budget) * 100)
+                      <span className={cn('font-mono font-bold', ((parseFloat(projectFinancials.financials.actual_cost) || 0) + (parseFloat(projectFinancials.financials.po_commitments) || 0)) / (parseFloat(projectFinancials.financials.budget) || 1) > 1 ? 'text-warning' : 'text-foreground')}>
+                        {(parseFloat(projectFinancials.financials.budget) || 0) > 0 
+                          ? Math.round(((parseFloat(projectFinancials.financials.actual_cost) || 0) + (parseFloat(projectFinancials.financials.po_commitments) || 0)) / (parseFloat(projectFinancials.financials.budget) || 1) * 100)
                           : 0}%
                       </span>
                     </div>
                     <Progress
-                      value={Math.min(((projectFinancials.financials.actual_cost + projectFinancials.financials.po_commitments) / projectFinancials.financials.budget) * 100, 100)}
-                      className={cn('h-3', (projectFinancials.financials.actual_cost + projectFinancials.financials.po_commitments) / projectFinancials.financials.budget > 1 ? '[&>div]:bg-warning' : '[&>div]:bg-electric')}
+                      value={Math.min(((parseFloat(projectFinancials.financials.actual_cost) || 0) + (parseFloat(projectFinancials.financials.po_commitments) || 0)) / (parseFloat(projectFinancials.financials.budget) || 1) * 100, 100)}
+                      className={cn('h-3', ((parseFloat(projectFinancials.financials.actual_cost) || 0) + (parseFloat(projectFinancials.financials.po_commitments) || 0)) / (parseFloat(projectFinancials.financials.budget) || 1) > 1 ? '[&>div]:bg-warning' : '[&>div]:bg-electric')}
                     />
                   </div>
                   <div className="grid grid-cols-3 gap-4 pt-3 border-t border-border text-xs">
                     <div>
                       <span className="text-muted-foreground font-mono uppercase">POs: </span>
-                      <span className="font-bold">{projectFinancials.purchase_orders.total_count} (${projectFinancials.purchase_orders.total_committed.toFixed(0)})</span>
+                      <span className="font-bold">{projectFinancials.purchase_orders.total_count} (${(parseFloat(projectFinancials.purchase_orders.total_committed) || 0).toFixed(0)})</span>
                     </div>
                     <div>
                       <span className="text-muted-foreground font-mono uppercase">Bills: </span>
-                      <span className="font-bold">{projectFinancials.bills.total_count} (${projectFinancials.bills.total_amount.toFixed(0)})</span>
+                      <span className="font-bold">{projectFinancials.bills.total_count} (${(parseFloat(projectFinancials.bills.total_amount) || 0).toFixed(0)})</span>
                     </div>
                     <div>
                       <span className="text-muted-foreground font-mono uppercase">Expenses: </span>
-                      <span className="font-bold">{projectFinancials.expenses.total_count} (${projectFinancials.expenses.total_amount.toFixed(0)})</span>
+                      <span className="font-bold">{projectFinancials.expenses.total_count} (${(parseFloat(projectFinancials.expenses.total_amount) || 0).toFixed(0)})</span>
                     </div>
                   </div>
-                  {projectFinancials.financials.available_budget < 0 && (
+                  {(parseFloat(projectFinancials.financials.available_budget) || 0) < 0 && (
                     <p className="text-xs text-warning font-mono">⚠ Project is over budget</p>
                   )}
                 </div>
