@@ -428,8 +428,15 @@ export default function Backups() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Restore Backup</DialogTitle>
-            <DialogDescription>
-              This will restore the backup and may overwrite existing data. This action cannot be undone.
+            <DialogDescription className="space-y-2">
+              <p className="font-semibold text-destructive">⚠️ Warning: This action cannot be undone!</p>
+              <p>This will restore the backup and may overwrite existing data including:</p>
+              <ul className="list-disc list-inside space-y-1 text-sm">
+                <li>Database records (if restoring database or full backup)</li>
+                <li>Uploaded files (if restoring files or full backup)</li>
+                <li>All current data will be replaced with the backup data</li>
+              </ul>
+              <p className="mt-2 text-sm">Are you sure you want to proceed?</p>
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -437,10 +444,19 @@ export default function Backups() {
             <Button
               variant="destructive"
               onClick={() => restoreModalOpen && handleRestoreBackup(restoreModalOpen)}
-              disabled={isRestoring !== null}
+              disabled={isRestoring === restoreModalOpen}
             >
-              {isRestoring && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              Confirm Restore
+              {isRestoring === restoreModalOpen ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Restoring...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="w-4 h-4 mr-2" />
+                  Confirm Restore
+                </>
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
