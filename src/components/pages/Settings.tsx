@@ -1304,7 +1304,7 @@ export default function Settings() {
                   <Input
                     value={googleDriveCredentials.redirectUri}
                     onChange={(e) => setGoogleDriveCredentials(prev => ({ ...prev, redirectUri: e.target.value }))}
-                    placeholder={`${window.location.origin.replace('admin.', 'api.')}/api/backups/google-drive/callback`}
+                    placeholder={`${window.location.origin}/api/backups/google-drive/callback`}
                     className="mt-2 font-mono text-sm"
                   />
                   <p className="text-xs text-muted-foreground mt-1">
