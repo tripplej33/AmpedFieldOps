@@ -1,6 +1,11 @@
 import dotenv from 'dotenv';
 
-dotenv.config();
+// Load .env file, suppressing parsing warnings (non-critical)
+// Warnings about unparseable lines are usually from comments or optional config
+dotenv.config({ 
+  debug: false,
+  override: false 
+});
 
 interface EnvConfig {
   // Database

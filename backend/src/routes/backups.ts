@@ -15,8 +15,8 @@ import { promisify } from 'util';
 import fs from 'fs/promises';
 import path from 'path';
 import dotenv from 'dotenv';
-
-dotenv.config();
+// Suppress dotenv parsing warnings
+dotenv.config({ debug: false, override: false });
 
 const execAsync = promisify(exec);
 const router = Router();

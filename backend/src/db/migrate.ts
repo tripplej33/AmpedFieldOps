@@ -3,7 +3,11 @@ import dotenv from 'dotenv';
 import fs from 'fs';
 import path from 'path';
 
-dotenv.config();
+// Load .env file, suppressing parsing warnings (non-critical)
+dotenv.config({ 
+  debug: false,
+  override: false 
+});
 
 const isFresh = process.argv.includes('--fresh');
 

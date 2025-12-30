@@ -4,7 +4,8 @@ import fs from 'fs/promises';
 import { createReadStream, createWriteStream } from 'fs';
 import { query } from '../db';
 import dotenv from 'dotenv';
-dotenv.config();
+// Suppress dotenv parsing warnings
+dotenv.config({ debug: false, override: false });
 
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';

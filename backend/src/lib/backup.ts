@@ -6,7 +6,8 @@ import path from 'path';
 import archiver from 'archiver';
 import { query } from '../db';
 import dotenv from 'dotenv';
-dotenv.config();
+// Suppress dotenv parsing warnings
+dotenv.config({ debug: false, override: false });
 
 const env = {
   DATABASE_URL: process.env.DATABASE_URL || ''
