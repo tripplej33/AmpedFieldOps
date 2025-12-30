@@ -4590,7 +4590,14 @@ router.get('/summary', authenticate, requirePermission('can_view_financials'), a
       SELECT COALESCE(SUM(amount_due), 0) as total
       FROM xero_invoices
       WHERE status IN ('AUTHORISED', 'SUBMITTED')
-    `);
+    `).catch((error: any) => {
+      const errorMessage = error.message || 'Failed to query invoices';
+      const isTableError = errorMessage.includes('does not exist') || errorMessage.includes('relation') || error.code === '42P01';
+      if (isTableError) {
+        throw new Error('Database tables not found. Please run migrations: docker exec -it ampedfieldops-backend-1 node dist/db/migrate.js');
+      }
+      throw error;
+    });
 
     // Paid this month
     const paidThisMonth = await query(`
@@ -4598,14 +4605,28 @@ router.get('/summary', authenticate, requirePermission('can_view_financials'), a
       FROM xero_invoices
       WHERE status = 'PAID'
       AND updated_at >= date_trunc('month', CURRENT_DATE)
-    `);
+    `).catch((error: any) => {
+      const errorMessage = error.message || 'Failed to query invoices';
+      const isTableError = errorMessage.includes('does not exist') || errorMessage.includes('relation') || error.code === '42P01';
+      if (isTableError) {
+        throw new Error('Database tables not found. Please run migrations: docker exec -it ampedfieldops-backend-1 node dist/db/migrate.js');
+      }
+      throw error;
+    });
 
     // Pending quotes
     const pendingQuotes = await query(`
       SELECT COALESCE(SUM(total), 0) as total, COUNT(*) as count
       FROM xero_quotes
       WHERE status = 'PENDING'
-    `);
+    `).catch((error: any) => {
+      const errorMessage = error.message || 'Failed to query quotes';
+      const isTableError = errorMessage.includes('does not exist') || errorMessage.includes('relation') || error.code === '42P01';
+      if (isTableError) {
+        throw new Error('Database tables not found. Please run migrations: docker exec -it ampedfieldops-backend-1 node dist/db/migrate.js');
+      }
+      throw error;
+    });
 
     // Revenue last 6 months
     const revenueByMonth = await query(`
@@ -4617,7 +4638,14 @@ router.get('/summary', authenticate, requirePermission('can_view_financials'), a
       AND issue_date >= CURRENT_DATE - INTERVAL '6 months'
       GROUP BY date_trunc('month', issue_date)
       ORDER BY month ASC
-    `);
+    `).catch((error: any) => {
+      const errorMessage = error.message || 'Failed to query invoices';
+      const isTableError = errorMessage.includes('does not exist') || errorMessage.includes('relation') || error.code === '42P01';
+      if (isTableError) {
+        throw new Error('Database tables not found. Please run migrations: docker exec -it ampedfieldops-backend-1 node dist/db/migrate.js');
+      }
+      throw error;
+    });
 
     // Top clients by revenue
     const topClients = await query(`
@@ -4629,7 +4657,14 @@ router.get('/summary', authenticate, requirePermission('can_view_financials'), a
       GROUP BY c.id, c.name
       ORDER BY total_revenue DESC
       LIMIT 5
-    `);
+    `).catch((error: any) => {
+      const errorMessage = error.message || 'Failed to query clients';
+      const isTableError = errorMessage.includes('does not exist') || errorMessage.includes('relation') || error.code === '42P01';
+      if (isTableError) {
+        throw new Error('Database tables not found. Please run migrations: docker exec -it ampedfieldops-backend-1 node dist/db/migrate.js');
+      }
+      throw error;
+    });
 
     res.json({
       outstanding_invoices: parseFloat(outstanding.rows[0].total) || 0,

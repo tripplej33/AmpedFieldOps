@@ -159,7 +159,16 @@ export async function getExpenses(filters: {
 
   sql += ' ORDER BY e.date DESC, e.created_at DESC';
 
-  const result = await query(sql, params);
-  return result.rows;
+  try {
+    const result = await query(sql, params);
+    return result.rows;
+  } catch (error: any) {
+    const errorMessage = error.message || 'Failed to fetch expenses';
+    const isTableError = errorMessage.includes('does not exist') || errorMessage.includes('relation') || error.code === '42P01';
+    if (isTableError) {
+      throw new Error('Database tables not found. Please run migrations: docker exec -it ampedfieldops-backend-1 node dist/db/migrate.js');
+    }
+    throw error;
+  }
 }
 
