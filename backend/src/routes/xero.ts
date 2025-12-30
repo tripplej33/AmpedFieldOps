@@ -4679,9 +4679,9 @@ router.get('/summary', authenticate, requirePermission('can_view_financials'), a
   } catch (error: any) {
     console.error('Failed to fetch financial summary:', error);
     const errorMessage = error.message || 'Failed to fetch financial summary';
-    const isTableError = errorMessage.includes('does not exist') || errorMessage.includes('relation') || error.code === '42P01';
+    const isTableError = errorMessage.includes('does not exist') || errorMessage.includes('relation') || error.code === '42P01' || errorMessage.includes('Database tables not found');
     res.status(500).json({ 
-      error: isTableError ? 'Database tables not found. Please run migrations.' : 'Failed to fetch financial summary',
+      error: isTableError ? 'Database tables not found. Please run migrations: docker exec -it ampedfieldops-backend-1 node dist/db/migrate.js' : 'Failed to fetch financial summary',
       details: env.NODE_ENV === 'development' ? errorMessage : undefined
     });
   }
