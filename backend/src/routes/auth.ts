@@ -280,6 +280,11 @@ router.put('/profile', authenticate,
         values.push(name);
       }
       if (email) {
+        // Check if email is already taken by another user
+        const emailCheck = await query('SELECT id FROM users WHERE email = $1 AND id != $2', [email, req.user!.id]);
+        if (emailCheck.rows.length > 0) {
+          return res.status(400).json({ error: 'Email already in use' });
+        }
         updates.push(`email = $${paramCount++}`);
         values.push(email);
       }
@@ -320,6 +325,10 @@ router.put('/change-password', authenticate,
         'SELECT password_hash FROM users WHERE id = $1',
         [req.user!.id]
       );
+
+      if (result.rows.length === 0) {
+        return res.status(404).json({ error: 'User not found' });
+      }
 
       const isValid = await bcrypt.compare(currentPassword, result.rows[0].password_hash);
       if (!isValid) {

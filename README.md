@@ -9,12 +9,18 @@ A mobile-first service business management platform designed for electrical cont
 - 📊 **Command Center Dashboard** - Real-time metrics, project health, and team activity
 - 📁 **Project Management** - Kanban board with status tracking and budget monitoring
 - 👥 **Client Directory** - Searchable client database with contact management
-- ⏱️ **Timesheet Tracking** - Mobile-optimized time entry with photo capture
+- ⏱️ **Timesheet Tracking** - Mobile-optimized time entry with photo capture and multiple activity types
 - 📈 **Reports & Analytics** - Cost center analysis and budget tracking
-- 💰 **Xero Integration** - Invoices, quotes, and financial sync
+- 💰 **Xero Integration** - Invoices, quotes, bills, expenses, purchase orders, and financial sync
 - 📧 **Email Configuration** - Admin-managed SMTP settings with test email functionality
 - 👤 **User Management** - Role-based access control with granular permissions
 - 🎨 **Activity Types** - Configurable work categories with hourly rates
+- 📁 **File Management** - Project files, timesheet images, and company logos organized by client/project
+- 🛡️ **Safety Documents** - Manage safety documentation (JSA, Electrical Compliance, etc.)
+- 💾 **Backups** - Database backups with Google Drive integration
+- 🔧 **Troubleshooter** - System diagnostics and route testing
+- 👤 **User Settings** - Profile updates and password changes
+- 🔐 **Password Recovery** - Forgot password flow with email reset links
 
 ## Tech Stack
 
@@ -176,14 +182,26 @@ For detailed Xero setup instructions, see [XERO_SETUP.md](./XERO_SETUP.md).
 
 | Permission | Description | Admin | Manager | User |
 |------------|-------------|-------|---------|------|
+| `can_view_dashboard` | Access the main dashboard | ✅ | ✅ | ✅ |
 | `can_view_financials` | Access invoices and quotes | ✅ | ✅ | ❌ |
 | `can_edit_projects` | Create/edit projects | ✅ | ✅ | ❌ |
+| `can_view_projects` | View project details | ✅ | ✅ | ✅ |
 | `can_manage_users` | User administration | ✅ | ❌ | ❌ |
 | `can_sync_xero` | Xero integration control | ✅ | ❌ | ❌ |
 | `can_view_all_timesheets` | See all team timesheets | ✅ | ✅ | ❌ |
+| `can_create_timesheets` | Create new timesheet entries | ✅ | ✅ | ✅ |
+| `can_view_own_timesheets` | View own timesheet entries | ✅ | ✅ | ✅ |
+| `can_edit_own_timesheets` | Edit own timesheet entries | ✅ | ✅ | ✅ |
+| `can_delete_own_timesheets` | Delete own timesheet entries | ✅ | ✅ | ✅ |
 | `can_edit_activity_types` | Configure activity types | ✅ | ❌ | ❌ |
 | `can_manage_clients` | Client administration | ✅ | ✅ | ❌ |
+| `can_view_clients` | View client details | ✅ | ✅ | ✅ |
 | `can_manage_cost_centers` | Cost center setup | ✅ | ❌ | ❌ |
+| `can_view_reports` | Access reports section | ✅ | ✅ | ❌ |
+| `can_export_data` | Export data to CSV/PDF | ✅ | ✅ | ❌ |
+| `can_manage_settings` | Access and modify application settings | ✅ | ❌ | ❌ |
+
+> **Note:** Permissions can be customized per role in **Settings → Permissions**. The table above shows default permissions.
 
 ## API Documentation
 
@@ -246,12 +264,63 @@ DELETE /api/xero/disconnect        - Disconnect Xero
 GET    /api/xero/invoices          - List invoices
 POST   /api/xero/invoices          - Create invoice
 POST   /api/xero/invoices/from-timesheets - Create invoice from timesheets
+POST   /api/xero/invoices/:id/paid - Mark invoice as paid
 GET    /api/xero/quotes            - List quotes
 POST   /api/xero/quotes            - Create quote
 GET    /api/xero/summary           - Financial summary
 POST   /api/xero/contacts/pull     - Pull contacts from Xero
 POST   /api/xero/contacts/push/:id - Push client to Xero
 POST   /api/xero/contacts/push-all - Push all clients to Xero
+```
+
+### Files
+```
+GET    /api/files                  - List project files
+GET    /api/files/timesheet-images/:projectId - Get timesheet images for project
+GET    /api/files/timesheet-images - Get all timesheet images summary
+GET    /api/files/logos            - List company logos
+POST   /api/files                  - Upload project file
+DELETE /api/files/:id              - Delete project file
+DELETE /api/files/logos/:filename - Delete logo
+```
+
+### Backups
+```
+GET    /api/backups                - List backups
+POST   /api/backups                - Create backup
+GET    /api/backups/:id/download   - Download backup
+DELETE /api/backups/:id            - Delete backup
+GET    /api/backups/schedule       - Get backup schedule
+POST   /api/backups/schedule       - Set backup schedule
+GET    /api/backups/google-drive/auth - Get Google Drive auth URL
+GET    /api/backups/google-drive/callback - Google Drive OAuth callback
+GET    /api/backups/google-drive/status - Get Google Drive connection status
+```
+
+### Safety Documents
+```
+GET    /api/safety-documents       - List safety documents
+POST   /api/safety-documents       - Create safety document
+GET    /api/safety-documents/:id   - Get safety document
+PUT    /api/safety-documents/:id   - Update safety document
+DELETE /api/safety-documents/:id   - Delete safety document
+```
+
+### Troubleshooter
+```
+GET    /api/troubleshooter         - Run system diagnostics
+GET    /api/troubleshooter/routes  - List all API routes
+```
+
+### Health
+```
+GET    /api/health                 - System health check (database, Xero status)
+```
+
+### Role Permissions
+```
+GET    /api/role-permissions       - Get all permissions and role assignments
+PUT    /api/role-permissions       - Update role permissions (Admin only)
 ```
 
 ## Database Schema
@@ -262,13 +331,16 @@ user_permissions      - Granular permission assignments
 clients               - Customer records
 projects              - Project management
 project_cost_centers  - Project to cost center mapping
-timesheets            - Time tracking entries
+project_files         - Project file metadata
+timesheets            - Time tracking entries (with billing_status, invoice_id, image_urls)
 cost_centers          - Cost categorization
 activity_types        - Work type definitions
+permissions           - Available system permissions
 xero_tokens           - OAuth token storage
 xero_invoices         - Cached invoice data
 xero_quotes           - Cached quote data
-settings              - System and user settings (including email config)
+safety_documents      - Safety documentation records
+settings              - System and user settings (including email config, Xero, Google Drive)
 activity_logs         - Audit trail
 ```
 
