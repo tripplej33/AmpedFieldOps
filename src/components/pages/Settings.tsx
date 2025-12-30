@@ -67,6 +67,23 @@ export default function Settings() {
 
   useEffect(() => {
     loadSettings();
+    
+    // Check for Google Drive OAuth callback parameters
+    const params = new URLSearchParams(window.location.search);
+    const googleDriveConnected = params.get('google_drive_connected');
+    const googleDriveError = params.get('google_drive_error');
+    
+    if (googleDriveConnected === 'true') {
+      toast.success('Google Drive connected successfully');
+      setGoogleDriveConnected(true);
+      // Clean up URL
+      window.history.replaceState({}, '', window.location.pathname + '?tab=integrations');
+    } else if (googleDriveError) {
+      toast.error(`Google Drive connection failed: ${decodeURIComponent(googleDriveError)}`);
+      // Clean up URL
+      window.history.replaceState({}, '', window.location.pathname + '?tab=integrations');
+    }
+    
     if (user?.role === 'admin') {
       loadRolePermissions();
     }

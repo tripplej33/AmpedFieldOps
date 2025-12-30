@@ -12,10 +12,19 @@ const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || '';
 
 // Get OAuth2 client
 function getOAuth2Client(): OAuth2Client {
+  // Redirect URI should point to the backend API endpoint
+  // If not explicitly set, construct from BACKEND_URL or default
+  const redirectUri = GOOGLE_REDIRECT_URI || 
+    `${process.env.BACKEND_URL || process.env.API_URL || 'http://localhost:3001'}/api/backups/google-drive/callback`;
+  
+  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
+    throw new Error('Google Drive OAuth credentials not configured. Please set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET environment variables.');
+  }
+
   return new google.auth.OAuth2(
     GOOGLE_CLIENT_ID,
     GOOGLE_CLIENT_SECRET,
-    GOOGLE_REDIRECT_URI || `${process.env.FRONTEND_URL || 'http://localhost:3000'}/api/backups/google-drive/callback`
+    redirectUri
   );
 }
 
