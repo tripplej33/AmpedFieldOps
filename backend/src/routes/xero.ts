@@ -928,6 +928,111 @@ async function getValidAccessToken(): Promise<{ accessToken: string; tenantId: s
   return { accessToken: token.access_token, tenantId: token.tenant_id };
 }
 
+// Helper function to find local records missing in Xero
+function findMissingInXero<T extends Record<string, any>>(
+  localRecords: T[],
+  xeroRecords: Array<{ ID: string }>,
+  idField: keyof T
+): T[] {
+  const xeroIds = new Set(xeroRecords.map(r => r.ID));
+  return localRecords.filter(local => {
+    const localXeroId = local[idField] as string | undefined | null;
+    return !localXeroId || localXeroId.trim() === '' || !xeroIds.has(localXeroId);
+  });
+}
+
+// Helper function to build Xero invoice payload from local invoice
+async function buildXeroInvoicePayload(localInvoice: any): Promise<any> {
+  // Get client's Xero contact ID
+  let contactId: string | null = null;
+  if (localInvoice.client_id) {
+    const clientResult = await query('SELECT xero_contact_id FROM clients WHERE id = $1', [localInvoice.client_id]);
+    if (clientResult.rows.length > 0 && clientResult.rows[0].xero_contact_id) {
+      contactId = clientResult.rows[0].xero_contact_id;
+    }
+  }
+
+  if (!contactId) {
+    throw new Error('Client does not have a Xero contact ID. Please sync contacts first.');
+  }
+
+  // Parse line items
+  let lineItems: any[] = [];
+  if (localInvoice.line_items) {
+    try {
+      lineItems = typeof localInvoice.line_items === 'string' 
+        ? JSON.parse(localInvoice.line_items) 
+        : localInvoice.line_items;
+    } catch (e) {
+      console.error('Failed to parse line items:', e);
+    }
+  }
+
+  // Build Xero line items format
+  const xeroLineItems = lineItems.map((item: any) => ({
+    Description: item.description || '',
+    Quantity: item.quantity || 1,
+    UnitAmount: item.unit_price || item.amount || 0,
+    AccountCode: item.account_code || '200', // Default revenue account
+    LineAmount: item.amount || (item.quantity || 1) * (item.unit_price || 0)
+  }));
+
+  return {
+    Type: 'ACCREC', // Accounts Receivable
+    Contact: { ContactID: contactId },
+    Date: localInvoice.issue_date || new Date().toISOString().split('T')[0],
+    DueDate: localInvoice.due_date || null,
+    InvoiceNumber: localInvoice.invoice_number || null,
+    LineItems: xeroLineItems,
+    Status: localInvoice.status || 'DRAFT'
+  };
+}
+
+// Helper function to build Xero quote payload from local quote
+async function buildXeroQuotePayload(localQuote: any): Promise<any> {
+  // Get client's Xero contact ID
+  let contactId: string | null = null;
+  if (localQuote.client_id) {
+    const clientResult = await query('SELECT xero_contact_id FROM clients WHERE id = $1', [localQuote.client_id]);
+    if (clientResult.rows.length > 0 && clientResult.rows[0].xero_contact_id) {
+      contactId = clientResult.rows[0].xero_contact_id;
+    }
+  }
+
+  if (!contactId) {
+    throw new Error('Client does not have a Xero contact ID. Please sync contacts first.');
+  }
+
+  // Parse line items
+  let lineItems: any[] = [];
+  if (localQuote.line_items) {
+    try {
+      lineItems = typeof localQuote.line_items === 'string' 
+        ? JSON.parse(localQuote.line_items) 
+        : localQuote.line_items;
+    } catch (e) {
+      console.error('Failed to parse line items:', e);
+    }
+  }
+
+  // Build Xero line items format
+  const xeroLineItems = lineItems.map((item: any) => ({
+    Description: item.description || '',
+    Quantity: item.quantity || 1,
+    UnitAmount: item.unit_price || item.amount || 0,
+    AccountCode: item.account_code || '200',
+    LineAmount: item.amount || (item.quantity || 1) * (item.unit_price || 0)
+  }));
+
+  return {
+    Contact: { ContactID: contactId },
+    Date: localQuote.issue_date || new Date().toISOString().split('T')[0],
+    ExpiryDate: localQuote.expiry_date || null,
+    LineItems: xeroLineItems,
+    Status: localQuote.status || 'DRAFT'
+  };
+}
+
 // Xero Contact interface
 interface XeroContact {
   ContactID: string;
@@ -1334,7 +1439,18 @@ router.post('/sync', authenticate, requirePermission('can_sync_xero'), async (re
       success: boolean;
       synced_at: Date;
       last_sync: string;
-      results: Record<string, { synced?: number; created?: number; updated?: number; mapped?: number; total?: number; failed?: number }>;
+      results: Record<string, { 
+        synced?: number; 
+        created?: number; 
+        updated?: number; 
+        mapped?: number; 
+        total?: number; 
+        failed?: number;
+        pulled_created?: number;
+        pulled_updated?: number;
+        pushed_created?: number;
+        pushed_failed?: number;
+      }>;
     } = {
       success: true,
       synced_at: new Date(),
@@ -1420,12 +1536,28 @@ router.post('/sync', authenticate, requirePermission('can_sync_xero'), async (re
                   [invoice.InvoiceID]
                 );
 
+                // Get client ID from Xero contact
+                let clientId: string | null = null;
+                if (invoice.Contact?.ContactID) {
+                  const clientResult = await query(
+                    'SELECT id FROM clients WHERE xero_contact_id = $1',
+                    [invoice.Contact.ContactID]
+                  );
+                  if (clientResult.rows.length > 0) {
+                    clientId = clientResult.rows[0].id;
+                  }
+                }
+
+                // Parse line items
+                const lineItems = invoice.LineItems ? JSON.stringify(invoice.LineItems) : null;
+
                 if (existing.rows.length > 0) {
                   await query(
                     `UPDATE xero_invoices SET 
                       invoice_number = $1, status = $2, total = $3, amount_due = $4,
-                      due_date = $5, issue_date = $6, synced_at = CURRENT_TIMESTAMP
-                      WHERE xero_invoice_id = $7`,
+                      due_date = $5, issue_date = $6, client_id = $7, line_items = $8,
+                      synced_at = CURRENT_TIMESTAMP
+                      WHERE xero_invoice_id = $9`,
                     [
                       invoice.InvoiceNumber,
                       invoice.Status,
@@ -1433,14 +1565,16 @@ router.post('/sync', authenticate, requirePermission('can_sync_xero'), async (re
                       invoice.AmountDue || 0,
                       invoice.DueDate ? new Date(invoice.DueDate) : null,
                       invoice.Date ? new Date(invoice.Date) : null,
+                      clientId,
+                      lineItems,
                       invoice.InvoiceID
                     ]
                   );
                   updated++;
                 } else {
                   await query(
-                    `INSERT INTO xero_invoices (xero_invoice_id, invoice_number, status, total, amount_due, due_date, issue_date, synced_at)
-                     VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP)`,
+                    `INSERT INTO xero_invoices (xero_invoice_id, invoice_number, status, total, amount_due, due_date, issue_date, client_id, line_items, synced_at)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, CURRENT_TIMESTAMP)`,
                     [
                       invoice.InvoiceID,
                       invoice.InvoiceNumber,
@@ -1448,7 +1582,9 @@ router.post('/sync', authenticate, requirePermission('can_sync_xero'), async (re
                       invoice.Total || 0,
                       invoice.AmountDue || 0,
                       invoice.DueDate ? new Date(invoice.DueDate) : null,
-                      invoice.Date ? new Date(invoice.Date) : null
+                      invoice.Date ? new Date(invoice.Date) : null,
+                      clientId,
+                      lineItems
                     ]
                   );
                   created++;
@@ -1456,12 +1592,92 @@ router.post('/sync', authenticate, requirePermission('can_sync_xero'), async (re
                 synced++;
               }
 
-              syncResults.results.invoices = { synced, created, updated };
+              syncResults.results.invoices = { synced, created, updated, pulled_created: created, pulled_updated: updated };
+
+              // Push local invoices missing in Xero
+              const localInvoicesResult = await query(
+                `SELECT * FROM xero_invoices 
+                 WHERE xero_invoice_id IS NULL OR xero_invoice_id = ''`
+              );
+              const localInvoices = localInvoicesResult.rows;
+              const missingInvoices = findMissingInXero(localInvoices, invoices, 'xero_invoice_id');
+
+              let pushed = 0;
+              let pushFailed = 0;
+
+              for (const localInvoice of missingInvoices) {
+                try {
+                  const invoicePayload = await buildXeroInvoicePayload(localInvoice);
+                  const createResponse = await fetch('https://api.xero.com/api.xro/2.0/Invoices', {
+                    method: 'POST',
+                    headers: {
+                      'Authorization': `Bearer ${tokenData.accessToken}`,
+                      'Xero-Tenant-Id': tokenData.tenantId,
+                      'Content-Type': 'application/json',
+                      'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({ Invoices: [invoicePayload] })
+                  });
+
+                  if (createResponse.ok) {
+                    const result = await createResponse.json() as { Invoices?: Array<{ InvoiceID: string }> };
+                    const xeroInvoiceId = result.Invoices?.[0]?.InvoiceID;
+                    if (xeroInvoiceId) {
+                      await query(
+                        `UPDATE xero_invoices SET xero_invoice_id = $1, synced_at = CURRENT_TIMESTAMP WHERE id = $2`,
+                        [xeroInvoiceId, localInvoice.id]
+                      );
+                      pushed++;
+                    } else {
+                      pushFailed++;
+                    }
+                  } else {
+                    const errorText = await createResponse.text();
+                    console.error('Failed to push invoice to Xero:', errorText);
+                    // Log to activity_logs table (error_logs may not exist)
+                    try {
+                      await query(
+                        `INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) 
+                         VALUES ($1, $2, $3, $4, $5)`,
+                        [req.user!.id, 'xero_sync_error', 'invoice', localInvoice.id, JSON.stringify({ 
+                          invoice_number: localInvoice.invoice_number,
+                          error: errorText.substring(0, 500) // Limit error text length
+                        })]
+                      );
+                    } catch (logError) {
+                      // Silently fail if logging fails
+                      console.debug('Failed to log sync error:', logError);
+                    }
+                    pushFailed++;
+                  }
+                } catch (pushError: any) {
+                  console.error('Error pushing invoice to Xero:', pushError);
+                  // Log to activity_logs table
+                  try {
+                    await query(
+                      `INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) 
+                       VALUES ($1, $2, $3, $4, $5)`,
+                      [req.user!.id, 'xero_sync_error', 'invoice', localInvoice.id, JSON.stringify({ 
+                        error: pushError.message?.substring(0, 500) || 'Unknown error'
+                      })]
+                    );
+                  } catch (logError) {
+                    console.debug('Failed to log sync error:', logError);
+                  }
+                  pushFailed++;
+                }
+              }
+
+              syncResults.results.invoices = {
+                ...syncResults.results.invoices,
+                pushed_created: pushed,
+                pushed_failed: pushFailed
+              };
             }
           }
         } catch (error: any) {
           console.error('Invoices sync error:', error);
-          syncResults.results.invoices = { synced: 0, created: 0, updated: 0 };
+          syncResults.results.invoices = { synced: 0, created: 0, updated: 0, pulled_created: 0, pulled_updated: 0, pushed_created: 0, pushed_failed: 0 };
         }
       }
 
@@ -1492,31 +1708,53 @@ router.post('/sync', authenticate, requirePermission('can_sync_xero'), async (re
                   [quote.QuoteID]
                 );
 
+                // Get client ID from Xero contact
+                let clientId: string | null = null;
+                if (quote.Contact?.ContactID) {
+                  const clientResult = await query(
+                    'SELECT id FROM clients WHERE xero_contact_id = $1',
+                    [quote.Contact.ContactID]
+                  );
+                  if (clientResult.rows.length > 0) {
+                    clientId = clientResult.rows[0].id;
+                  }
+                }
+
+                // Parse line items
+                const lineItems = quote.LineItems ? JSON.stringify(quote.LineItems) : null;
+
                 if (existing.rows.length > 0) {
                   await query(
                     `UPDATE xero_quotes SET 
                       quote_number = $1, status = $2, total = $3,
-                      expiry_date = $4, synced_at = CURRENT_TIMESTAMP
-                      WHERE xero_quote_id = $5`,
+                      expiry_date = $4, client_id = $5, line_items = $6, issue_date = $7,
+                      synced_at = CURRENT_TIMESTAMP
+                      WHERE xero_quote_id = $8`,
                     [
                       quote.QuoteNumber,
                       quote.Status,
                       quote.Total || 0,
                       quote.ExpiryDate ? new Date(quote.ExpiryDate) : null,
+                      clientId,
+                      lineItems,
+                      quote.Date ? new Date(quote.Date) : null,
                       quote.QuoteID
                     ]
                   );
                   updated++;
                 } else {
                   await query(
-                    `INSERT INTO xero_quotes (xero_quote_id, quote_number, status, total, expiry_date, synced_at)
-                     VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)`,
+                    `INSERT INTO xero_quotes (xero_quote_id, quote_number, status, total, expiry_date, client_id, line_items, issue_date, synced_at)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CURRENT_TIMESTAMP)`,
                     [
                       quote.QuoteID,
                       quote.QuoteNumber,
                       quote.Status,
                       quote.Total || 0,
-                      quote.ExpiryDate ? new Date(quote.ExpiryDate) : null
+                      quote.ExpiryDate ? new Date(quote.ExpiryDate) : null,
+                      clientId,
+                      lineItems,
+                      quote.Date ? new Date(quote.Date) : null
                     ]
                   );
                   created++;
@@ -1524,12 +1762,66 @@ router.post('/sync', authenticate, requirePermission('can_sync_xero'), async (re
                 synced++;
               }
 
-              syncResults.results.quotes = { synced, created, updated };
+              syncResults.results.quotes = { synced, created, updated, pulled_created: created, pulled_updated: updated };
+
+              // Push local quotes missing in Xero
+              const localQuotesResult = await query(
+                `SELECT * FROM xero_quotes 
+                 WHERE xero_quote_id IS NULL OR xero_quote_id = ''`
+              );
+              const localQuotes = localQuotesResult.rows;
+              const missingQuotes = findMissingInXero(localQuotes, quotes, 'xero_quote_id');
+
+              let pushed = 0;
+              let pushFailed = 0;
+
+              for (const localQuote of missingQuotes) {
+                try {
+                  const quotePayload = await buildXeroQuotePayload(localQuote);
+                  const createResponse = await fetch('https://api.xero.com/api.xro/2.0/Quotes', {
+                    method: 'POST',
+                    headers: {
+                      'Authorization': `Bearer ${tokenData.accessToken}`,
+                      'Xero-Tenant-Id': tokenData.tenantId,
+                      'Content-Type': 'application/json',
+                      'Accept': 'application/json'
+                    },
+                    body: JSON.stringify({ Quotes: [quotePayload] })
+                  });
+
+                  if (createResponse.ok) {
+                    const result = await createResponse.json() as { Quotes?: Array<{ QuoteID: string }> };
+                    const xeroQuoteId = result.Quotes?.[0]?.QuoteID;
+                    if (xeroQuoteId) {
+                      await query(
+                        `UPDATE xero_quotes SET xero_quote_id = $1, synced_at = CURRENT_TIMESTAMP WHERE id = $2`,
+                        [xeroQuoteId, localQuote.id]
+                      );
+                      pushed++;
+                    } else {
+                      pushFailed++;
+                    }
+                  } else {
+                    const errorText = await createResponse.text();
+                    console.error('Failed to push quote to Xero:', errorText);
+                    pushFailed++;
+                  }
+                } catch (pushError: any) {
+                  console.error('Error pushing quote to Xero:', pushError);
+                  pushFailed++;
+                }
+              }
+
+              syncResults.results.quotes = {
+                ...syncResults.results.quotes,
+                pushed_created: pushed,
+                pushed_failed: pushFailed
+              };
             }
           }
         } catch (error: any) {
           console.error('Quotes sync error:', error);
-          syncResults.results.quotes = { synced: 0, created: 0, updated: 0 };
+          syncResults.results.quotes = { synced: 0, created: 0, updated: 0, pulled_created: 0, pulled_updated: 0, pushed_created: 0, pushed_failed: 0 };
         }
       }
 
@@ -1583,6 +1875,1032 @@ router.post('/sync', authenticate, requirePermission('can_sync_xero'), async (re
         } catch (error: any) {
           console.error('Tracking categories sync error:', error);
           syncResults.results.tracking_categories = { mapped: 0 };
+        }
+      }
+
+      // Sync Items (Pull from Xero and Push local to Xero)
+      if (type === 'items' || type === 'all') {
+        try {
+          const tokenData = await getValidAccessToken();
+          if (tokenData) {
+            // Pull items from Xero using existing function
+            const syncedCount = await syncItemsFromXero(tokenData);
+            syncResults.results.items = { synced: syncedCount, pulled_created: syncedCount };
+
+            // Push local items missing in Xero
+            const localItemsResult = await query(
+              `SELECT * FROM xero_items 
+               WHERE xero_item_id IS NULL OR xero_item_id = ''`
+            );
+            const localItems = localItemsResult.rows;
+
+            // Get items from Xero to check which are missing
+            const itemsResponse = await fetch('https://api.xero.com/api.xro/2.0/Items', {
+              headers: {
+                'Authorization': `Bearer ${tokenData.accessToken}`,
+                'Xero-Tenant-Id': tokenData.tenantId,
+                'Accept': 'application/json'
+              }
+            });
+
+            let xeroItems: any[] = [];
+            if (itemsResponse.ok) {
+              const itemsData = await itemsResponse.json() as { Items?: any[] };
+              xeroItems = itemsData.Items || [];
+            }
+
+            const missingItems = findMissingInXero(localItems, xeroItems, 'xero_item_id');
+            let pushed = 0;
+            let pushFailed = 0;
+
+            for (const localItem of missingItems) {
+              try {
+                const itemPayload = {
+                  Code: localItem.code || localItem.name?.substring(0, 30).toUpperCase().replace(/\s+/g, '_'),
+                  Name: localItem.name,
+                  Description: localItem.description || '',
+                  IsTrackedAsInventory: localItem.is_tracked || false
+                };
+
+                const createResponse = await fetch('https://api.xero.com/api.xro/2.0/Items', {
+                  method: 'POST',
+                  headers: {
+                    'Authorization': `Bearer ${tokenData.accessToken}`,
+                    'Xero-Tenant-Id': tokenData.tenantId,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                  },
+                  body: JSON.stringify({ Items: [itemPayload] })
+                });
+
+                if (createResponse.ok) {
+                  const result = await createResponse.json() as { Items?: Array<{ ItemID: string }> };
+                  const xeroItemId = result.Items?.[0]?.ItemID;
+                  if (xeroItemId) {
+                    await query(
+                      `UPDATE xero_items SET xero_item_id = $1, synced_at = CURRENT_TIMESTAMP WHERE id = $2`,
+                      [xeroItemId, localItem.id]
+                    );
+                    pushed++;
+                  } else {
+                    pushFailed++;
+                  }
+                } else {
+                  const errorText = await createResponse.text();
+                  console.error('Failed to push item to Xero:', errorText);
+                  pushFailed++;
+                }
+              } catch (pushError: any) {
+                console.error('Error pushing item to Xero:', pushError);
+                pushFailed++;
+              }
+            }
+
+            syncResults.results.items = {
+              ...syncResults.results.items,
+              pushed_created: pushed,
+              pushed_failed: pushFailed
+            };
+          }
+        } catch (error: any) {
+          console.error('Items sync error:', error);
+          syncResults.results.items = { synced: 0, pulled_created: 0, pushed_created: 0, pushed_failed: 0 };
+        }
+      }
+
+      // Sync Purchase Orders (Pull from Xero and Push local to Xero)
+      if (type === 'purchase_orders' || type === 'all') {
+        try {
+          const tokenData = await getValidAccessToken();
+          if (tokenData) {
+            // Pull purchase orders from Xero
+            const poResponse = await fetch('https://api.xero.com/api.xro/2.0/PurchaseOrders', {
+              headers: {
+                'Authorization': `Bearer ${tokenData.accessToken}`,
+                'Xero-Tenant-Id': tokenData.tenantId,
+                'Accept': 'application/json'
+              }
+            });
+
+            let pulledCreated = 0;
+            let pulledUpdated = 0;
+
+            if (poResponse.ok) {
+              const poData = await poResponse.json() as { PurchaseOrders?: any[] };
+              const purchaseOrders = poData.PurchaseOrders || [];
+
+              for (const po of purchaseOrders) {
+                const existing = await query(
+                  'SELECT id FROM xero_purchase_orders WHERE xero_po_id = $1',
+                  [po.PurchaseOrderID]
+                );
+
+                if (existing.rows.length > 0) {
+                  await query(
+                    `UPDATE xero_purchase_orders SET 
+                      po_number = $1, status = $2, total_amount = $3, date = $4, 
+                      delivery_date = $5, synced_at = CURRENT_TIMESTAMP
+                      WHERE xero_po_id = $6`,
+                    [
+                      po.PurchaseOrderNumber,
+                      po.Status,
+                      po.Total || 0,
+                      po.Date ? new Date(po.Date) : null,
+                      po.DeliveryDate ? new Date(po.DeliveryDate) : null,
+                      po.PurchaseOrderID
+                    ]
+                  );
+                  pulledUpdated++;
+                } else {
+                  // Get supplier contact ID
+                  let supplierId: string | null = null;
+                  if (po.Contact?.ContactID) {
+                    const supplierResult = await query(
+                      'SELECT id FROM clients WHERE xero_contact_id = $1',
+                      [po.Contact.ContactID]
+                    );
+                    if (supplierResult.rows.length > 0) {
+                      supplierId = supplierResult.rows[0].id;
+                    }
+                  }
+
+                  await query(
+                    `INSERT INTO xero_purchase_orders 
+                     (xero_po_id, po_number, supplier_id, status, total_amount, date, delivery_date, synced_at)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP)`,
+                    [
+                      po.PurchaseOrderID,
+                      po.PurchaseOrderNumber,
+                      supplierId,
+                      po.Status,
+                      po.Total || 0,
+                      po.Date ? new Date(po.Date) : null,
+                      po.DeliveryDate ? new Date(po.DeliveryDate) : null
+                    ]
+                  );
+                  pulledCreated++;
+                }
+              }
+            }
+
+            syncResults.results.purchase_orders = { 
+              synced: pulledCreated + pulledUpdated, 
+              pulled_created: pulledCreated, 
+              pulled_updated: pulledUpdated 
+            };
+
+            // Push local purchase orders missing in Xero
+            const localPOResult = await query(
+              `SELECT * FROM xero_purchase_orders 
+               WHERE xero_po_id IS NULL OR xero_po_id = ''`
+            );
+            const localPOs = localPOResult.rows;
+
+            // Get POs from Xero to check which are missing (re-fetch if needed)
+            let xeroPOs: any[] = [];
+            if (poResponse.ok) {
+              xeroPOs = purchaseOrders;
+            }
+
+            const missingPOs = findMissingInXero(localPOs, xeroPOs, 'xero_po_id');
+            let pushed = 0;
+            let pushFailed = 0;
+
+            for (const localPO of missingPOs) {
+              try {
+                // Get supplier's Xero contact ID
+                let supplierXeroId: string | null = null;
+                if (localPO.supplier_id) {
+                  const supplierResult = await query(
+                    'SELECT xero_contact_id FROM clients WHERE id = $1',
+                    [localPO.supplier_id]
+                  );
+                  if (supplierResult.rows.length > 0 && supplierResult.rows[0].xero_contact_id) {
+                    supplierXeroId = supplierResult.rows[0].xero_contact_id;
+                  }
+                }
+
+                if (!supplierXeroId) {
+                  console.error('Purchase order supplier does not have Xero contact ID');
+                  pushFailed++;
+                  continue;
+                }
+
+                // Get line items
+                const lineItemsResult = await query(
+                  'SELECT * FROM xero_purchase_order_line_items WHERE po_id = $1',
+                  [localPO.id]
+                );
+                const lineItems = lineItemsResult.rows;
+
+                const poPayload = {
+                  Contact: { ContactID: supplierXeroId },
+                  Date: localPO.date || new Date().toISOString().split('T')[0],
+                  DeliveryDate: localPO.delivery_date || null,
+                  LineItems: lineItems.map((item: any) => ({
+                    Description: item.description || '',
+                    Quantity: item.quantity || 1,
+                    UnitAmount: item.unit_amount || 0,
+                    AccountCode: item.account_code || '200'
+                  })),
+                  Reference: localPO.notes || null
+                };
+
+                const createResponse = await fetch('https://api.xero.com/api.xro/2.0/PurchaseOrders', {
+                  method: 'POST',
+                  headers: {
+                    'Authorization': `Bearer ${tokenData.accessToken}`,
+                    'Xero-Tenant-Id': tokenData.tenantId,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                  },
+                  body: JSON.stringify({ PurchaseOrders: [poPayload] })
+                });
+
+                if (createResponse.ok) {
+                  const result = await createResponse.json() as { PurchaseOrders?: Array<{ PurchaseOrderID: string }> };
+                  const xeroPOId = result.PurchaseOrders?.[0]?.PurchaseOrderID;
+                  if (xeroPOId) {
+                    await query(
+                      `UPDATE xero_purchase_orders SET xero_po_id = $1, synced_at = CURRENT_TIMESTAMP WHERE id = $2`,
+                      [xeroPOId, localPO.id]
+                    );
+                    pushed++;
+                  } else {
+                    pushFailed++;
+                  }
+                } else {
+                  const errorText = await createResponse.text();
+                  console.error('Failed to push purchase order to Xero:', errorText);
+                  pushFailed++;
+                }
+              } catch (pushError: any) {
+                console.error('Error pushing purchase order to Xero:', pushError);
+                pushFailed++;
+              }
+            }
+
+            syncResults.results.purchase_orders = {
+              ...syncResults.results.purchase_orders,
+              pushed_created: pushed,
+              pushed_failed: pushFailed
+            };
+          }
+        } catch (error: any) {
+          console.error('Purchase orders sync error:', error);
+          syncResults.results.purchase_orders = { synced: 0, pulled_created: 0, pulled_updated: 0, pushed_created: 0, pushed_failed: 0 };
+        }
+      }
+
+      // Sync Bills (Pull from Xero and Push local to Xero)
+      if (type === 'bills' || type === 'all') {
+        try {
+          const tokenData = await getValidAccessToken();
+          if (tokenData) {
+            // Pull bills from Xero
+            const billsResponse = await fetch('https://api.xero.com/api.xro/2.0/Bills', {
+              headers: {
+                'Authorization': `Bearer ${tokenData.accessToken}`,
+                'Xero-Tenant-Id': tokenData.tenantId,
+                'Accept': 'application/json'
+              }
+            });
+
+            let pulledCreated = 0;
+            let pulledUpdated = 0;
+            let bills: any[] = [];
+
+            if (billsResponse.ok) {
+              const billsData = await billsResponse.json() as { Bills?: any[] };
+              bills = billsData.Bills || [];
+
+              for (const bill of bills) {
+                const existing = await query(
+                  'SELECT id FROM xero_bills WHERE xero_bill_id = $1',
+                  [bill.BillID]
+                );
+
+                if (existing.rows.length > 0) {
+                  await query(
+                    `UPDATE xero_bills SET 
+                      bill_number = $1, status = $2, amount = $3, amount_due = $4,
+                      date = $5, due_date = $6, synced_at = CURRENT_TIMESTAMP
+                      WHERE xero_bill_id = $7`,
+                    [
+                      bill.BillNumber,
+                      bill.Status,
+                      bill.Total || 0,
+                      bill.AmountDue || 0,
+                      bill.Date ? new Date(bill.Date) : null,
+                      bill.DueDate ? new Date(bill.DueDate) : null,
+                      bill.BillID
+                    ]
+                  );
+                  pulledUpdated++;
+                } else {
+                  // Get supplier contact ID
+                  let supplierId: string | null = null;
+                  if (bill.Contact?.ContactID) {
+                    const supplierResult = await query(
+                      'SELECT id FROM clients WHERE xero_contact_id = $1',
+                      [bill.Contact.ContactID]
+                    );
+                    if (supplierResult.rows.length > 0) {
+                      supplierId = supplierResult.rows[0].id;
+                    }
+                  }
+
+                  await query(
+                    `INSERT INTO xero_bills 
+                     (xero_bill_id, bill_number, supplier_id, status, amount, amount_due, date, due_date, synced_at)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CURRENT_TIMESTAMP)`,
+                    [
+                      bill.BillID,
+                      bill.BillNumber,
+                      supplierId,
+                      bill.Status,
+                      bill.Total || 0,
+                      bill.AmountDue || 0,
+                      bill.Date ? new Date(bill.Date) : null,
+                      bill.DueDate ? new Date(bill.DueDate) : null
+                    ]
+                  );
+                  pulledCreated++;
+                }
+              }
+            }
+
+            syncResults.results.bills = { 
+              synced: pulledCreated + pulledUpdated, 
+              pulled_created: pulledCreated, 
+              pulled_updated: pulledUpdated 
+            };
+
+            // Push local bills missing in Xero
+            const localBillsResult = await query(
+              `SELECT * FROM xero_bills 
+               WHERE xero_bill_id IS NULL OR xero_bill_id = ''`
+            );
+            const localBills = localBillsResult.rows;
+            const missingBills = findMissingInXero(localBills, bills, 'xero_bill_id');
+            let pushed = 0;
+            let pushFailed = 0;
+
+            for (const localBill of missingBills) {
+              try {
+                // Get supplier's Xero contact ID
+                let supplierXeroId: string | null = null;
+                if (localBill.supplier_id) {
+                  const supplierResult = await query(
+                    'SELECT xero_contact_id FROM clients WHERE id = $1',
+                    [localBill.supplier_id]
+                  );
+                  if (supplierResult.rows.length > 0 && supplierResult.rows[0].xero_contact_id) {
+                    supplierXeroId = supplierResult.rows[0].xero_contact_id;
+                  }
+                }
+
+                if (!supplierXeroId) {
+                  console.error('Bill supplier does not have Xero contact ID');
+                  pushFailed++;
+                  continue;
+                }
+
+                // Parse line items
+                let lineItems: any[] = [];
+                if (localBill.line_items) {
+                  try {
+                    lineItems = typeof localBill.line_items === 'string' 
+                      ? JSON.parse(localBill.line_items) 
+                      : localBill.line_items;
+                  } catch (e) {
+                    console.error('Failed to parse line items:', e);
+                  }
+                }
+
+                const billPayload = {
+                  Contact: { ContactID: supplierXeroId },
+                  Date: localBill.date || new Date().toISOString().split('T')[0],
+                  DueDate: localBill.due_date || null,
+                  LineItems: lineItems.map((item: any) => ({
+                    Description: item.description || '',
+                    Quantity: item.quantity || 1,
+                    UnitAmount: item.unit_amount || item.amount || 0,
+                    AccountCode: item.account_code || '200'
+                  })),
+                  Status: localBill.status || 'AUTHORISED'
+                };
+
+                const createResponse = await fetch('https://api.xero.com/api.xro/2.0/Bills', {
+                  method: 'POST',
+                  headers: {
+                    'Authorization': `Bearer ${tokenData.accessToken}`,
+                    'Xero-Tenant-Id': tokenData.tenantId,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                  },
+                  body: JSON.stringify({ Bills: [billPayload] })
+                });
+
+                if (createResponse.ok) {
+                  const result = await createResponse.json() as { Bills?: Array<{ BillID: string }> };
+                  const xeroBillId = result.Bills?.[0]?.BillID;
+                  if (xeroBillId) {
+                    await query(
+                      `UPDATE xero_bills SET xero_bill_id = $1, synced_at = CURRENT_TIMESTAMP WHERE id = $2`,
+                      [xeroBillId, localBill.id]
+                    );
+                    pushed++;
+                  } else {
+                    pushFailed++;
+                  }
+                } else {
+                  const errorText = await createResponse.text();
+                  console.error('Failed to push bill to Xero:', errorText);
+                  pushFailed++;
+                }
+              } catch (pushError: any) {
+                console.error('Error pushing bill to Xero:', pushError);
+                pushFailed++;
+              }
+            }
+
+            syncResults.results.bills = {
+              ...syncResults.results.bills,
+              pushed_created: pushed,
+              pushed_failed: pushFailed
+            };
+          }
+        } catch (error: any) {
+          console.error('Bills sync error:', error);
+          syncResults.results.bills = { synced: 0, pulled_created: 0, pulled_updated: 0, pushed_created: 0, pushed_failed: 0 };
+        }
+      }
+
+      // Sync Payments (Pull from Xero and Push local to Xero)
+      if (type === 'payments' || type === 'all') {
+        try {
+          const tokenData = await getValidAccessToken();
+          if (tokenData) {
+            // Pull payments from Xero
+            const paymentsResponse = await fetch('https://api.xero.com/api.xro/2.0/Payments', {
+              headers: {
+                'Authorization': `Bearer ${tokenData.accessToken}`,
+                'Xero-Tenant-Id': tokenData.tenantId,
+                'Accept': 'application/json'
+              }
+            });
+
+            let pulledCreated = 0;
+            let pulledUpdated = 0;
+            let payments: any[] = [];
+
+            if (paymentsResponse.ok) {
+              const paymentsData = await paymentsResponse.json() as { Payments?: any[] };
+              payments = paymentsData.Payments || [];
+
+              for (const payment of payments) {
+                const existing = await query(
+                  'SELECT id FROM xero_payments WHERE xero_payment_id = $1',
+                  [payment.PaymentID]
+                );
+
+                if (existing.rows.length > 0) {
+                  await query(
+                    `UPDATE xero_payments SET 
+                      amount = $1, payment_date = $2, payment_method = $3, reference = $4,
+                      synced_at = CURRENT_TIMESTAMP
+                      WHERE xero_payment_id = $5`,
+                    [
+                      payment.Amount || 0,
+                      payment.Date ? new Date(payment.Date) : null,
+                      payment.PaymentType || 'ACCRECPAYMENT',
+                      payment.Reference || null,
+                      payment.PaymentID
+                    ]
+                  );
+                  pulledUpdated++;
+                } else {
+                  // Get invoice ID
+                  let invoiceId: string | null = null;
+                  if (payment.Invoice?.InvoiceID) {
+                    const invoiceResult = await query(
+                      'SELECT id FROM xero_invoices WHERE xero_invoice_id = $1',
+                      [payment.Invoice.InvoiceID]
+                    );
+                    if (invoiceResult.rows.length > 0) {
+                      invoiceId = invoiceResult.rows[0].id;
+                    }
+                  }
+
+                  await query(
+                    `INSERT INTO xero_payments 
+                     (xero_payment_id, invoice_id, amount, payment_date, payment_method, reference, synced_at)
+                     VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)`,
+                    [
+                      payment.PaymentID,
+                      invoiceId,
+                      payment.Amount || 0,
+                      payment.Date ? new Date(payment.Date) : null,
+                      payment.PaymentType || 'ACCRECPAYMENT',
+                      payment.Reference || null
+                    ]
+                  );
+                  pulledCreated++;
+                }
+              }
+            }
+
+            syncResults.results.payments = { 
+              synced: pulledCreated + pulledUpdated, 
+              pulled_created: pulledCreated, 
+              pulled_updated: pulledUpdated 
+            };
+
+            // Push local payments missing in Xero
+            const localPaymentsResult = await query(
+              `SELECT * FROM xero_payments 
+               WHERE xero_payment_id IS NULL OR xero_payment_id = ''`
+            );
+            const localPayments = localPaymentsResult.rows;
+            const missingPayments = findMissingInXero(localPayments, payments, 'xero_payment_id');
+            let pushed = 0;
+            let pushFailed = 0;
+
+            for (const localPayment of missingPayments) {
+              try {
+                // Get invoice's Xero invoice ID
+                let invoiceXeroId: string | null = null;
+                if (localPayment.invoice_id) {
+                  const invoiceResult = await query(
+                    'SELECT xero_invoice_id FROM xero_invoices WHERE id = $1',
+                    [localPayment.invoice_id]
+                  );
+                  if (invoiceResult.rows.length > 0 && invoiceResult.rows[0].xero_invoice_id) {
+                    invoiceXeroId = invoiceResult.rows[0].xero_invoice_id;
+                  }
+                }
+
+                if (!invoiceXeroId) {
+                  console.error('Payment invoice does not have Xero invoice ID');
+                  pushFailed++;
+                  continue;
+                }
+
+                const paymentPayload = {
+                  Invoice: { InvoiceID: invoiceXeroId },
+                  Account: { Code: localPayment.account_code || '090' }, // Default bank account
+                  Date: localPayment.payment_date || new Date().toISOString().split('T')[0],
+                  Amount: localPayment.amount || 0,
+                  Reference: localPayment.reference || null
+                };
+
+                const createResponse = await fetch('https://api.xero.com/api.xro/2.0/Payments', {
+                  method: 'POST',
+                  headers: {
+                    'Authorization': `Bearer ${tokenData.accessToken}`,
+                    'Xero-Tenant-Id': tokenData.tenantId,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                  },
+                  body: JSON.stringify({ Payments: [paymentPayload] })
+                });
+
+                if (createResponse.ok) {
+                  const result = await createResponse.json() as { Payments?: Array<{ PaymentID: string }> };
+                  const xeroPaymentId = result.Payments?.[0]?.PaymentID;
+                  if (xeroPaymentId) {
+                    await query(
+                      `UPDATE xero_payments SET xero_payment_id = $1, synced_at = CURRENT_TIMESTAMP WHERE id = $2`,
+                      [xeroPaymentId, localPayment.id]
+                    );
+                    pushed++;
+                  } else {
+                    pushFailed++;
+                  }
+                } else {
+                  const errorText = await createResponse.text();
+                  console.error('Failed to push payment to Xero:', errorText);
+                  pushFailed++;
+                }
+              } catch (pushError: any) {
+                console.error('Error pushing payment to Xero:', pushError);
+                pushFailed++;
+              }
+            }
+
+            syncResults.results.payments = {
+              ...syncResults.results.payments,
+              pushed_created: pushed,
+              pushed_failed: pushFailed
+            };
+          }
+        } catch (error: any) {
+          console.error('Payments sync error:', error);
+          syncResults.results.payments = { synced: 0, pulled_created: 0, pulled_updated: 0, pushed_created: 0, pushed_failed: 0 };
+        }
+      }
+
+      // Sync Credit Notes (Pull from Xero and Push local to Xero)
+      if (type === 'credit_notes' || type === 'all') {
+        try {
+          const tokenData = await getValidAccessToken();
+          if (tokenData) {
+            // Pull credit notes from Xero
+            const creditNotesResponse = await fetch('https://api.xero.com/api.xro/2.0/CreditNotes', {
+              headers: {
+                'Authorization': `Bearer ${tokenData.accessToken}`,
+                'Xero-Tenant-Id': tokenData.tenantId,
+                'Accept': 'application/json'
+              }
+            });
+
+            let pulledCreated = 0;
+            let pulledUpdated = 0;
+            let creditNotes: any[] = [];
+
+            if (creditNotesResponse.ok) {
+              const creditNotesData = await creditNotesResponse.json() as { CreditNotes?: any[] };
+              creditNotes = creditNotesData.CreditNotes || [];
+
+              for (const creditNote of creditNotes) {
+                const existing = await query(
+                  'SELECT id FROM xero_credit_notes WHERE xero_credit_note_id = $1',
+                  [creditNote.CreditNoteID]
+                );
+
+                if (existing.rows.length > 0) {
+                  await query(
+                    `UPDATE xero_credit_notes SET 
+                      credit_note_number = $1, status = $2, amount = $3, date = $4,
+                      synced_at = CURRENT_TIMESTAMP
+                      WHERE xero_credit_note_id = $5`,
+                    [
+                      creditNote.CreditNoteNumber,
+                      creditNote.Status,
+                      creditNote.Total || 0,
+                      creditNote.Date ? new Date(creditNote.Date) : null,
+                      creditNote.CreditNoteID
+                    ]
+                  );
+                  pulledUpdated++;
+                } else {
+                  // Get invoice ID
+                  let invoiceId: string | null = null;
+                  if (creditNote.AppliedAmount && creditNote.AppliedAmount > 0) {
+                    // Try to find related invoice
+                    const invoiceResult = await query(
+                      'SELECT id FROM xero_invoices WHERE xero_invoice_id = $1 LIMIT 1',
+                      [creditNote.InvoiceID || '']
+                    );
+                    if (invoiceResult.rows.length > 0) {
+                      invoiceId = invoiceResult.rows[0].id;
+                    }
+                  }
+
+                  await query(
+                    `INSERT INTO xero_credit_notes 
+                     (xero_credit_note_id, credit_note_number, invoice_id, amount, date, status, synced_at)
+                     VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)`,
+                    [
+                      creditNote.CreditNoteID,
+                      creditNote.CreditNoteNumber,
+                      invoiceId,
+                      creditNote.Total || 0,
+                      creditNote.Date ? new Date(creditNote.Date) : null,
+                      creditNote.Status || 'AUTHORISED'
+                    ]
+                  );
+                  pulledCreated++;
+                }
+              }
+            }
+
+            syncResults.results.credit_notes = { 
+              synced: pulledCreated + pulledUpdated, 
+              pulled_created: pulledCreated, 
+              pulled_updated: pulledUpdated 
+            };
+
+            // Push local credit notes missing in Xero
+            const localCreditNotesResult = await query(
+              `SELECT * FROM xero_credit_notes 
+               WHERE xero_credit_note_id IS NULL OR xero_credit_note_id = ''`
+            );
+            const localCreditNotes = localCreditNotesResult.rows;
+            const missingCreditNotes = findMissingInXero(localCreditNotes, creditNotes, 'xero_credit_note_id');
+            let pushed = 0;
+            let pushFailed = 0;
+
+            for (const localCreditNote of missingCreditNotes) {
+              try {
+                // Get invoice's Xero invoice ID
+                let invoiceXeroId: string | null = null;
+                if (localCreditNote.invoice_id) {
+                  const invoiceResult = await query(
+                    'SELECT xero_invoice_id FROM xero_invoices WHERE id = $1',
+                    [localCreditNote.invoice_id]
+                  );
+                  if (invoiceResult.rows.length > 0 && invoiceResult.rows[0].xero_invoice_id) {
+                    invoiceXeroId = invoiceResult.rows[0].xero_invoice_id;
+                  }
+                }
+
+                if (!invoiceXeroId) {
+                  console.error('Credit note invoice does not have Xero invoice ID');
+                  pushFailed++;
+                  continue;
+                }
+
+                const creditNotePayload = {
+                  Type: 'ACCRECCREDIT', // Accounts Receivable Credit
+                  Contact: {}, // Will be populated from invoice
+                  Date: localCreditNote.date || new Date().toISOString().split('T')[0],
+                  CreditNoteNumber: localCreditNote.credit_note_number || null,
+                  Status: localCreditNote.status || 'AUTHORISED',
+                  LineAmountTypes: 'Exclusive',
+                  LineItems: [{
+                    Description: localCreditNote.reason || 'Credit note',
+                    Quantity: 1,
+                    UnitAmount: localCreditNote.amount || 0,
+                    AccountCode: '200'
+                  }]
+                };
+
+                const createResponse = await fetch('https://api.xero.com/api.xro/2.0/CreditNotes', {
+                  method: 'POST',
+                  headers: {
+                    'Authorization': `Bearer ${tokenData.accessToken}`,
+                    'Xero-Tenant-Id': tokenData.tenantId,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                  },
+                  body: JSON.stringify({ CreditNotes: [creditNotePayload] })
+                });
+
+                if (createResponse.ok) {
+                  const result = await createResponse.json() as { CreditNotes?: Array<{ CreditNoteID: string }> };
+                  const xeroCreditNoteId = result.CreditNotes?.[0]?.CreditNoteID;
+                  if (xeroCreditNoteId) {
+                    await query(
+                      `UPDATE xero_credit_notes SET xero_credit_note_id = $1, synced_at = CURRENT_TIMESTAMP WHERE id = $2`,
+                      [xeroCreditNoteId, localCreditNote.id]
+                    );
+                    pushed++;
+                  } else {
+                    pushFailed++;
+                  }
+                } else {
+                  const errorText = await createResponse.text();
+                  console.error('Failed to push credit note to Xero:', errorText);
+                  pushFailed++;
+                }
+              } catch (pushError: any) {
+                console.error('Error pushing credit note to Xero:', pushError);
+                pushFailed++;
+              }
+            }
+
+            syncResults.results.credit_notes = {
+              ...syncResults.results.credit_notes,
+              pushed_created: pushed,
+              pushed_failed: pushFailed
+            };
+          }
+        } catch (error: any) {
+          console.error('Credit notes sync error:', error);
+          syncResults.results.credit_notes = { synced: 0, pulled_created: 0, pulled_updated: 0, pushed_created: 0, pushed_failed: 0 };
+        }
+      }
+
+      // Sync Bank Transactions (Pull only, read-only)
+      if (type === 'bank_transactions' || type === 'all') {
+        try {
+          const tokenData = await getValidAccessToken();
+          if (tokenData) {
+            // Pull bank transactions from Xero
+            const bankTransactionsResponse = await fetch('https://api.xero.com/api.xro/2.0/BankTransactions', {
+              headers: {
+                'Authorization': `Bearer ${tokenData.accessToken}`,
+                'Xero-Tenant-Id': tokenData.tenantId,
+                'Accept': 'application/json'
+              }
+            });
+
+            let pulledCreated = 0;
+            let pulledUpdated = 0;
+
+            if (bankTransactionsResponse.ok) {
+              const bankTransactionsData = await bankTransactionsResponse.json() as { BankTransactions?: any[] };
+              const bankTransactions = bankTransactionsData.BankTransactions || [];
+
+              for (const transaction of bankTransactions) {
+                const existing = await query(
+                  'SELECT id FROM bank_transactions WHERE xero_bank_transaction_id = $1',
+                  [transaction.BankTransactionID]
+                );
+
+                if (existing.rows.length > 0) {
+                  await query(
+                    `UPDATE bank_transactions SET 
+                      date = $1, amount = $2, type = $3, description = $4, reference = $5,
+                      reconciled = $6, synced_at = CURRENT_TIMESTAMP
+                      WHERE xero_bank_transaction_id = $7`,
+                    [
+                      transaction.Date ? new Date(transaction.Date) : null,
+                      transaction.Total || 0,
+                      transaction.Type || 'SPEND',
+                      transaction.LineItems?.[0]?.Description || '',
+                      transaction.Reference || null,
+                      transaction.Status === 'RECONCILED',
+                      transaction.BankTransactionID
+                    ]
+                  );
+                  pulledUpdated++;
+                } else {
+                  // Get contact ID
+                  let contactId: string | null = null;
+                  if (transaction.Contact?.ContactID) {
+                    const contactResult = await query(
+                      'SELECT id FROM clients WHERE xero_contact_id = $1',
+                      [transaction.Contact.ContactID]
+                    );
+                    if (contactResult.rows.length > 0) {
+                      contactId = contactResult.rows[0].id;
+                    }
+                  }
+
+                  await query(
+                    `INSERT INTO bank_transactions 
+                     (xero_bank_transaction_id, bank_account_code, bank_account_name, date, amount, type, 
+                      description, reference, contact_id, reconciled, synced_at)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, CURRENT_TIMESTAMP)`,
+                    [
+                      transaction.BankTransactionID,
+                      transaction.BankAccount?.Code || null,
+                      transaction.BankAccount?.Name || null,
+                      transaction.Date ? new Date(transaction.Date) : null,
+                      transaction.Total || 0,
+                      transaction.Type || 'SPEND',
+                      transaction.LineItems?.[0]?.Description || '',
+                      transaction.Reference || null,
+                      contactId,
+                      transaction.Status === 'RECONCILED'
+                    ]
+                  );
+                  pulledCreated++;
+                }
+              }
+            }
+
+            syncResults.results.bank_transactions = { 
+              synced: pulledCreated + pulledUpdated, 
+              pulled_created: pulledCreated, 
+              pulled_updated: pulledUpdated 
+            };
+          }
+        } catch (error: any) {
+          console.error('Bank transactions sync error:', error);
+          syncResults.results.bank_transactions = { synced: 0, pulled_created: 0, pulled_updated: 0 };
+        }
+      }
+
+      // Sync Expenses (Pull from Xero and Push local to Xero)
+      // Note: Xero uses Receipts endpoint for expenses
+      if (type === 'expenses' || type === 'all') {
+        try {
+          const tokenData = await getValidAccessToken();
+          if (tokenData) {
+            // Pull receipts/expenses from Xero
+            const receiptsResponse = await fetch('https://api.xero.com/api.xro/2.0/Receipts', {
+              headers: {
+                'Authorization': `Bearer ${tokenData.accessToken}`,
+                'Xero-Tenant-Id': tokenData.tenantId,
+                'Accept': 'application/json'
+              }
+            });
+
+            let pulledCreated = 0;
+            let pulledUpdated = 0;
+            let receipts: any[] = [];
+
+            if (receiptsResponse.ok) {
+              const receiptsData = await receiptsResponse.json() as { Receipts?: any[] };
+              receipts = receiptsData.Receipts || [];
+
+              for (const receipt of receipts) {
+                const existing = await query(
+                  'SELECT id FROM xero_expenses WHERE xero_expense_id = $1',
+                  [receipt.ReceiptID]
+                );
+
+                if (existing.rows.length > 0) {
+                  await query(
+                    `UPDATE xero_expenses SET 
+                      amount = $1, date = $2, description = $3, status = $4,
+                      synced_at = CURRENT_TIMESTAMP
+                      WHERE xero_expense_id = $5`,
+                    [
+                      receipt.Total || 0,
+                      receipt.Date ? new Date(receipt.Date) : null,
+                      receipt.LineItems?.[0]?.Description || '',
+                      receipt.Status || 'DRAFT',
+                      receipt.ReceiptID
+                    ]
+                  );
+                  pulledUpdated++;
+                } else {
+                  await query(
+                    `INSERT INTO xero_expenses 
+                     (xero_expense_id, amount, date, description, status, synced_at)
+                     VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)`,
+                    [
+                      receipt.ReceiptID,
+                      receipt.Total || 0,
+                      receipt.Date ? new Date(receipt.Date) : null,
+                      receipt.LineItems?.[0]?.Description || '',
+                      receipt.Status || 'DRAFT'
+                    ]
+                  );
+                  pulledCreated++;
+                }
+              }
+            }
+
+            syncResults.results.expenses = { 
+              synced: pulledCreated + pulledUpdated, 
+              pulled_created: pulledCreated, 
+              pulled_updated: pulledUpdated 
+            };
+
+            // Push local expenses missing in Xero
+            const localExpensesResult = await query(
+              `SELECT * FROM xero_expenses 
+               WHERE xero_expense_id IS NULL OR xero_expense_id = ''`
+            );
+            const localExpenses = localExpensesResult.rows;
+            const missingExpenses = findMissingInXero(localExpenses, receipts, 'xero_expense_id');
+            let pushed = 0;
+            let pushFailed = 0;
+
+            for (const localExpense of missingExpenses) {
+              try {
+                const receiptPayload = {
+                  Date: localExpense.date || new Date().toISOString().split('T')[0],
+                  Contact: {}, // Optional for receipts
+                  LineItems: [{
+                    Description: localExpense.description || 'Expense',
+                    Quantity: 1,
+                    UnitAmount: localExpense.amount || 0,
+                    AccountCode: '200' // Default expense account
+                  }],
+                  Status: localExpense.status || 'DRAFT',
+                  Reference: localExpense.description || null
+                };
+
+                const createResponse = await fetch('https://api.xero.com/api.xro/2.0/Receipts', {
+                  method: 'POST',
+                  headers: {
+                    'Authorization': `Bearer ${tokenData.accessToken}`,
+                    'Xero-Tenant-Id': tokenData.tenantId,
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                  },
+                  body: JSON.stringify({ Receipts: [receiptPayload] })
+                });
+
+                if (createResponse.ok) {
+                  const result = await createResponse.json() as { Receipts?: Array<{ ReceiptID: string }> };
+                  const xeroExpenseId = result.Receipts?.[0]?.ReceiptID;
+                  if (xeroExpenseId) {
+                    await query(
+                      `UPDATE xero_expenses SET xero_expense_id = $1, synced_at = CURRENT_TIMESTAMP WHERE id = $2`,
+                      [xeroExpenseId, localExpense.id]
+                    );
+                    pushed++;
+                  } else {
+                    pushFailed++;
+                  }
+                } else {
+                  const errorText = await createResponse.text();
+                  console.error('Failed to push expense to Xero:', errorText);
+                  pushFailed++;
+                }
+              } catch (pushError: any) {
+                console.error('Error pushing expense to Xero:', pushError);
+                pushFailed++;
+              }
+            }
+
+            syncResults.results.expenses = {
+              ...syncResults.results.expenses,
+              pushed_created: pushed,
+              pushed_failed: pushFailed
+            };
+          }
+        } catch (error: any) {
+          console.error('Expenses sync error:', error);
+          syncResults.results.expenses = { synced: 0, pulled_created: 0, pulled_updated: 0, pushed_created: 0, pushed_failed: 0 };
         }
       }
 
