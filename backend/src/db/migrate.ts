@@ -266,8 +266,19 @@ async function runMigration() {
         for (const file of migrationFiles) {
           const filePath = path.join(migrationsDir, file);
           const sql = fs.readFileSync(filePath, 'utf8');
-          console.log(`  Running migration: ${file}`);
-          await client.query(sql);
+          try {
+            console.log(`  Running migration: ${file}`);
+            await client.query(sql);
+          } catch (err: any) {
+            console.error(`  ❌ Error in migration ${file}:`, err.message);
+            // If it's a "already exists" error, it's usually safe to continue
+            // since we use IF NOT EXISTS everywhere
+            if (err.code === '42P07' || err.code === '23505') {
+              console.log(`  ⚠️  Migration ${file} skipped (object already exists)`);
+              continue;
+            }
+            throw err;
+          }
         }
       }
       
