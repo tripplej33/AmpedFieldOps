@@ -216,8 +216,10 @@ export default function Financials() {
   const handleSync = async () => {
     setIsSyncing(true);
     try {
-      await api.syncXero('all');
-      toast.success('Xero sync completed');
+      const result = await api.syncXero('all');
+      toast.success(`Xero sync completed at ${new Date(result.synced_at).toLocaleTimeString()}`);
+      // Refresh Xero status
+      window.dispatchEvent(new CustomEvent('xero-status-updated'));
       loadData();
     } catch (error: any) {
       toast.error(error.message || 'Sync failed');

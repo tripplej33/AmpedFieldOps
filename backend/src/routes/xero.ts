@@ -313,14 +313,37 @@ function sendPopupOrRedirect(res: Response, frontendUrl: string, type: 'success'
                 };
                 
                 console.log('[Xero Callback] Sending postMessage:', messageData);
-                window.opener.postMessage(messageData, window.location.origin);
-                console.log('[Xero Callback] postMessage sent successfully');
                 
-                // Close immediately after sending message
-                setTimeout(function() {
-                  console.log('[Xero Callback] Closing window...');
-                  window.close();
-                }, 100);
+                // Send message with retry logic
+                let retries = 0;
+                const maxRetries = 3;
+                const sendMessage = () => {
+                  try {
+                    window.opener.postMessage(messageData, window.location.origin);
+                    console.log('[Xero Callback] postMessage sent successfully');
+                    
+                    // Close after a short delay to ensure message is received
+                    setTimeout(function() {
+                      console.log('[Xero Callback] Closing window...');
+                      if (window.opener && !window.opener.closed) {
+                        window.close();
+                      }
+                    }, 500);
+                  } catch (e) {
+                    console.error('[Xero Callback] Failed to postMessage, retry', retries + 1, ':', e);
+                    if (retries < maxRetries) {
+                      retries++;
+                      setTimeout(sendMessage, 200);
+                    } else {
+                      // Fallback: try redirect after max retries
+                      setTimeout(function() {
+                        window.location.href = '${frontendUrl}/settings?xero_connected=${type === 'success' ? 'true' : 'false'}';
+                      }, 1000);
+                    }
+                  }
+                };
+                
+                sendMessage();
                 return; // Exit early, don't redirect
               } catch (e) {
                 console.error('[Xero Callback] Failed to postMessage:', e);
@@ -819,7 +842,7 @@ router.get('/status', authenticate, async (req: AuthRequest, res: Response) => {
       configured: isConfigured,
       tenant_name: token.tenant_name,
       expires_at: token.expires_at,
-      last_sync: token.updated_at,
+      last_sync: token.updated_at ? token.updated_at.toISOString() : null,
       needs_refresh: isExpired
     });
   } catch (error) {
@@ -1295,7 +1318,7 @@ router.post('/contacts/push-all', authenticate, requirePermission('can_sync_xero
   }
 });
 
-// Sync data with Xero (legacy endpoint - now calls individual sync methods)
+// Sync data with Xero - performs bidirectional sync
 router.post('/sync', authenticate, requirePermission('can_sync_xero'), async (req: AuthRequest, res: Response) => {
   try {
     const { type } = req.body; // 'contacts', 'invoices', 'tracking_categories', 'all'
@@ -1306,48 +1329,302 @@ router.post('/sync', authenticate, requirePermission('can_sync_xero'), async (re
       return res.status(400).json({ error: 'Xero not connected' });
     }
 
+    const tokenId = tokenResult.rows[0].id;
     const syncResults: {
       success: boolean;
       synced_at: Date;
-      results: Record<string, { synced?: number; created?: number; updated?: number; mapped?: number }>;
+      last_sync: string;
+      results: Record<string, { synced?: number; created?: number; updated?: number; mapped?: number; total?: number; failed?: number }>;
     } = {
       success: true,
       synced_at: new Date(),
+      last_sync: new Date().toISOString(),
       results: {}
     };
 
-    if (type === 'contacts' || type === 'all') {
-      // Sync contacts to clients
-      syncResults.results.contacts = { synced: 0, created: 0, updated: 0 };
+    // Helper to make internal API calls
+    const makeInternalRequest = async (method: string, path: string, body?: any) => {
+      const baseUrl = process.env.BACKEND_URL || `http://localhost:${process.env.PORT || 3001}`;
+      const url = `${baseUrl}${path}`;
+      const options: RequestInit = {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${req.headers.authorization?.replace('Bearer ', '') || ''}`
+        }
+      };
+      if (body) {
+        options.body = JSON.stringify(body);
+      }
+      const response = await fetch(url, options);
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Sync operation failed: ${errorText}`);
+      }
+      return response.json();
+    };
+
+    try {
+      // Sync Contacts (Pull from Xero and Push local to Xero)
+      if (type === 'contacts' || type === 'all') {
+        try {
+          // Pull contacts from Xero
+          const pullResult = await makeInternalRequest('POST', '/api/xero/contacts/pull');
+          syncResults.results.contacts = {
+            synced: (pullResult.created || 0) + (pullResult.updated || 0),
+            created: pullResult.created || 0,
+            updated: pullResult.updated || 0
+          };
+
+          // Push local clients to Xero
+          const pushResult = await makeInternalRequest('POST', '/api/xero/contacts/push-all');
+          if (pushResult.results) {
+            syncResults.results.contacts = {
+              ...syncResults.results.contacts,
+              total: pushResult.results.total || 0,
+              created: (syncResults.results.contacts?.created || 0) + (pushResult.results.created || 0),
+              failed: pushResult.results.failed || 0
+            };
+          }
+        } catch (error: any) {
+          console.error('Contacts sync error:', error);
+          syncResults.results.contacts = { synced: 0, created: 0, updated: 0, failed: 1 };
+        }
+      }
+
+      // Sync Invoices (Pull from Xero)
+      if (type === 'invoices' || type === 'all') {
+        try {
+          const tokenData = await getValidAccessToken();
+          if (tokenData) {
+            // Fetch invoices from Xero
+            const invoicesResponse = await fetch('https://api.xero.com/api.xro/2.0/Invoices', {
+              headers: {
+                'Authorization': `Bearer ${tokenData.accessToken}`,
+                'Xero-Tenant-Id': tokenData.tenantId,
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+              }
+            });
+
+            if (invoicesResponse.ok) {
+              const invoicesData = await invoicesResponse.json() as { Invoices?: any[] };
+              const invoices = invoicesData.Invoices || [];
+              let synced = 0;
+              let created = 0;
+              let updated = 0;
+
+              for (const invoice of invoices) {
+                const existing = await query(
+                  'SELECT id FROM xero_invoices WHERE xero_invoice_id = $1',
+                  [invoice.InvoiceID]
+                );
+
+                if (existing.rows.length > 0) {
+                  await query(
+                    `UPDATE xero_invoices SET 
+                      invoice_number = $1, status = $2, total = $3, amount_due = $4,
+                      due_date = $5, issue_date = $6, synced_at = CURRENT_TIMESTAMP
+                      WHERE xero_invoice_id = $7`,
+                    [
+                      invoice.InvoiceNumber,
+                      invoice.Status,
+                      invoice.Total || 0,
+                      invoice.AmountDue || 0,
+                      invoice.DueDate ? new Date(invoice.DueDate) : null,
+                      invoice.Date ? new Date(invoice.Date) : null,
+                      invoice.InvoiceID
+                    ]
+                  );
+                  updated++;
+                } else {
+                  await query(
+                    `INSERT INTO xero_invoices (xero_invoice_id, invoice_number, status, total, amount_due, due_date, issue_date, synced_at)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP)`,
+                    [
+                      invoice.InvoiceID,
+                      invoice.InvoiceNumber,
+                      invoice.Status,
+                      invoice.Total || 0,
+                      invoice.AmountDue || 0,
+                      invoice.DueDate ? new Date(invoice.DueDate) : null,
+                      invoice.Date ? new Date(invoice.Date) : null
+                    ]
+                  );
+                  created++;
+                }
+                synced++;
+              }
+
+              syncResults.results.invoices = { synced, created, updated };
+            }
+          }
+        } catch (error: any) {
+          console.error('Invoices sync error:', error);
+          syncResults.results.invoices = { synced: 0, created: 0, updated: 0 };
+        }
+      }
+
+      // Sync Quotes (Pull from Xero)
+      if (type === 'quotes' || type === 'all') {
+        try {
+          const tokenData = await getValidAccessToken();
+          if (tokenData) {
+            const quotesResponse = await fetch('https://api.xero.com/api.xro/2.0/Quotes', {
+              headers: {
+                'Authorization': `Bearer ${tokenData.accessToken}`,
+                'Xero-Tenant-Id': tokenData.tenantId,
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+              }
+            });
+
+            if (quotesResponse.ok) {
+              const quotesData = await quotesResponse.json() as { Quotes?: any[] };
+              const quotes = quotesData.Quotes || [];
+              let synced = 0;
+              let created = 0;
+              let updated = 0;
+
+              for (const quote of quotes) {
+                const existing = await query(
+                  'SELECT id FROM xero_quotes WHERE xero_quote_id = $1',
+                  [quote.QuoteID]
+                );
+
+                if (existing.rows.length > 0) {
+                  await query(
+                    `UPDATE xero_quotes SET 
+                      quote_number = $1, status = $2, total = $3,
+                      expiry_date = $4, synced_at = CURRENT_TIMESTAMP
+                      WHERE xero_quote_id = $5`,
+                    [
+                      quote.QuoteNumber,
+                      quote.Status,
+                      quote.Total || 0,
+                      quote.ExpiryDate ? new Date(quote.ExpiryDate) : null,
+                      quote.QuoteID
+                    ]
+                  );
+                  updated++;
+                } else {
+                  await query(
+                    `INSERT INTO xero_quotes (xero_quote_id, quote_number, status, total, expiry_date, synced_at)
+                     VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)`,
+                    [
+                      quote.QuoteID,
+                      quote.QuoteNumber,
+                      quote.Status,
+                      quote.Total || 0,
+                      quote.ExpiryDate ? new Date(quote.ExpiryDate) : null
+                    ]
+                  );
+                  created++;
+                }
+                synced++;
+              }
+
+              syncResults.results.quotes = { synced, created, updated };
+            }
+          }
+        } catch (error: any) {
+          console.error('Quotes sync error:', error);
+          syncResults.results.quotes = { synced: 0, created: 0, updated: 0 };
+        }
+      }
+
+      // Sync Tracking Categories (Pull from Xero)
+      if (type === 'tracking_categories' || type === 'all') {
+        try {
+          const tokenData = await getValidAccessToken();
+          if (tokenData) {
+            const trackingResponse = await fetch('https://api.xero.com/api.xro/2.0/TrackingCategories', {
+              headers: {
+                'Authorization': `Bearer ${tokenData.accessToken}`,
+                'Xero-Tenant-Id': tokenData.tenantId,
+                'Content-Type': 'application/json',
+                'Accept': 'application/json'
+              }
+            });
+
+            if (trackingResponse.ok) {
+              const trackingData = await trackingResponse.json() as { TrackingCategories?: any[] };
+              const categories = trackingData.TrackingCategories || [];
+              let mapped = 0;
+
+              for (const category of categories) {
+                // Map tracking categories to cost centers
+                const existing = await query(
+                  'SELECT id FROM cost_centers WHERE xero_tracking_category_id = $1',
+                  [category.TrackingCategoryID]
+                );
+
+                if (existing.rows.length === 0 && category.Options && category.Options.length > 0) {
+                  // Create cost centers for tracking category options
+                  for (const option of category.Options) {
+                    await query(
+                      `INSERT INTO cost_centers (code, name, xero_tracking_category_id, is_active)
+                       VALUES ($1, $2, $3, true)
+                       ON CONFLICT (code) DO UPDATE SET xero_tracking_category_id = $3`,
+                      [
+                        option.Name.toUpperCase().replace(/\s+/g, '_').substring(0, 20),
+                        option.Name,
+                        category.TrackingCategoryID
+                      ]
+                    );
+                    mapped++;
+                  }
+                }
+              }
+
+              syncResults.results.tracking_categories = { mapped };
+            }
+          }
+        } catch (error: any) {
+          console.error('Tracking categories sync error:', error);
+          syncResults.results.tracking_categories = { mapped: 0 };
+        }
+      }
+
+      // Update token last sync time after all sync operations complete
+      await query(
+        'UPDATE xero_tokens SET updated_at = CURRENT_TIMESTAMP WHERE id = $1',
+        [tokenId]
+      );
+
+      // Get updated timestamp for response
+      const updatedToken = await query(
+        'SELECT updated_at FROM xero_tokens WHERE id = $1',
+        [tokenId]
+      );
+      if (updatedToken.rows.length > 0) {
+        syncResults.last_sync = updatedToken.rows[0].updated_at.toISOString();
+      }
+
+      // Log activity
+      await query(
+        `INSERT INTO activity_logs (user_id, action, entity_type, details) 
+         VALUES ($1, $2, $3, $4)`,
+        [req.user!.id, 'sync', 'xero', JSON.stringify(syncResults)]
+      );
+
+      res.json(syncResults);
+    } catch (error: any) {
+      console.error('Xero sync error:', error);
+      // Still update timestamp even on partial failure
+      await query(
+        'UPDATE xero_tokens SET updated_at = CURRENT_TIMESTAMP WHERE id = $1',
+        [tokenId]
+      );
+      res.status(500).json({ 
+        error: 'Sync failed', 
+        details: error.message,
+        partial_results: syncResults.results
+      });
     }
-
-    if (type === 'invoices' || type === 'all') {
-      // Sync invoices
-      syncResults.results.invoices = { synced: 0, created: 0, updated: 0 };
-    }
-
-    if (type === 'tracking_categories' || type === 'all') {
-      // Sync tracking categories to cost centers
-      syncResults.results.tracking_categories = { synced: 0, mapped: 0 };
-    }
-
-    // Update token last sync time
-    await query(
-      'UPDATE xero_tokens SET updated_at = CURRENT_TIMESTAMP WHERE id = $1',
-      [tokenResult.rows[0].id]
-    );
-
-    // Log activity
-    await query(
-      `INSERT INTO activity_logs (user_id, action, entity_type, details) 
-       VALUES ($1, $2, $3, $4)`,
-      [req.user!.id, 'sync', 'xero', JSON.stringify(syncResults)]
-    );
-
-    res.json(syncResults);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Xero sync error:', error);
-    res.status(500).json({ error: 'Sync failed' });
+    res.status(500).json({ error: 'Sync failed', details: error.message });
   }
 });
 

@@ -10,6 +10,7 @@ const isFresh = process.argv.includes('--fresh');
 const migrations = `
 -- Drop tables if fresh migration
 ${isFresh ? `
+DROP TABLE IF EXISTS backups CASCADE;
 DROP TABLE IF EXISTS activity_logs CASCADE;
 DROP TABLE IF EXISTS settings CASCADE;
 DROP TABLE IF EXISTS xero_tokens CASCADE;

@@ -327,16 +327,24 @@ export default function Settings() {
           
           if (event.data.type === 'XERO_OAUTH_SUCCESS') {
             window.removeEventListener('message', messageListener);
-            popup.close();
+            if (popup && !popup.closed) {
+              popup.close();
+            }
             toast.success('Successfully connected to Xero!');
-            // Reload Xero status
+            // Reload Xero status and refresh sidebar
             if (hasPermission('can_sync_xero')) {
-              api.getXeroStatus().then(setXeroStatus).catch(console.error);
+              api.getXeroStatus().then((status) => {
+                setXeroStatus(status);
+                // Trigger sidebar refresh by dispatching custom event
+                window.dispatchEvent(new CustomEvent('xero-status-updated'));
+              }).catch(console.error);
             }
             loadSettings();
           } else if (event.data.type === 'XERO_OAUTH_ERROR') {
             window.removeEventListener('message', messageListener);
-            popup.close();
+            if (popup && !popup.closed) {
+              popup.close();
+            }
             toast.error(event.data.message || 'Failed to connect to Xero');
           }
         };

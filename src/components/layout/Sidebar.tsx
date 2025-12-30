@@ -65,7 +65,19 @@ export default function Sidebar() {
     if (hasPermission('can_sync_xero')) {
       loadXeroStatus();
     }
-  }, []);
+
+    // Listen for Xero status updates from other components
+    const handleXeroStatusUpdate = () => {
+      if (hasPermission('can_sync_xero')) {
+        loadXeroStatus();
+      }
+    };
+    window.addEventListener('xero-status-updated', handleXeroStatusUpdate);
+    
+    return () => {
+      window.removeEventListener('xero-status-updated', handleXeroStatusUpdate);
+    };
+  }, [hasPermission]);
 
   const loadBranding = async () => {
     try {
