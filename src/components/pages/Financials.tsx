@@ -610,7 +610,7 @@ export default function Financials() {
                             {new Date(payment.payment_date).toLocaleDateString()}
                           </td>
                           <td className="px-6 py-4 text-right font-mono font-bold">
-                            ${payment.amount.toFixed(2)}
+                            ${(parseFloat(payment.amount) || 0).toFixed(2)}
                           </td>
                           <td className="px-6 py-4">{payment.payment_method.replace('_', ' ')}</td>
                           <td className="px-6 py-4 text-muted-foreground">{payment.reference || '-'}</td>
@@ -663,7 +663,7 @@ export default function Financials() {
                             {new Date(po.date).toLocaleDateString()}
                           </td>
                           <td className="px-6 py-4 text-right font-mono font-bold">
-                            ${po.total_amount.toFixed(2)}
+                            ${(parseFloat(po.total_amount) || 0).toFixed(2)}
                           </td>
                           <td className="px-6 py-4 text-center">
                             {getStatusBadge(po.status)}
@@ -738,10 +738,10 @@ export default function Financials() {
                             {new Date(bill.date).toLocaleDateString()}
                           </td>
                           <td className="px-6 py-4 text-right font-mono font-bold">
-                            ${bill.amount.toFixed(2)}
+                            ${(parseFloat(bill.amount) || 0).toFixed(2)}
                           </td>
                           <td className="px-6 py-4 text-right font-mono">
-                            ${bill.amount_due.toFixed(2)}
+                            ${(parseFloat(bill.amount_due) || 0).toFixed(2)}
                           </td>
                           <td className="px-6 py-4 text-center">
                             {getStatusBadge(bill.status)}
@@ -754,7 +754,7 @@ export default function Financials() {
                                   size="sm"
                                   onClick={async () => {
                                     try {
-                                      await api.markBillAsPaid(bill.id, { amount: bill.amount_due });
+                                      await api.markBillAsPaid(bill.id, { amount: parseFloat(bill.amount_due) || 0 });
                                       toast.success('Bill marked as paid');
                                       loadData();
                                     } catch (error: any) {
@@ -817,7 +817,7 @@ export default function Financials() {
                           <td className="px-6 py-4">{expense.project_name || expense.project_code || '-'}</td>
                           <td className="px-6 py-4">{expense.cost_center_name || expense.cost_center_code || '-'}</td>
                           <td className="px-6 py-4 text-right font-mono font-bold">
-                            ${expense.amount.toFixed(2)}
+                            ${(parseFloat(expense.amount) || 0).toFixed(2)}
                           </td>
                           <td className="px-6 py-4 text-center">
                             {getStatusBadge(expense.status)}
