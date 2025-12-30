@@ -130,6 +130,7 @@ export async function getAuthorizedClient(userId?: string): Promise<OAuth2Client
 // Get Google Drive OAuth URL
 export async function getAuthUrl(state?: string): Promise<string> {
   try {
+    const { clientId, clientSecret, redirectUri } = await getGoogleDriveCredentials();
     const oauth2Client = await getOAuth2Client();
     
     const scopes = [
@@ -142,6 +143,16 @@ export async function getAuthUrl(state?: string): Promise<string> {
       prompt: 'consent',
       state: state || '',
       include_granted_scopes: true
+    });
+
+    // Log the redirect URI being used for debugging
+    console.log('[Google Drive] Generating auth URL with:', {
+      clientId: `${clientId.substring(0, 20)}...`,
+      redirectUri: redirectUri,
+      redirectUriEncoded: encodeURIComponent(redirectUri),
+      scopes: scopes.length + ' scope(s)',
+      state: state || 'none',
+      authUrlPreview: authUrl.substring(0, 150) + '...'
     });
 
     return authUrl;

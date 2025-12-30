@@ -339,7 +339,19 @@ router.get('/google-drive/auth', authenticate, requirePermission('can_manage_use
   try {
     const state = req.user!.id; // Use user ID as state
     const authUrl = await getAuthUrl(state);
-    res.json({ url: authUrl });
+    
+    // Get credentials to return redirect URI for verification
+    const { getGoogleDriveCredentials } = await import('../lib/googleDrive');
+    const { redirectUri } = await getGoogleDriveCredentials();
+    
+    res.json({ 
+      url: authUrl,
+      redirectUri: redirectUri, // Return redirect URI so frontend can verify
+      verification: {
+        redirectUriMatch: 'Ensure this exact URI is in your Google Cloud Console OAuth app: ' + redirectUri,
+        googleConsoleUrl: 'https://console.cloud.google.com/apis/credentials'
+      }
+    });
   } catch (error: any) {
     console.error('Failed to get Google Drive auth URL:', error);
     res.status(500).json({ 
