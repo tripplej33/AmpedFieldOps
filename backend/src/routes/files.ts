@@ -164,13 +164,22 @@ router.post('/', authenticate, requirePermission('can_edit_projects'), fileUploa
     );
 
     res.status(201).json(result.rows[0]);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Upload file error:', error);
     // Delete uploaded file if database insert fails
     if (req.file && fs.existsSync(req.file.path)) {
-      fs.unlinkSync(req.file.path);
+      try {
+        fs.unlinkSync(req.file.path);
+      } catch (unlinkError) {
+        console.error('Failed to delete uploaded file:', unlinkError);
+      }
     }
-    res.status(500).json({ error: 'Failed to upload file' });
+    const errorMessage = error.message || 'Failed to upload file';
+    const isTableError = errorMessage.includes('does not exist') || errorMessage.includes('relation') || error.code === '42P01';
+    res.status(500).json({ 
+      error: isTableError ? 'Database tables not found. Please run migrations.' : 'Failed to upload file',
+      details: env.NODE_ENV === 'development' ? errorMessage : undefined
+    });
   }
 });
 

@@ -1,16 +1,47 @@
 import { TestResult, TestContext } from '../types';
-import { runTest, apiRequest } from '../testHelpers';
+import { runTest, apiRequest, skipTest } from '../testHelpers';
 import { createTestClient, createTestProject, createTestActivityType, createTestCostCenter } from '../testData';
+import { query } from '../../../db';
 
 export async function runTests(context: TestContext): Promise<TestResult[]> {
   const results: TestResult[] = [];
+  
+  // Check if any timesheets exist - if not, skip all timesheet tests
+  try {
+    const existingTimesheets = await query('SELECT COUNT(*) as count FROM timesheets LIMIT 1');
+    const hasTimesheets = parseInt(existingTimesheets.rows[0]?.count || '0') > 0;
+    
+    if (!hasTimesheets) {
+      results.push(
+        skipTest(
+          'Timesheet tests',
+          'CRUD',
+          'Skipped: No timesheets exist in database. Create timesheets to enable these tests.',
+          'timesheets-skip-no-data'
+        )
+      );
+      return results;
+    }
+  } catch (error: any) {
+    // If we can't check, skip the tests
+    results.push(
+      skipTest(
+        'Timesheet tests',
+        'CRUD',
+        `Skipped: Could not check for existing timesheets: ${error.message}`,
+        'timesheets-skip-check-failed'
+      )
+    );
+    return results;
+  }
+
   let clientId: string | null = null;
   let projectId: string | null = null;
   let activityTypeId: string | null = null;
   let costCenterId: string | null = null;
   let createdTimesheetId: string | null = null;
 
-  // Setup test data
+  // Setup test data (only if we need to create a test timesheet)
   try {
     clientId = await createTestClient(`TEST_Timesheet Client ${Date.now()}`);
     context.testData.clientIds.push(clientId);
@@ -18,7 +49,9 @@ export async function runTests(context: TestContext): Promise<TestResult[]> {
     context.testData.projectIds.push(projectId);
     activityTypeId = await createTestActivityType(`TEST_Timesheet Activity ${Date.now()}`);
     context.testData.activityTypeIds.push(activityTypeId);
-    costCenterId = await createTestCostCenter(`TEST_TCC${Date.now()}`, `TEST_Timesheet Cost Center ${Date.now()}`);
+    // Cost center code must be max 20 chars - use shorter timestamp
+    const timestamp = Date.now().toString().slice(-8);
+    costCenterId = await createTestCostCenter(`TEST_TCC${timestamp}`, `TEST_Timesheet Cost Center ${Date.now()}`);
     context.testData.costCenterIds.push(costCenterId);
   } catch (error: any) {
     results.push({

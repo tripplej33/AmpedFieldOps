@@ -165,7 +165,10 @@ export async function createTestActivityType(name?: string): Promise<string> {
  * Create a test cost center
  */
 export async function createTestCostCenter(code?: string, name?: string): Promise<string> {
-  const costCenterCode = code || `${TEST_PREFIX}CC${Date.now()}`;
+  // Cost center code is VARCHAR(20), so we need to keep it short
+  // Use a shorter timestamp or just a random number
+  const timestamp = Date.now().toString().slice(-8); // Last 8 digits
+  const costCenterCode = code || `${TEST_PREFIX}CC${timestamp}`.substring(0, 20); // Max 20 chars
   const costCenterName = name || `${TEST_PREFIX}Cost Center ${Date.now()}`;
   const result = await query(
     `INSERT INTO cost_centers (code, name, budget, is_active)
