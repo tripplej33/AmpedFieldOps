@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import { query } from '../db';
 import { authenticate, requirePermission, AuthRequest } from '../middleware/auth';
 import { env } from '../config/env';
+import { ensureXeroTables } from '../db/ensureXeroTables';
 import { createPaymentInXero, storePayment, getPayments, CreatePaymentData } from '../lib/xero/payments';
 import { importBankTransactions, getBankTransactions, reconcileTransaction } from '../lib/xero/bankTransactions';
 import { 
@@ -3496,6 +3497,9 @@ router.post('/payments', authenticate, requirePermission('can_sync_xero'), async
 // Get payments
 router.get('/payments', authenticate, requirePermission('can_view_financials'), async (req: AuthRequest, res: Response) => {
   try {
+    // Ensure tables exist before querying
+    await ensureXeroTables();
+    
     const { invoice_id, date_from, date_to, payment_method } = req.query;
 
     const payments = await getPayments({
@@ -3753,6 +3757,9 @@ router.post('/purchase-orders', authenticate, requirePermission('can_sync_xero')
 
 router.get('/purchase-orders', authenticate, requirePermission('can_view_financials'), async (req: AuthRequest, res: Response) => {
   try {
+    // Ensure tables exist before querying
+    await ensureXeroTables();
+    
     const { project_id, supplier_id, status, date_from, date_to } = req.query;
 
     const pos = await getPurchaseOrders({
@@ -4024,6 +4031,9 @@ router.post('/bills', authenticate, requirePermission('can_sync_xero'), async (r
 
 router.get('/bills', authenticate, requirePermission('can_view_financials'), async (req: AuthRequest, res: Response) => {
   try {
+    // Ensure tables exist before querying
+    await ensureXeroTables();
+    
     const { supplier_id, project_id, purchase_order_id, status, date_from, date_to } = req.query;
 
     const bills = await getBills({
@@ -4144,6 +4154,9 @@ router.post('/expenses', authenticate, requirePermission('can_sync_xero'), async
 
 router.get('/expenses', authenticate, requirePermission('can_view_financials'), async (req: AuthRequest, res: Response) => {
   try {
+    // Ensure tables exist before querying
+    await ensureXeroTables();
+    
     const { project_id, cost_center_id, status, date_from, date_to } = req.query;
 
     const expenses = await getExpenses({
@@ -4654,6 +4667,9 @@ router.get('/webhooks/events', authenticate, requirePermission('can_view_financi
 // Get financial summary
 router.get('/summary', authenticate, requirePermission('can_view_financials'), async (req: AuthRequest, res: Response) => {
   try {
+    // Ensure tables exist before querying
+    await ensureXeroTables();
+    
     // Helper function to safely query and return default on table error
     const safeQuery = async (sql: string, defaultValue: any) => {
       try {
