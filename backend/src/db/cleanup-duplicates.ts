@@ -1,7 +1,8 @@
 import dotenv from 'dotenv';
 import { query } from './index';
 
-dotenv.config();
+// Suppress dotenv parsing warnings
+dotenv.config({ debug: false, override: false });
 
 /**
  * Cleanup script to remove duplicate settings entries

@@ -2,7 +2,8 @@ import { query, getClient } from './index';
 import bcrypt from 'bcryptjs';
 import dotenv from 'dotenv';
 
-dotenv.config();
+// Suppress dotenv parsing warnings
+dotenv.config({ debug: false, override: false });
 
 async function seed() {
   console.log('🌱 Seeding database...');
