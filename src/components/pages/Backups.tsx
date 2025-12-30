@@ -357,13 +357,18 @@ export default function Backups() {
                       {getBackupTypeIcon(backup.backup_type)}
                     </div>
                     <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-1">
+                      <div className="flex items-center gap-2 mb-1 flex-wrap">
                         <span className="font-medium capitalize">{backup.backup_type} Backup</span>
                         {getStatusBadge(backup.status)}
                         <Badge variant="outline">
                           {backup.storage_type === 'local' ? <HardDrive className="w-3 h-3 mr-1" /> : <Cloud className="w-3 h-3 mr-1" />}
                           {backup.storage_type === 'local' ? 'Local' : 'Google Drive'}
                         </Badge>
+                        {backup.status === 'completed' && (
+                          <Badge variant="secondary" className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
+                            Ready to Restore
+                          </Badge>
+                        )}
                       </div>
                       <div className="text-sm text-muted-foreground">
                         {formatFileSize(backup.file_size)} • {new Date(backup.created_at).toLocaleString()}
@@ -381,14 +386,18 @@ export default function Backups() {
                           variant="outline"
                           size="sm"
                           onClick={() => handleDownloadBackup(backup)}
+                          title="Download backup"
                         >
                           <Download className="w-4 h-4" />
                         </Button>
                         <Button
-                          variant="outline"
+                          variant="default"
                           size="sm"
                           onClick={() => setRestoreModalOpen(backup.id)}
+                          className="bg-blue-600 hover:bg-blue-700 text-white"
+                          title="Restore this backup"
                         >
+                          <RefreshCw className="w-4 h-4 mr-1" />
                           Restore
                         </Button>
                       </>
@@ -398,6 +407,7 @@ export default function Backups() {
                       size="sm"
                       onClick={() => handleDeleteBackup(backup.id)}
                       disabled={isDeleting === backup.id}
+                      title="Delete backup"
                     >
                       {isDeleting === backup.id ? (
                         <Loader2 className="w-4 h-4 animate-spin" />
