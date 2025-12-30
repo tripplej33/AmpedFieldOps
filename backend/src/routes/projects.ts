@@ -104,13 +104,94 @@ router.get('/:id', authenticate, async (req: AuthRequest, res: Response) => {
       [req.params.id]
     );
 
+    // Get financials including PO commitments
+    const financialsResult = await query(
+      `SELECT 
+        COALESCE(budget, 0) as budget,
+        COALESCE(po_commitments, 0) as po_commitments,
+        COALESCE(actual_cost, 0) as actual_cost,
+        COALESCE(budget, 0) - COALESCE(po_commitments, 0) - COALESCE(actual_cost, 0) as available_budget
+      FROM projects
+      WHERE id = $1`,
+      [req.params.id]
+    );
+
     res.json({
       ...result.rows[0],
       cost_centers: costCenters.rows,
-      timesheets: timesheets.rows
+      timesheets: timesheets.rows,
+      financials: financialsResult.rows[0] || { budget: 0, po_commitments: 0, actual_cost: 0, available_budget: 0 }
     });
   } catch (error) {
     res.status(500).json({ error: 'Failed to fetch project' });
+  }
+});
+
+// Get project financials
+router.get('/:id/financials', authenticate, async (req: AuthRequest, res: Response) => {
+  try {
+    const projectResult = await query('SELECT id, code, name FROM projects WHERE id = $1', [req.params.id]);
+    if (projectResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    // Get budget, PO commitments, and actual costs
+    const financialsResult = await query(
+      `SELECT 
+        COALESCE(p.budget, 0) as budget,
+        COALESCE(p.po_commitments, 0) as po_commitments,
+        COALESCE(p.actual_cost, 0) as actual_cost,
+        COALESCE(p.budget, 0) - COALESCE(p.po_commitments, 0) - COALESCE(p.actual_cost, 0) as available_budget
+      FROM projects p
+      WHERE p.id = $1`,
+      [req.params.id]
+    );
+
+    // Get purchase orders summary
+    const poSummary = await query(
+      `SELECT 
+        COUNT(*) as total_count,
+        COALESCE(SUM(total_amount), 0) as total_committed,
+        COUNT(*) FILTER (WHERE status = 'DRAFT') as draft_count,
+        COUNT(*) FILTER (WHERE status = 'AUTHORISED') as authorised_count,
+        COUNT(*) FILTER (WHERE status = 'BILLED') as billed_count
+      FROM xero_purchase_orders
+      WHERE project_id = $1`,
+      [req.params.id]
+    );
+
+    // Get bills summary
+    const billsSummary = await query(
+      `SELECT 
+        COUNT(*) as total_count,
+        COALESCE(SUM(amount), 0) as total_amount,
+        COALESCE(SUM(amount_paid), 0) as total_paid,
+        COALESCE(SUM(amount_due), 0) as total_due
+      FROM xero_bills
+      WHERE project_id = $1`,
+      [req.params.id]
+    );
+
+    // Get expenses summary
+    const expensesSummary = await query(
+      `SELECT 
+        COUNT(*) as total_count,
+        COALESCE(SUM(amount), 0) as total_amount
+      FROM xero_expenses
+      WHERE project_id = $1`,
+      [req.params.id]
+    );
+
+    res.json({
+      project: projectResult.rows[0],
+      financials: financialsResult.rows[0] || { budget: 0, po_commitments: 0, actual_cost: 0, available_budget: 0 },
+      purchase_orders: poSummary.rows[0] || { total_count: 0, total_committed: 0, draft_count: 0, authorised_count: 0, billed_count: 0 },
+      bills: billsSummary.rows[0] || { total_count: 0, total_amount: 0, total_paid: 0, total_due: 0 },
+      expenses: expensesSummary.rows[0] || { total_count: 0, total_amount: 0 }
+    });
+  } catch (error) {
+    console.error('Failed to fetch project financials:', error);
+    res.status(500).json({ error: 'Failed to fetch project financials' });
   }
 });
 

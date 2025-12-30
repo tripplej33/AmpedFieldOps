@@ -2,6 +2,47 @@ import { Router, Response } from 'express';
 import { query } from '../db';
 import { authenticate, requirePermission, AuthRequest } from '../middleware/auth';
 import { env } from '../config/env';
+import { createPaymentInXero, storePayment, getPayments, CreatePaymentData } from '../lib/xero/payments';
+import { importBankTransactions, getBankTransactions, reconcileTransaction } from '../lib/xero/bankTransactions';
+import { 
+  createPurchaseOrderInXero, 
+  storePurchaseOrder, 
+  getPurchaseOrders, 
+  getPurchaseOrderById, 
+  updatePurchaseOrderStatus,
+  CreatePurchaseOrderData 
+} from '../lib/xero/purchaseOrders';
+import { createBillInXero, storeBill, getBills, markBillAsPaid, CreateBillData } from '../lib/xero/bills';
+import { createExpenseInXero, storeExpense, getExpenses, CreateExpenseData } from '../lib/xero/expenses';
+import { 
+  getProfitLossReport, 
+  getBalanceSheetReport, 
+  getCashFlowReport, 
+  getAgedReceivablesReport, 
+  getAgedPayablesReport 
+} from '../lib/xero/reports';
+import { syncItemsFromXero, getItems, getItemById, updateItemStock } from '../lib/xero/items';
+import { 
+  createCreditNoteInXero, 
+  applyCreditNoteToInvoice, 
+  storeCreditNote, 
+  getCreditNotes, 
+  CreateCreditNoteData 
+} from '../lib/xero/creditNotes';
+import { 
+  getReminderSchedule, 
+  updateReminderSchedule, 
+  sendPaymentReminder, 
+  processPaymentReminders, 
+  getReminderHistory 
+} from '../lib/xero/reminders';
+import { 
+  verifyWebhookSignature, 
+  storeWebhookEvent, 
+  processWebhookEvent, 
+  getWebhookStatus, 
+  getWebhookEvents 
+} from '../lib/xero/webhooks';
 
 const router = Router();
 
@@ -1584,6 +1625,1213 @@ router.post('/quotes/:id/convert', authenticate, requirePermission('can_sync_xer
     res.json(invoice.rows[0]);
   } catch (error) {
     res.status(500).json({ error: 'Failed to convert quote' });
+  }
+});
+
+// Create payment in Xero
+router.post('/payments', authenticate, requirePermission('can_sync_xero'), async (req: AuthRequest, res: Response) => {
+  try {
+    const { invoice_id, amount, payment_date, payment_method, reference, account_code, currency } = req.body;
+
+    if (!invoice_id || !amount || !payment_date || !payment_method) {
+      return res.status(400).json({ error: 'Missing required fields: invoice_id, amount, payment_date, payment_method' });
+    }
+
+    // Get invoice details
+    const invoiceResult = await query('SELECT id, xero_invoice_id, total, amount_due FROM xero_invoices WHERE id = $1', [invoice_id]);
+    if (invoiceResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Invoice not found' });
+    }
+
+    const invoice = invoiceResult.rows[0];
+    const paymentAmount = parseFloat(amount);
+
+    // Validate payment amount
+    if (paymentAmount <= 0) {
+      return res.status(400).json({ error: 'Payment amount must be greater than 0' });
+    }
+
+    if (paymentAmount > parseFloat(invoice.amount_due || invoice.total)) {
+      return res.status(400).json({ error: 'Payment amount exceeds invoice amount due' });
+    }
+
+    const tokenData = await getValidAccessToken();
+    if (!tokenData) {
+      return res.status(400).json({ error: 'Xero not connected or token expired' });
+    }
+
+    // Create payment in Xero (only if invoice has xero_invoice_id)
+    let xeroPaymentId: string | undefined;
+    if (invoice.xero_invoice_id) {
+      const xeroPayment = await createPaymentInXero(
+        tokenData,
+        {
+          invoice_id,
+          amount: paymentAmount,
+          payment_date,
+          payment_method,
+          reference,
+          account_code,
+          currency,
+        },
+        invoice.xero_invoice_id
+      );
+
+      if (xeroPayment) {
+        xeroPaymentId = xeroPayment.PaymentID;
+      }
+    }
+
+    // Store payment in local database
+    const paymentId = await storePayment({
+      invoice_id,
+      amount: paymentAmount,
+      payment_date,
+      payment_method,
+      reference,
+      account_code,
+      currency: currency || 'USD',
+      xero_payment_id: xeroPaymentId,
+      user_id: req.user!.id,
+    });
+
+    // Log activity
+    await query(
+      `INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) 
+       VALUES ($1, $2, $3, $4, $5)`,
+      [req.user!.id, 'create_payment', 'payment', paymentId, JSON.stringify({ invoice_id, amount: paymentAmount, payment_method })]
+    );
+
+    // Get updated payment with invoice details
+    const paymentResult = await query(
+      `SELECT p.*, xi.invoice_number, c.name as client_name 
+       FROM xero_payments p
+       LEFT JOIN xero_invoices xi ON p.invoice_id = xi.id
+       LEFT JOIN clients c ON xi.client_id = c.id
+       WHERE p.id = $1`,
+      [paymentId]
+    );
+
+    res.status(201).json(paymentResult.rows[0]);
+  } catch (error: any) {
+    console.error('Failed to create payment:', error);
+    res.status(500).json({ error: 'Failed to create payment: ' + (error.message || 'Unknown error') });
+  }
+});
+
+// Get payments
+router.get('/payments', authenticate, requirePermission('can_view_financials'), async (req: AuthRequest, res: Response) => {
+  try {
+    const { invoice_id, date_from, date_to, payment_method } = req.query;
+
+    const payments = await getPayments({
+      invoice_id: invoice_id as string,
+      date_from: date_from as string,
+      date_to: date_to as string,
+      payment_method: payment_method as string,
+    });
+
+    res.json(payments);
+  } catch (error) {
+    console.error('Failed to fetch payments:', error);
+    res.status(500).json({ error: 'Failed to fetch payments' });
+  }
+});
+
+// Mark invoice as paid
+router.put('/invoices/:id/mark-paid', authenticate, requirePermission('can_sync_xero'), async (req: AuthRequest, res: Response) => {
+  try {
+    const { amount, payment_date, payment_method, reference, account_code } = req.body;
+
+    // Get invoice
+    const invoiceResult = await query('SELECT * FROM xero_invoices WHERE id = $1', [req.params.id]);
+    if (invoiceResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Invoice not found' });
+    }
+
+    const invoice = invoiceResult.rows[0];
+    const paymentAmount = amount || parseFloat(invoice.amount_due || invoice.total);
+    const paymentDate = payment_date || new Date().toISOString().split('T')[0];
+    const paymentMethod = payment_method || 'BANK_TRANSFER';
+
+    // Create payment
+    const tokenData = await getValidAccessToken();
+    if (!tokenData) {
+      return res.status(400).json({ error: 'Xero not connected or token expired' });
+    }
+
+    let xeroPaymentId: string | undefined;
+    if (invoice.xero_invoice_id) {
+      const xeroPayment = await createPaymentInXero(
+        tokenData,
+        {
+          invoice_id: invoice.id,
+          amount: paymentAmount,
+          payment_date: paymentDate,
+          payment_method: paymentMethod as any,
+          reference,
+          account_code,
+        },
+        invoice.xero_invoice_id
+      );
+
+      if (xeroPayment) {
+        xeroPaymentId = xeroPayment.PaymentID;
+      }
+    }
+
+    // Store payment
+    const paymentId = await storePayment({
+      invoice_id: invoice.id,
+      amount: paymentAmount,
+      payment_date: paymentDate,
+      payment_method: paymentMethod as any,
+      reference,
+      account_code,
+      xero_payment_id: xeroPaymentId,
+      user_id: req.user!.id,
+    });
+
+    // Log activity
+    await query(
+      `INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) 
+       VALUES ($1, $2, $3, $4, $5)`,
+      [req.user!.id, 'mark_paid', 'invoice', invoice.id, JSON.stringify({ payment_id: paymentId, amount: paymentAmount })]
+    );
+
+    // Get updated invoice
+    const updatedInvoice = await query('SELECT * FROM xero_invoices WHERE id = $1', [req.params.id]);
+
+    res.json(updatedInvoice.rows[0]);
+  } catch (error: any) {
+    console.error('Failed to mark invoice as paid:', error);
+    res.status(500).json({ error: 'Failed to mark invoice as paid: ' + (error.message || 'Unknown error') });
+  }
+});
+
+// Import bank transactions from Xero
+router.post('/bank-transactions', authenticate, requirePermission('can_sync_xero'), async (req: AuthRequest, res: Response) => {
+  try {
+    const { date_from, date_to } = req.body;
+
+    const tokenData = await getValidAccessToken();
+    if (!tokenData) {
+      return res.status(400).json({ error: 'Xero not connected or token expired' });
+    }
+
+    const imported = await importBankTransactions(tokenData, date_from, date_to);
+
+    // Log activity
+    await query(
+      `INSERT INTO activity_logs (user_id, action, entity_type, details) 
+       VALUES ($1, $2, $3, $4)`,
+      [req.user!.id, 'import', 'bank_transactions', JSON.stringify({ imported, date_from, date_to })]
+    );
+
+    res.json({
+      success: true,
+      imported,
+      message: `Imported ${imported} bank transaction(s)`,
+    });
+  } catch (error: any) {
+    console.error('Failed to import bank transactions:', error);
+    res.status(500).json({ error: 'Failed to import bank transactions: ' + (error.message || 'Unknown error') });
+  }
+});
+
+// Get bank transactions
+router.get('/bank-transactions', authenticate, requirePermission('can_view_financials'), async (req: AuthRequest, res: Response) => {
+  try {
+    const { date_from, date_to, reconciled, payment_id } = req.query;
+
+    const transactions = await getBankTransactions({
+      date_from: date_from as string,
+      date_to: date_to as string,
+      reconciled: reconciled === 'true' ? true : reconciled === 'false' ? false : undefined,
+      payment_id: payment_id as string,
+    });
+
+    res.json(transactions);
+  } catch (error) {
+    console.error('Failed to fetch bank transactions:', error);
+    res.status(500).json({ error: 'Failed to fetch bank transactions' });
+  }
+});
+
+// Reconcile bank transaction with payment
+router.post('/reconcile', authenticate, requirePermission('can_sync_xero'), async (req: AuthRequest, res: Response) => {
+  try {
+    const { transaction_id, payment_id } = req.body;
+
+    if (!transaction_id || !payment_id) {
+      return res.status(400).json({ error: 'Missing required fields: transaction_id, payment_id' });
+    }
+
+    await reconcileTransaction(transaction_id, payment_id);
+
+    // Log activity
+    await query(
+      `INSERT INTO activity_logs (user_id, action, entity_type, details) 
+       VALUES ($1, $2, $3, $4)`,
+      [req.user!.id, 'reconcile', 'bank_transaction', JSON.stringify({ transaction_id, payment_id })]
+    );
+
+    res.json({ success: true, message: 'Transaction reconciled successfully' });
+  } catch (error: any) {
+    console.error('Failed to reconcile transaction:', error);
+    res.status(500).json({ error: 'Failed to reconcile transaction: ' + (error.message || 'Unknown error') });
+  }
+});
+
+// Purchase Orders endpoints
+router.post('/purchase-orders', authenticate, requirePermission('can_sync_xero'), async (req: AuthRequest, res: Response) => {
+  try {
+    const { supplier_id, project_id, date, delivery_date, line_items, notes, currency } = req.body;
+
+    if (!supplier_id || !project_id || !date || !line_items || line_items.length === 0) {
+      return res.status(400).json({ error: 'Missing required fields: supplier_id, project_id, date, line_items' });
+    }
+
+    // Verify project exists
+    const projectResult = await query('SELECT id FROM projects WHERE id = $1', [project_id]);
+    if (projectResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Project not found' });
+    }
+
+    // Get supplier Xero contact ID
+    const supplierResult = await query('SELECT xero_contact_id FROM clients WHERE id = $1', [supplier_id]);
+    if (supplierResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Supplier not found' });
+    }
+
+    const supplierXeroId = supplierResult.rows[0].xero_contact_id;
+
+    const tokenData = await getValidAccessToken();
+    if (!tokenData) {
+      return res.status(400).json({ error: 'Xero not connected or token expired' });
+    }
+
+    // Get project cost centers for tracking
+    const costCentersResult = await query(
+      `SELECT cc.xero_tracking_category_id, cc.code
+       FROM cost_centers cc
+       JOIN project_cost_centers pcc ON cc.id = pcc.cost_center_id
+       WHERE pcc.project_id = $1
+       LIMIT 1`,
+      [project_id]
+    );
+
+    let trackingCategories: Array<{ name: string; option: string }> | undefined;
+    if (costCentersResult.rows.length > 0 && costCentersResult.rows[0].xero_tracking_category_id) {
+      // This would need to be expanded based on Xero tracking category structure
+      // For now, we'll create the PO without tracking
+    }
+
+    // Create PO in Xero if supplier has Xero ID
+    let xeroPoId: string | undefined;
+    if (supplierXeroId) {
+      const xeroPO = await createPurchaseOrderInXero(
+        tokenData,
+        { supplier_id, project_id, date, delivery_date, line_items, notes, currency },
+        supplierXeroId,
+        trackingCategories
+      );
+
+      if (xeroPO) {
+        xeroPoId = xeroPO.PurchaseOrderID;
+      }
+    }
+
+    // Generate PO number
+    const countResult = await query('SELECT COUNT(*) as count FROM xero_purchase_orders');
+    const poNumber = `PO-${String(parseInt(countResult.rows[0].count) + 1).padStart(5, '0')}`;
+
+    // Store PO in local database
+    const poId = await storePurchaseOrder({
+      supplier_id,
+      project_id,
+      date,
+      delivery_date,
+      line_items,
+      notes,
+      currency,
+      xero_po_id: xeroPoId,
+      po_number: poNumber,
+    });
+
+    // Log activity
+    await query(
+      `INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) 
+       VALUES ($1, $2, $3, $4, $5)`,
+      [req.user!.id, 'create', 'purchase_order', poId, JSON.stringify({ po_number: poNumber, project_id, supplier_id })]
+    );
+
+    // Get created PO with details
+    const po = await getPurchaseOrderById(poId);
+    res.status(201).json(po);
+  } catch (error: any) {
+    console.error('Failed to create purchase order:', error);
+    res.status(500).json({ error: 'Failed to create purchase order: ' + (error.message || 'Unknown error') });
+  }
+});
+
+router.get('/purchase-orders', authenticate, requirePermission('can_view_financials'), async (req: AuthRequest, res: Response) => {
+  try {
+    const { project_id, supplier_id, status, date_from, date_to } = req.query;
+
+    const pos = await getPurchaseOrders({
+      project_id: project_id as string,
+      supplier_id: supplier_id as string,
+      status: status as string,
+      date_from: date_from as string,
+      date_to: date_to as string,
+    });
+
+    res.json(pos);
+  } catch (error) {
+    console.error('Failed to fetch purchase orders:', error);
+    res.status(500).json({ error: 'Failed to fetch purchase orders' });
+  }
+});
+
+router.get('/purchase-orders/project/:project_id', authenticate, requirePermission('can_view_financials'), async (req: AuthRequest, res: Response) => {
+  try {
+    const pos = await getPurchaseOrders({ project_id: req.params.project_id });
+    res.json(pos);
+  } catch (error) {
+    console.error('Failed to fetch purchase orders:', error);
+    res.status(500).json({ error: 'Failed to fetch purchase orders' });
+  }
+});
+
+router.get('/purchase-orders/:id', authenticate, requirePermission('can_view_financials'), async (req: AuthRequest, res: Response) => {
+  try {
+    const po = await getPurchaseOrderById(req.params.id);
+    if (!po) {
+      return res.status(404).json({ error: 'Purchase order not found' });
+    }
+    res.json(po);
+  } catch (error) {
+    console.error('Failed to fetch purchase order:', error);
+    res.status(500).json({ error: 'Failed to fetch purchase order' });
+  }
+});
+
+router.put('/purchase-orders/:id', authenticate, requirePermission('can_sync_xero'), async (req: AuthRequest, res: Response) => {
+  try {
+    const { status } = req.body;
+
+    if (!status) {
+      return res.status(400).json({ error: 'Status is required' });
+    }
+
+    await updatePurchaseOrderStatus(req.params.id, status);
+
+    // Log activity
+    await query(
+      `INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) 
+       VALUES ($1, $2, $3, $4, $5)`,
+      [req.user!.id, 'update', 'purchase_order', req.params.id, JSON.stringify({ status })]
+    );
+
+    const po = await getPurchaseOrderById(req.params.id);
+    res.json(po);
+  } catch (error: any) {
+    console.error('Failed to update purchase order:', error);
+    res.status(500).json({ error: 'Failed to update purchase order: ' + (error.message || 'Unknown error') });
+  }
+});
+
+router.post('/purchase-orders/:id/convert-to-bill', authenticate, requirePermission('can_sync_xero'), async (req: AuthRequest, res: Response) => {
+  try {
+    const po = await getPurchaseOrderById(req.params.id);
+    if (!po) {
+      return res.status(404).json({ error: 'Purchase order not found' });
+    }
+
+    if (po.status === 'BILLED') {
+      return res.status(400).json({ error: 'Purchase order already converted to bill' });
+    }
+
+    // Get supplier Xero contact ID
+    const supplierResult = await query('SELECT xero_contact_id FROM clients WHERE id = $1', [po.supplier_id]);
+    if (supplierResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Supplier not found' });
+    }
+
+    const supplierXeroId = supplierResult.rows[0].xero_contact_id;
+
+    const tokenData = await getValidAccessToken();
+    if (!tokenData) {
+      return res.status(400).json({ error: 'Xero not connected or token expired' });
+    }
+
+    // Convert line items to bill line items
+    const lineItems = po.line_items_detail || JSON.parse(po.line_items || '[]');
+    const billLineItems = lineItems.map((item: any) => ({
+      description: item.description,
+      quantity: item.quantity || 1,
+      unit_amount: item.unit_amount || item.line_amount,
+      account_code: item.account_code,
+    }));
+
+    // Create bill in Xero if supplier has Xero ID
+    let xeroBillId: string | undefined;
+    if (supplierXeroId) {
+      const xeroBill = await createBillInXero(
+        tokenData,
+        {
+          supplier_id: po.supplier_id,
+          purchase_order_id: po.id,
+          project_id: po.project_id,
+          date: new Date().toISOString().split('T')[0],
+          line_items: billLineItems,
+        },
+        supplierXeroId
+      );
+
+      if (xeroBill) {
+        xeroBillId = xeroBill.InvoiceID;
+      }
+    }
+
+    // Generate bill number
+    const countResult = await query('SELECT COUNT(*) as count FROM xero_bills');
+    const billNumber = `BILL-${String(parseInt(countResult.rows[0].count) + 1).padStart(5, '0')}`;
+
+    // Store bill
+    const billId = await storeBill({
+      supplier_id: po.supplier_id,
+      purchase_order_id: po.id,
+      project_id: po.project_id,
+      date: new Date().toISOString().split('T')[0],
+      line_items: billLineItems,
+      xero_bill_id: xeroBillId,
+      bill_number: billNumber,
+    });
+
+    // Log activity
+    await query(
+      `INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) 
+       VALUES ($1, $2, $3, $4, $5)`,
+      [req.user!.id, 'convert', 'purchase_order', po.id, JSON.stringify({ bill_id: billId, po_id: po.id })]
+    );
+
+    const bill = await query(
+      `SELECT b.*, c.name as supplier_name, p.code as project_code, p.name as project_name
+       FROM xero_bills b
+       LEFT JOIN clients c ON b.supplier_id = c.id
+       LEFT JOIN projects p ON b.project_id = p.id
+       WHERE b.id = $1`,
+      [billId]
+    );
+
+    res.status(201).json(bill.rows[0]);
+  } catch (error: any) {
+    console.error('Failed to convert purchase order to bill:', error);
+    res.status(500).json({ error: 'Failed to convert purchase order to bill: ' + (error.message || 'Unknown error') });
+  }
+});
+
+// Bills endpoints
+router.post('/bills', authenticate, requirePermission('can_sync_xero'), async (req: AuthRequest, res: Response) => {
+  try {
+    const { supplier_id, purchase_order_id, project_id, date, due_date, line_items, reference, currency } = req.body;
+
+    if (!supplier_id || !date || !line_items || line_items.length === 0) {
+      return res.status(400).json({ error: 'Missing required fields: supplier_id, date, line_items' });
+    }
+
+    // Get supplier Xero contact ID
+    const supplierResult = await query('SELECT xero_contact_id FROM clients WHERE id = $1', [supplier_id]);
+    if (supplierResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Supplier not found' });
+    }
+
+    const supplierXeroId = supplierResult.rows[0].xero_contact_id;
+
+    const tokenData = await getValidAccessToken();
+    if (!tokenData) {
+      return res.status(400).json({ error: 'Xero not connected or token expired' });
+    }
+
+    // Create bill in Xero if supplier has Xero ID
+    let xeroBillId: string | undefined;
+    if (supplierXeroId) {
+      const xeroBill = await createBillInXero(
+        tokenData,
+        { supplier_id, purchase_order_id, project_id, date, due_date, line_items, reference, currency },
+        supplierXeroId
+      );
+
+      if (xeroBill) {
+        xeroBillId = xeroBill.InvoiceID;
+      }
+    }
+
+    // Generate bill number
+    const countResult = await query('SELECT COUNT(*) as count FROM xero_bills');
+    const billNumber = `BILL-${String(parseInt(countResult.rows[0].count) + 1).padStart(5, '0')}`;
+
+    // Store bill
+    const billId = await storeBill({
+      supplier_id,
+      purchase_order_id,
+      project_id,
+      date,
+      due_date,
+      line_items,
+      reference,
+      currency,
+      xero_bill_id: xeroBillId,
+      bill_number: billNumber,
+    });
+
+    // Log activity
+    await query(
+      `INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) 
+       VALUES ($1, $2, $3, $4, $5)`,
+      [req.user!.id, 'create', 'bill', billId, JSON.stringify({ bill_number: billNumber, supplier_id })]
+    );
+
+    const bill = await query(
+      `SELECT b.*, c.name as supplier_name, p.code as project_code, p.name as project_name
+       FROM xero_bills b
+       LEFT JOIN clients c ON b.supplier_id = c.id
+       LEFT JOIN projects p ON b.project_id = p.id
+       WHERE b.id = $1`,
+      [billId]
+    );
+
+    res.status(201).json(bill.rows[0]);
+  } catch (error: any) {
+    console.error('Failed to create bill:', error);
+    res.status(500).json({ error: 'Failed to create bill: ' + (error.message || 'Unknown error') });
+  }
+});
+
+router.get('/bills', authenticate, requirePermission('can_view_financials'), async (req: AuthRequest, res: Response) => {
+  try {
+    const { supplier_id, project_id, purchase_order_id, status, date_from, date_to } = req.query;
+
+    const bills = await getBills({
+      supplier_id: supplier_id as string,
+      project_id: project_id as string,
+      purchase_order_id: purchase_order_id as string,
+      status: status as string,
+      date_from: date_from as string,
+      date_to: date_to as string,
+    });
+
+    res.json(bills);
+  } catch (error) {
+    console.error('Failed to fetch bills:', error);
+    res.status(500).json({ error: 'Failed to fetch bills' });
+  }
+});
+
+router.post('/bills/:id/pay', authenticate, requirePermission('can_sync_xero'), async (req: AuthRequest, res: Response) => {
+  try {
+    const { amount } = req.body;
+
+    await markBillAsPaid(req.params.id, amount);
+
+    // Log activity
+    await query(
+      `INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) 
+       VALUES ($1, $2, $3, $4, $5)`,
+      [req.user!.id, 'pay', 'bill', req.params.id, JSON.stringify({ amount })]
+    );
+
+    const bill = await query(
+      `SELECT b.*, c.name as supplier_name, p.code as project_code, p.name as project_name
+       FROM xero_bills b
+       LEFT JOIN clients c ON b.supplier_id = c.id
+       LEFT JOIN projects p ON b.project_id = p.id
+       WHERE b.id = $1`,
+      [req.params.id]
+    );
+
+    res.json(bill.rows[0]);
+  } catch (error: any) {
+    console.error('Failed to mark bill as paid:', error);
+    res.status(500).json({ error: 'Failed to mark bill as paid: ' + (error.message || 'Unknown error') });
+  }
+});
+
+// Expenses endpoints
+router.post('/expenses', authenticate, requirePermission('can_sync_xero'), async (req: AuthRequest, res: Response) => {
+  try {
+    const { project_id, cost_center_id, amount, date, description, receipt_url, currency } = req.body;
+
+    if (!amount || !date || !description) {
+      return res.status(400).json({ error: 'Missing required fields: amount, date, description' });
+    }
+
+    const tokenData = await getValidAccessToken();
+    if (!tokenData) {
+      return res.status(400).json({ error: 'Xero not connected or token expired' });
+    }
+
+    // Get tracking categories if cost center is provided
+    let trackingCategories: Array<{ name: string; option: string }> | undefined;
+    if (cost_center_id) {
+      const costCenterResult = await query(
+        'SELECT xero_tracking_category_id, code FROM cost_centers WHERE id = $1',
+        [cost_center_id]
+      );
+      if (costCenterResult.rows.length > 0 && costCenterResult.rows[0].xero_tracking_category_id) {
+        // This would need to be expanded based on Xero tracking category structure
+      }
+    }
+
+    // Create expense in Xero
+    const xeroExpense = await createExpenseInXero(
+      tokenData,
+      { project_id, cost_center_id, amount, date, description, receipt_url, currency },
+      trackingCategories
+    );
+
+    const xeroExpenseId = xeroExpense?.ExpenseClaimID;
+
+    // Store expense
+    const expenseId = await storeExpense({
+      project_id,
+      cost_center_id,
+      amount,
+      date,
+      description,
+      receipt_url,
+      xero_expense_id: xeroExpenseId,
+    });
+
+    // Log activity
+    await query(
+      `INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) 
+       VALUES ($1, $2, $3, $4, $5)`,
+      [req.user!.id, 'create', 'expense', expenseId, JSON.stringify({ amount, project_id, cost_center_id })]
+    );
+
+    const expense = await query(
+      `SELECT e.*, p.code as project_code, p.name as project_name, cc.code as cost_center_code, cc.name as cost_center_name
+       FROM xero_expenses e
+       LEFT JOIN projects p ON e.project_id = p.id
+       LEFT JOIN cost_centers cc ON e.cost_center_id = cc.id
+       WHERE e.id = $1`,
+      [expenseId]
+    );
+
+    res.status(201).json(expense.rows[0]);
+  } catch (error: any) {
+    console.error('Failed to create expense:', error);
+    res.status(500).json({ error: 'Failed to create expense: ' + (error.message || 'Unknown error') });
+  }
+});
+
+router.get('/expenses', authenticate, requirePermission('can_view_financials'), async (req: AuthRequest, res: Response) => {
+  try {
+    const { project_id, cost_center_id, status, date_from, date_to } = req.query;
+
+    const expenses = await getExpenses({
+      project_id: project_id as string,
+      cost_center_id: cost_center_id as string,
+      status: status as string,
+      date_from: date_from as string,
+      date_to: date_to as string,
+    });
+
+    res.json(expenses);
+  } catch (error) {
+    console.error('Failed to fetch expenses:', error);
+    res.status(500).json({ error: 'Failed to fetch expenses' });
+  }
+});
+
+// Financial Reports endpoints
+router.get('/reports/profit-loss', authenticate, requirePermission('can_view_financials'), async (req: AuthRequest, res: Response) => {
+  try {
+    const { date_from, date_to } = req.query;
+
+    const tokenData = await getValidAccessToken();
+    if (!tokenData) {
+      return res.status(400).json({ error: 'Xero not connected or token expired' });
+    }
+
+    const report = await getProfitLossReport(tokenData, date_from as string, date_to as string);
+    if (!report) {
+      return res.status(500).json({ error: 'Failed to fetch Profit & Loss report' });
+    }
+
+    res.json(report);
+  } catch (error: any) {
+    console.error('Failed to fetch P&L report:', error);
+    res.status(500).json({ error: 'Failed to fetch Profit & Loss report: ' + (error.message || 'Unknown error') });
+  }
+});
+
+router.get('/reports/balance-sheet', authenticate, requirePermission('can_view_financials'), async (req: AuthRequest, res: Response) => {
+  try {
+    const { date } = req.query;
+
+    const tokenData = await getValidAccessToken();
+    if (!tokenData) {
+      return res.status(400).json({ error: 'Xero not connected or token expired' });
+    }
+
+    const report = await getBalanceSheetReport(tokenData, date as string);
+    if (!report) {
+      return res.status(500).json({ error: 'Failed to fetch Balance Sheet report' });
+    }
+
+    res.json(report);
+  } catch (error: any) {
+    console.error('Failed to fetch Balance Sheet report:', error);
+    res.status(500).json({ error: 'Failed to fetch Balance Sheet report: ' + (error.message || 'Unknown error') });
+  }
+});
+
+router.get('/reports/cash-flow', authenticate, requirePermission('can_view_financials'), async (req: AuthRequest, res: Response) => {
+  try {
+    const { date_from, date_to } = req.query;
+
+    const tokenData = await getValidAccessToken();
+    if (!tokenData) {
+      return res.status(400).json({ error: 'Xero not connected or token expired' });
+    }
+
+    const report = await getCashFlowReport(tokenData, date_from as string, date_to as string);
+    if (!report) {
+      return res.status(500).json({ error: 'Failed to fetch Cash Flow report' });
+    }
+
+    res.json(report);
+  } catch (error: any) {
+    console.error('Failed to fetch Cash Flow report:', error);
+    res.status(500).json({ error: 'Failed to fetch Cash Flow report: ' + (error.message || 'Unknown error') });
+  }
+});
+
+router.get('/reports/aged-receivables', authenticate, requirePermission('can_view_financials'), async (req: AuthRequest, res: Response) => {
+  try {
+    const { date } = req.query;
+
+    const tokenData = await getValidAccessToken();
+    if (!tokenData) {
+      return res.status(400).json({ error: 'Xero not connected or token expired' });
+    }
+
+    const report = await getAgedReceivablesReport(tokenData, date as string);
+    if (!report) {
+      return res.status(500).json({ error: 'Failed to fetch Aged Receivables report' });
+    }
+
+    res.json(report);
+  } catch (error: any) {
+    console.error('Failed to fetch Aged Receivables report:', error);
+    res.status(500).json({ error: 'Failed to fetch Aged Receivables report: ' + (error.message || 'Unknown error') });
+  }
+});
+
+router.get('/reports/aged-payables', authenticate, requirePermission('can_view_financials'), async (req: AuthRequest, res: Response) => {
+  try {
+    const { date } = req.query;
+
+    const tokenData = await getValidAccessToken();
+    if (!tokenData) {
+      return res.status(400).json({ error: 'Xero not connected or token expired' });
+    }
+
+    const report = await getAgedPayablesReport(tokenData, date as string);
+    if (!report) {
+      return res.status(500).json({ error: 'Failed to fetch Aged Payables report' });
+    }
+
+    res.json(report);
+  } catch (error: any) {
+    console.error('Failed to fetch Aged Payables report:', error);
+    res.status(500).json({ error: 'Failed to fetch Aged Payables report: ' + (error.message || 'Unknown error') });
+  }
+});
+
+// Items/Inventory endpoints
+router.post('/items/sync', authenticate, requirePermission('can_sync_xero'), async (req: AuthRequest, res: Response) => {
+  try {
+    const tokenData = await getValidAccessToken();
+    if (!tokenData) {
+      return res.status(400).json({ error: 'Xero not connected or token expired' });
+    }
+
+    const synced = await syncItemsFromXero(tokenData);
+
+    // Log activity
+    await query(
+      `INSERT INTO activity_logs (user_id, action, entity_type, details) 
+       VALUES ($1, $2, $3, $4)`,
+      [req.user!.id, 'sync', 'xero_items', JSON.stringify({ synced })]
+    );
+
+    res.json({ success: true, synced, message: `Synced ${synced} item(s)` });
+  } catch (error: any) {
+    console.error('Failed to sync items:', error);
+    res.status(500).json({ error: 'Failed to sync items: ' + (error.message || 'Unknown error') });
+  }
+});
+
+router.get('/items', authenticate, requirePermission('can_view_financials'), async (req: AuthRequest, res: Response) => {
+  try {
+    const { search, is_tracked } = req.query;
+
+    const items = await getItems({
+      search: search as string,
+      is_tracked: is_tracked === 'true' ? true : is_tracked === 'false' ? false : undefined,
+    });
+
+    res.json(items);
+  } catch (error) {
+    console.error('Failed to fetch items:', error);
+    res.status(500).json({ error: 'Failed to fetch items' });
+  }
+});
+
+router.get('/items/:id', authenticate, requirePermission('can_view_financials'), async (req: AuthRequest, res: Response) => {
+  try {
+    const item = await getItemById(req.params.id);
+    if (!item) {
+      return res.status(404).json({ error: 'Item not found' });
+    }
+    res.json(item);
+  } catch (error) {
+    console.error('Failed to fetch item:', error);
+    res.status(500).json({ error: 'Failed to fetch item' });
+  }
+});
+
+router.put('/items/:id/stock', authenticate, requirePermission('can_sync_xero'), async (req: AuthRequest, res: Response) => {
+  try {
+    const { stock_level } = req.body;
+
+    if (stock_level === undefined || stock_level < 0) {
+      return res.status(400).json({ error: 'Valid stock_level is required' });
+    }
+
+    await updateItemStock(req.params.id, parseFloat(stock_level));
+
+    // Log activity
+    await query(
+      `INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) 
+       VALUES ($1, $2, $3, $4, $5)`,
+      [req.user!.id, 'update_stock', 'item', req.params.id, JSON.stringify({ stock_level })]
+    );
+
+    const item = await getItemById(req.params.id);
+    res.json(item);
+  } catch (error: any) {
+    console.error('Failed to update item stock:', error);
+    res.status(500).json({ error: 'Failed to update item stock: ' + (error.message || 'Unknown error') });
+  }
+});
+
+// Credit Notes endpoints
+router.post('/credit-notes', authenticate, requirePermission('can_sync_xero'), async (req: AuthRequest, res: Response) => {
+  try {
+    const { invoice_id, amount, date, reason, description, currency } = req.body;
+
+    if (!invoice_id || !amount || !date) {
+      return res.status(400).json({ error: 'Missing required fields: invoice_id, amount, date' });
+    }
+
+    // Get invoice details
+    const invoiceResult = await query('SELECT id, xero_invoice_id, client_id, total FROM xero_invoices WHERE id = $1', [invoice_id]);
+    if (invoiceResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Invoice not found' });
+    }
+
+    const invoice = invoiceResult.rows[0];
+
+    // Get client Xero contact ID
+    const clientResult = await query('SELECT xero_contact_id FROM clients WHERE id = $1', [invoice.client_id]);
+    if (clientResult.rows.length === 0 || !clientResult.rows[0].xero_contact_id) {
+      return res.status(404).json({ error: 'Client Xero contact ID not found' });
+    }
+
+    const contactXeroId = clientResult.rows[0].xero_contact_id;
+
+    const tokenData = await getValidAccessToken();
+    if (!tokenData) {
+      return res.status(400).json({ error: 'Xero not connected or token expired' });
+    }
+
+    // Create credit note in Xero
+    let xeroCreditNoteId: string | undefined;
+    if (invoice.xero_invoice_id && contactXeroId) {
+      const xeroCreditNote = await createCreditNoteInXero(
+        tokenData,
+        { invoice_id, amount, date, reason, description, currency },
+        invoice.xero_invoice_id,
+        contactXeroId
+      );
+
+      if (xeroCreditNote) {
+        xeroCreditNoteId = xeroCreditNote.CreditNoteID;
+
+        // Apply credit note to invoice
+        await applyCreditNoteToInvoice(tokenData, xeroCreditNoteId, invoice.xero_invoice_id);
+      }
+    }
+
+    // Generate credit note number
+    const countResult = await query('SELECT COUNT(*) as count FROM xero_credit_notes');
+    const creditNoteNumber = `CN-${String(parseInt(countResult.rows[0].count) + 1).padStart(5, '0')}`;
+
+    // Store credit note
+    const creditNoteId = await storeCreditNote({
+      invoice_id,
+      amount: parseFloat(amount),
+      date,
+      reason,
+      description,
+      currency,
+      xero_credit_note_id: xeroCreditNoteId,
+      credit_note_number: creditNoteNumber,
+    });
+
+    // Log activity
+    await query(
+      `INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) 
+       VALUES ($1, $2, $3, $4, $5)`,
+      [req.user!.id, 'create', 'credit_note', creditNoteId, JSON.stringify({ invoice_id, amount, reason })]
+    );
+
+    const creditNote = await query(
+      `SELECT cn.*, xi.invoice_number, c.name as client_name
+       FROM xero_credit_notes cn
+       LEFT JOIN xero_invoices xi ON cn.invoice_id = xi.id
+       LEFT JOIN clients c ON xi.client_id = c.id
+       WHERE cn.id = $1`,
+      [creditNoteId]
+    );
+
+    res.status(201).json(creditNote.rows[0]);
+  } catch (error: any) {
+    console.error('Failed to create credit note:', error);
+    res.status(500).json({ error: 'Failed to create credit note: ' + (error.message || 'Unknown error') });
+  }
+});
+
+router.get('/credit-notes', authenticate, requirePermission('can_view_financials'), async (req: AuthRequest, res: Response) => {
+  try {
+    const { invoice_id, date_from, date_to, status } = req.query;
+
+    const creditNotes = await getCreditNotes({
+      invoice_id: invoice_id as string,
+      date_from: date_from as string,
+      date_to: date_to as string,
+      status: status as string,
+    });
+
+    res.json(creditNotes);
+  } catch (error) {
+    console.error('Failed to fetch credit notes:', error);
+    res.status(500).json({ error: 'Failed to fetch credit notes' });
+  }
+});
+
+router.post('/credit-notes/:id/apply', authenticate, requirePermission('can_sync_xero'), async (req: AuthRequest, res: Response) => {
+  try {
+    const creditNoteResult = await query('SELECT xero_credit_note_id, invoice_id FROM xero_credit_notes WHERE id = $1', [req.params.id]);
+    if (creditNoteResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Credit note not found' });
+    }
+
+    const creditNote = creditNoteResult.rows[0];
+    const invoiceResult = await query('SELECT xero_invoice_id FROM xero_invoices WHERE id = $1', [creditNote.invoice_id]);
+    
+    if (invoiceResult.rows.length === 0 || !invoiceResult.rows[0].xero_invoice_id) {
+      return res.status(404).json({ error: 'Invoice not found or not synced to Xero' });
+    }
+
+    const tokenData = await getValidAccessToken();
+    if (!tokenData) {
+      return res.status(400).json({ error: 'Xero not connected or token expired' });
+    }
+
+    const applied = await applyCreditNoteToInvoice(
+      tokenData,
+      creditNote.xero_credit_note_id,
+      invoiceResult.rows[0].xero_invoice_id
+    );
+
+    if (!applied) {
+      return res.status(500).json({ error: 'Failed to apply credit note to invoice' });
+    }
+
+    // Log activity
+    await query(
+      `INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) 
+       VALUES ($1, $2, $3, $4, $5)`,
+      [req.user!.id, 'apply', 'credit_note', req.params.id, JSON.stringify({ invoice_id: creditNote.invoice_id })]
+    );
+
+    res.json({ success: true, message: 'Credit note applied to invoice successfully' });
+  } catch (error: any) {
+    console.error('Failed to apply credit note:', error);
+    res.status(500).json({ error: 'Failed to apply credit note: ' + (error.message || 'Unknown error') });
+  }
+});
+
+// Payment Reminders endpoints
+router.get('/reminders/schedule', authenticate, requirePermission('can_view_financials'), async (req: AuthRequest, res: Response) => {
+  try {
+    const schedule = await getReminderSchedule();
+    res.json(schedule);
+  } catch (error: any) {
+    console.error('Failed to get reminder schedule:', error);
+    res.status(500).json({ error: 'Failed to get reminder schedule: ' + (error.message || 'Unknown error') });
+  }
+});
+
+router.put('/reminders/schedule', authenticate, requirePermission('can_sync_xero'), async (req: AuthRequest, res: Response) => {
+  try {
+    const schedule = req.body;
+
+    await updateReminderSchedule(schedule);
+
+    // Log activity
+    await query(
+      `INSERT INTO activity_logs (user_id, action, entity_type, details) 
+       VALUES ($1, $2, $3, $4)`,
+      [req.user!.id, 'update', 'reminder_schedule', JSON.stringify(schedule)]
+    );
+
+    res.json({ success: true, schedule });
+  } catch (error: any) {
+    console.error('Failed to update reminder schedule:', error);
+    res.status(500).json({ error: 'Failed to update reminder schedule: ' + (error.message || 'Unknown error') });
+  }
+});
+
+router.post('/reminders/send', authenticate, requirePermission('can_sync_xero'), async (req: AuthRequest, res: Response) => {
+  try {
+    const { invoice_id, reminder_type } = req.body;
+
+    if (!invoice_id) {
+      return res.status(400).json({ error: 'invoice_id is required' });
+    }
+
+    const success = await sendPaymentReminder(invoice_id, reminder_type || 'manual');
+
+    if (!success) {
+      return res.status(500).json({ error: 'Failed to send payment reminder' });
+    }
+
+    // Log activity
+    await query(
+      `INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) 
+       VALUES ($1, $2, $3, $4, $5)`,
+      [req.user!.id, 'send_reminder', 'invoice', invoice_id, JSON.stringify({ reminder_type: reminder_type || 'manual' })]
+    );
+
+    res.json({ success: true, message: 'Payment reminder sent successfully' });
+  } catch (error: any) {
+    console.error('Failed to send payment reminder:', error);
+    res.status(500).json({ error: 'Failed to send payment reminder: ' + (error.message || 'Unknown error') });
+  }
+});
+
+router.post('/reminders/process', authenticate, requirePermission('can_sync_xero'), async (req: AuthRequest, res: Response) => {
+  try {
+    const result = await processPaymentReminders();
+    res.json({ success: true, ...result });
+  } catch (error: any) {
+    console.error('Failed to process payment reminders:', error);
+    res.status(500).json({ error: 'Failed to process payment reminders: ' + (error.message || 'Unknown error') });
+  }
+});
+
+router.get('/reminders/history', authenticate, requirePermission('can_view_financials'), async (req: AuthRequest, res: Response) => {
+  try {
+    const { invoice_id, date_from, date_to } = req.query;
+
+    const history = await getReminderHistory({
+      invoice_id: invoice_id as string,
+      date_from: date_from as string,
+      date_to: date_to as string,
+    });
+
+    res.json(history);
+  } catch (error) {
+    console.error('Failed to fetch reminder history:', error);
+    res.status(500).json({ error: 'Failed to fetch reminder history' });
+  }
+});
+
+// Webhooks endpoints
+router.post('/webhooks', async (req: AuthRequest, res: Response) => {
+  try {
+    const signature = req.headers['x-xero-signature'] as string;
+    const webhookKey = process.env.XERO_WEBHOOK_KEY || '';
+
+    if (!signature || !webhookKey) {
+      return res.status(401).json({ error: 'Missing webhook signature or key' });
+    }
+
+    const payload = JSON.stringify(req.body);
+    
+    // Verify signature
+    if (!verifyWebhookSignature(payload, signature, webhookKey)) {
+      return res.status(401).json({ error: 'Invalid webhook signature' });
+    }
+
+    // Process webhook events
+    const events = req.body.events || [];
+    const eventIds: string[] = [];
+
+    for (const event of events) {
+      const eventId = await storeWebhookEvent(
+        event.eventType,
+        event.resourceId,
+        event
+      );
+      eventIds.push(eventId);
+
+      // Process event asynchronously
+      processWebhookEvent(eventId).catch(error => {
+        console.error('Error processing webhook event:', error);
+      });
+    }
+
+    res.status(200).json({ success: true, events_processed: eventIds.length });
+  } catch (error: any) {
+    console.error('Webhook processing error:', error);
+    res.status(500).json({ error: 'Webhook processing error: ' + (error.message || 'Unknown error') });
+  }
+});
+
+router.get('/webhooks/status', authenticate, requirePermission('can_view_financials'), async (req: AuthRequest, res: Response) => {
+  try {
+    const status = await getWebhookStatus();
+    res.json(status);
+  } catch (error: any) {
+    console.error('Failed to get webhook status:', error);
+    res.status(500).json({ error: 'Failed to get webhook status: ' + (error.message || 'Unknown error') });
+  }
+});
+
+router.get('/webhooks/events', authenticate, requirePermission('can_view_financials'), async (req: AuthRequest, res: Response) => {
+  try {
+    const { event_type, processed, date_from, date_to } = req.query;
+
+    const events = await getWebhookEvents({
+      event_type: event_type as string,
+      processed: processed === 'true' ? true : processed === 'false' ? false : undefined,
+      date_from: date_from as string,
+      date_to: date_to as string,
+    });
+
+    res.json(events);
+  } catch (error) {
+    console.error('Failed to fetch webhook events:', error);
+    res.status(500).json({ error: 'Failed to fetch webhook events' });
   }
 });
 
