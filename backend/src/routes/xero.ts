@@ -3098,8 +3098,14 @@ router.get('/invoices', authenticate, requirePermission('can_view_financials'), 
 
     const result = await query(sql, params);
     res.json(result.rows);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch invoices' });
+  } catch (error: any) {
+    console.error('Failed to fetch invoices:', error);
+    const errorMessage = error.message || 'Failed to fetch invoices';
+    const isTableError = errorMessage.includes('does not exist') || errorMessage.includes('relation') || error.code === '42P01';
+    res.status(500).json({ 
+      error: isTableError ? 'Database tables not found. Please run migrations.' : 'Failed to fetch invoices',
+      details: env.NODE_ENV === 'development' ? errorMessage : undefined
+    });
   }
 });
 
@@ -3283,8 +3289,14 @@ router.get('/quotes', authenticate, requirePermission('can_view_financials'), as
     `);
 
     res.json(result.rows);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch quotes' });
+  } catch (error: any) {
+    console.error('Failed to fetch quotes:', error);
+    const errorMessage = error.message || 'Failed to fetch quotes';
+    const isTableError = errorMessage.includes('does not exist') || errorMessage.includes('relation') || error.code === '42P01';
+    res.status(500).json({ 
+      error: isTableError ? 'Database tables not found. Please run migrations.' : 'Failed to fetch quotes',
+      details: env.NODE_ENV === 'development' ? errorMessage : undefined
+    });
   }
 });
 
@@ -3441,9 +3453,14 @@ router.get('/payments', authenticate, requirePermission('can_view_financials'), 
     });
 
     res.json(payments);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Failed to fetch payments:', error);
-    res.status(500).json({ error: 'Failed to fetch payments' });
+    const errorMessage = error.message || 'Failed to fetch payments';
+    const isTableError = errorMessage.includes('does not exist') || errorMessage.includes('relation') || error.code === '42P01';
+    res.status(500).json({ 
+      error: isTableError ? 'Database tables not found. Please run migrations.' : 'Failed to fetch payments',
+      details: env.NODE_ENV === 'development' ? errorMessage : undefined
+    });
   }
 });
 
@@ -3697,9 +3714,14 @@ router.get('/purchase-orders', authenticate, requirePermission('can_view_financi
     });
 
     res.json(pos);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Failed to fetch purchase orders:', error);
-    res.status(500).json({ error: 'Failed to fetch purchase orders' });
+    const errorMessage = error.message || 'Failed to fetch purchase orders';
+    const isTableError = errorMessage.includes('does not exist') || errorMessage.includes('relation') || error.code === '42P01';
+    res.status(500).json({ 
+      error: isTableError ? 'Database tables not found. Please run migrations.' : 'Failed to fetch purchase orders',
+      details: env.NODE_ENV === 'development' ? errorMessage : undefined
+    });
   }
 });
 
@@ -3933,9 +3955,14 @@ router.get('/bills', authenticate, requirePermission('can_view_financials'), asy
     });
 
     res.json(bills);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Failed to fetch bills:', error);
-    res.status(500).json({ error: 'Failed to fetch bills' });
+    const errorMessage = error.message || 'Failed to fetch bills';
+    const isTableError = errorMessage.includes('does not exist') || errorMessage.includes('relation') || error.code === '42P01';
+    res.status(500).json({ 
+      error: isTableError ? 'Database tables not found. Please run migrations.' : 'Failed to fetch bills',
+      details: env.NODE_ENV === 'development' ? errorMessage : undefined
+    });
   }
 });
 
@@ -4050,9 +4077,14 @@ router.get('/expenses', authenticate, requirePermission('can_view_financials'), 
     });
 
     res.json(expenses);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Failed to fetch expenses:', error);
-    res.status(500).json({ error: 'Failed to fetch expenses' });
+    const errorMessage = error.message || 'Failed to fetch expenses';
+    const isTableError = errorMessage.includes('does not exist') || errorMessage.includes('relation') || error.code === '42P01';
+    res.status(500).json({ 
+      error: isTableError ? 'Database tables not found. Please run migrations.' : 'Failed to fetch expenses',
+      details: env.NODE_ENV === 'development' ? errorMessage : undefined
+    });
   }
 });
 
@@ -4603,8 +4635,14 @@ router.get('/summary', authenticate, requirePermission('can_view_financials'), a
       revenue_by_month: revenueByMonth.rows,
       top_clients: topClients.rows
     });
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch financial summary' });
+  } catch (error: any) {
+    console.error('Failed to fetch financial summary:', error);
+    const errorMessage = error.message || 'Failed to fetch financial summary';
+    const isTableError = errorMessage.includes('does not exist') || errorMessage.includes('relation') || error.code === '42P01';
+    res.status(500).json({ 
+      error: isTableError ? 'Database tables not found. Please run migrations.' : 'Failed to fetch financial summary',
+      details: env.NODE_ENV === 'development' ? errorMessage : undefined
+    });
   }
 });
 

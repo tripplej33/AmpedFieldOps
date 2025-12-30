@@ -47,8 +47,12 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
     });
 
     res.json(result);
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch settings' });
+  } catch (error: any) {
+    console.error('Failed to fetch settings:', error);
+    res.status(500).json({ 
+      error: 'Failed to fetch settings',
+      details: env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 });
 
