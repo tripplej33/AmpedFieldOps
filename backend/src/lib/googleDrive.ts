@@ -100,9 +100,9 @@ export async function getAuthorizedClient(userId?: string): Promise<OAuth2Client
 }
 
 // Get Google Drive OAuth URL
-export function getAuthUrl(state?: string): string {
+export async function getAuthUrl(state?: string): Promise<string> {
   try {
-    const oauth2Client = getOAuth2Client();
+    const oauth2Client = await getOAuth2Client();
     
     const scopes = [
       'https://www.googleapis.com/auth/drive.file' // Access to files created by the app

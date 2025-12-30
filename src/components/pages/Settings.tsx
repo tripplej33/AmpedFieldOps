@@ -37,6 +37,28 @@ export default function Settings() {
   const [googleDriveConnected, setGoogleDriveConnected] = useState(false);
   const [isConnectingGoogleDrive, setIsConnectingGoogleDrive] = useState(false);
   
+  // Local state for Google Drive credentials (not auto-saving)
+  const [googleDriveCredentials, setGoogleDriveCredentials] = useState({
+    clientId: '',
+    clientSecret: '',
+    redirectUri: ''
+  });
+  const [savedGoogleDriveCredentials, setSavedGoogleDriveCredentials] = useState({
+    clientId: '',
+    clientSecret: '',
+    redirectUri: ''
+  });
+  const [isSavingGoogleDriveCredentials, setIsSavingGoogleDriveCredentials] = useState(false);
+  
+  // Check if Google Drive credentials have been modified
+  const googleDriveCredentialsChanged = 
+    googleDriveCredentials.clientId !== savedGoogleDriveCredentials.clientId ||
+    googleDriveCredentials.clientSecret !== savedGoogleDriveCredentials.clientSecret ||
+    googleDriveCredentials.redirectUri !== savedGoogleDriveCredentials.redirectUri;
+  
+  // Show save button if: not connected OR credentials have changed
+  const showGoogleDriveSaveButton = !googleDriveConnected || googleDriveCredentialsChanged;
+  
   // Role-based permissions management
   const [rolePermissions, setRolePermissions] = useState<Record<string, Record<string, boolean>>>({});
   const [allPermissions, setAllPermissions] = useState<Array<{ key: string; label: string; description: string }>>([]);
@@ -1161,6 +1183,100 @@ export default function Settings() {
             </div>
           ) : (
             <div className="space-y-4">
+              {/* Google Drive Credentials */}
+              <div className="space-y-4 p-4 rounded-lg bg-muted/20 border border-border">
+                <h4 className="text-sm font-bold font-mono uppercase tracking-wider">Google Drive OAuth Credentials</h4>
+                
+                <div>
+                  <Label className="font-mono text-xs uppercase tracking-wider">
+                    Client ID *
+                  </Label>
+                  <Input
+                    value={googleDriveCredentials.clientId}
+                    onChange={(e) => setGoogleDriveCredentials(prev => ({ ...prev, clientId: e.target.value }))}
+                    placeholder="Enter Google OAuth Client ID"
+                    className="mt-2 font-mono text-sm"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Get this from Google Cloud Console → APIs & Services → Credentials
+                  </p>
+                </div>
+
+                <div>
+                  <Label className="font-mono text-xs uppercase tracking-wider">
+                    Client Secret *
+                  </Label>
+                  <Input
+                    type="password"
+                    value={googleDriveCredentials.clientSecret}
+                    onChange={(e) => setGoogleDriveCredentials(prev => ({ ...prev, clientSecret: e.target.value }))}
+                    placeholder="Enter Google OAuth Client Secret"
+                    className="mt-2 font-mono text-sm"
+                  />
+                </div>
+
+                <div>
+                  <Label className="font-mono text-xs uppercase tracking-wider">
+                    Redirect URI
+                  </Label>
+                  <Input
+                    value={googleDriveCredentials.redirectUri}
+                    onChange={(e) => setGoogleDriveCredentials(prev => ({ ...prev, redirectUri: e.target.value }))}
+                    placeholder={`${window.location.origin.replace('admin.', 'api.')}/api/backups/google-drive/callback`}
+                    className="mt-2 font-mono text-sm"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Must match exactly what's configured in Google Cloud Console
+                  </p>
+                </div>
+                
+                {showGoogleDriveSaveButton && (
+                  <>
+                    <Button
+                      onClick={handleSaveGoogleDriveCredentials}
+                      disabled={isSavingGoogleDriveCredentials || !googleDriveCredentials.clientId || !googleDriveCredentials.clientSecret}
+                      className="w-full bg-electric text-background hover:bg-electric/90"
+                    >
+                      {isSavingGoogleDriveCredentials ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Saving...
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle className="w-4 h-4 mr-2" />
+                          {googleDriveCredentialsChanged ? 'Save Changes' : 'Save Credentials'}
+                        </>
+                      )}
+                    </Button>
+                    
+                    {googleDriveCredentialsChanged && (
+                      <p className="text-xs text-warning text-center">
+                        ⚠️ Credentials have been modified. Click "Save Changes" to update.
+                      </p>
+                    )}
+                  </>
+                )}
+                
+                {!showGoogleDriveSaveButton && !googleDriveCredentialsChanged && (
+                  <p className="text-xs text-muted-foreground text-center">
+                    ✓ Credentials saved. Edit credentials above to make changes.
+                  </p>
+                )}
+                
+                {(!googleDriveCredentials.clientId || !googleDriveCredentials.clientSecret) && (
+                  <p className="text-xs text-muted-foreground text-center">
+                    Enter your credentials above and click "Save Credentials" before connecting
+                  </p>
+                )}
+
+                <p className="text-xs text-muted-foreground">
+                  Get your credentials from the <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" className="text-electric hover:underline">Google Cloud Console</a>
+                </p>
+              </div>
+
+              <Separator />
+
               <div className="bg-muted/20 border border-border rounded-lg p-4">
                 <p className="text-sm text-muted-foreground mb-4">
                   Connect your Google Drive account to enable cloud backup storage. Backups stored in Google Drive are accessible from anywhere and provide an additional layer of data protection.
@@ -1174,6 +1290,11 @@ export default function Settings() {
 
               <Button 
                 onClick={async () => {
+                  if (!googleDriveCredentials.clientId || !googleDriveCredentials.clientSecret) {
+                    toast.error('Please save your Google Drive credentials first using the "Save Credentials" button above.');
+                    return;
+                  }
+
                   try {
                     setIsConnectingGoogleDrive(true);
                     const { url } = await api.getGoogleDriveAuthUrl();
@@ -1212,7 +1333,7 @@ export default function Settings() {
                   }
                 }}
                 className="w-full bg-electric text-background hover:bg-electric/90"
-                disabled={isConnectingGoogleDrive}
+                disabled={isConnectingGoogleDrive || !googleDriveCredentials.clientId || !googleDriveCredentials.clientSecret}
               >
                 {isConnectingGoogleDrive ? (
                   <>
@@ -1226,6 +1347,11 @@ export default function Settings() {
                   </>
                 )}
               </Button>
+              {(!googleDriveCredentials.clientId || !googleDriveCredentials.clientSecret) && (
+                <p className="text-xs text-warning text-center">
+                  Please save your credentials above first
+                </p>
+              )}
 
               <p className="text-xs text-muted-foreground text-center">
                 You'll be redirected to Google to authorize access. This app will only access files it creates.

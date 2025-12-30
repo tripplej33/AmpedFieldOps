@@ -337,22 +337,14 @@ router.post('/:id/restore', authenticate, requirePermission('can_manage_users'),
 // Get Google Drive OAuth URL
 router.get('/google-drive/auth', authenticate, requirePermission('can_manage_users'), async (req: AuthRequest, res: Response) => {
   try {
-    // Check if credentials are configured
-    if (!process.env.GOOGLE_CLIENT_ID || !process.env.GOOGLE_CLIENT_SECRET) {
-      return res.status(400).json({ 
-        error: 'Google Drive OAuth not configured', 
-        details: 'Please set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET environment variables. Also ensure GOOGLE_REDIRECT_URI is set to match your Google Cloud Console configuration.'
-      });
-    }
-
     const state = req.user!.id; // Use user ID as state
-    const authUrl = getAuthUrl(state);
+    const authUrl = await getAuthUrl(state);
     res.json({ url: authUrl });
   } catch (error: any) {
     console.error('Failed to get Google Drive auth URL:', error);
     res.status(500).json({ 
       error: 'Failed to get Google Drive auth URL', 
-      details: error.message || 'Unknown error. Please check your Google OAuth configuration.'
+      details: error.message || 'Unknown error. Please check your Google OAuth configuration in Settings → Integrations.'
     });
   }
 });
