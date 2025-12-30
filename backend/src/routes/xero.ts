@@ -3111,6 +3111,9 @@ router.post('/sync', authenticate, requirePermission('can_sync_xero'), async (re
 // Get invoices from Xero (cached)
 router.get('/invoices', authenticate, requirePermission('can_view_financials'), async (req: AuthRequest, res: Response) => {
   try {
+    // Ensure tables exist before querying
+    await ensureXeroTables();
+    
     const { status, client_id, date_from, date_to } = req.query;
 
     let sql = `
@@ -3332,6 +3335,9 @@ router.post('/invoices/from-timesheets', authenticate, requirePermission('can_sy
 // Get quotes from Xero (cached)
 router.get('/quotes', authenticate, requirePermission('can_view_financials'), async (req: AuthRequest, res: Response) => {
   try {
+    // Ensure tables exist before querying
+    await ensureXeroTables();
+    
     const result = await query(`
       SELECT xq.*, c.name as client_name
       FROM xero_quotes xq
@@ -3344,9 +3350,20 @@ router.get('/quotes', authenticate, requirePermission('can_view_financials'), as
     const errorMessage = error.message || 'Failed to fetch quotes';
     const isTableError = errorMessage.includes('does not exist') || errorMessage.includes('relation') || error.code === '42P01';
     if (isTableError) {
-      // Return empty array instead of error - tables will be created when migrations run
-      console.warn('[Xero] xero_quotes table not found. Returning empty array. Run migrations to create tables.');
-      return res.json([]);
+      // Try to create tables and retry
+      try {
+        await ensureXeroTables();
+        const retryResult = await query(`
+          SELECT xq.*, c.name as client_name
+          FROM xero_quotes xq
+          LEFT JOIN clients c ON xq.client_id = c.id
+          ORDER BY xq.issue_date DESC
+        `);
+        return res.json(retryResult.rows);
+      } catch (retryError) {
+        console.warn('[Xero] xero_quotes table not found. Returning empty array.');
+        return res.json([]);
+      }
     }
     console.error('Failed to fetch quotes:', error);
     // Return empty array with 200 status instead of 500
