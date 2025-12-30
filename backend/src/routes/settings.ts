@@ -3,6 +3,9 @@ import { query } from '../db';
 import { authenticate, requireRole, AuthRequest } from '../middleware/auth';
 import { logoUpload } from '../middleware/upload';
 import { clearEmailSettingsCache, sendTestEmail } from '../lib/email';
+import fs from 'fs';
+import path from 'path';
+import { env } from '../config/env';
 
 const router = Router();
 
@@ -173,6 +176,12 @@ router.post('/logo', authenticate, requireRole('admin'), logoUpload.single('logo
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
+    // Ensure the logos directory exists
+    const logosDir = path.join(__dirname, '../../uploads/logos');
+    if (!fs.existsSync(logosDir)) {
+      fs.mkdirSync(logosDir, { recursive: true });
+    }
+
     const logoUrl = `/uploads/logos/${req.file.filename}`;
 
     await query(
@@ -190,8 +199,12 @@ router.post('/logo', authenticate, requireRole('admin'), logoUpload.single('logo
     );
 
     res.json({ logo_url: logoUrl });
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to upload logo' });
+  } catch (error: any) {
+    console.error('Logo upload error:', error);
+    res.status(500).json({ 
+      error: 'Failed to upload logo',
+      message: env.NODE_ENV === 'development' ? error.message : 'An error occurred while uploading the logo'
+    });
   }
 });
 

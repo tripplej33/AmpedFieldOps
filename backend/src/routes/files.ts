@@ -253,11 +253,17 @@ router.get('/cost-centers/:costCenterId', authenticate, requirePermission('can_v
 });
 
 // Get timesheet images for a specific project
-router.get('/timesheet-images/:projectId', authenticate, requirePermission('can_view_financials'), async (req: AuthRequest, res: Response) => {
+router.get('/timesheet-images/:projectId', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const result = await query(
-      `SELECT 
+    // Check if user can view all timesheets
+    const canViewAll = req.user!.role === 'admin' || 
+                       req.user!.role === 'manager' || 
+                       req.user!.permissions.includes('can_view_all_timesheets');
+
+    let sql = `
+      SELECT 
         t.id as timesheet_id,
+        t.user_id,
         t.date as timesheet_date,
         t.image_urls,
         t.created_at,
@@ -270,9 +276,18 @@ router.get('/timesheet-images/:projectId', authenticate, requirePermission('can_
       WHERE t.project_id = $1 
         AND t.image_urls IS NOT NULL 
         AND array_length(t.image_urls, 1) > 0
-      ORDER BY t.date DESC, t.created_at DESC`,
-      [req.params.projectId]
-    );
+    `;
+    const params: any[] = [req.params.projectId];
+
+    // If user can't view all, only show their own timesheet images
+    if (!canViewAll) {
+      sql += ` AND t.user_id = $2`;
+      params.push(req.user!.id);
+    }
+
+    sql += ` ORDER BY t.date DESC, t.created_at DESC`;
+
+    const result = await query(sql, params);
 
     // Flatten image_urls into individual image objects
     const images: any[] = [];
@@ -303,10 +318,15 @@ router.get('/timesheet-images/:projectId', authenticate, requirePermission('can_
 });
 
 // Get all timesheet images across all projects (summary)
-router.get('/timesheet-images', authenticate, requirePermission('can_view_financials'), async (req: AuthRequest, res: Response) => {
+router.get('/timesheet-images', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const result = await query(
-      `SELECT 
+    // Check if user can view all timesheets
+    const canViewAll = req.user!.role === 'admin' || 
+                       req.user!.role === 'manager' || 
+                       req.user!.permissions.includes('can_view_all_timesheets');
+
+    let sql = `
+      SELECT 
         t.project_id,
         p.code as project_code,
         p.name as project_name,
@@ -317,10 +337,18 @@ router.get('/timesheet-images', authenticate, requirePermission('can_view_financ
       LEFT JOIN projects p ON t.project_id = p.id
       LEFT JOIN clients c ON p.client_id = c.id
       WHERE t.image_urls IS NOT NULL AND array_length(t.image_urls, 1) > 0
-      GROUP BY t.project_id, p.code, p.name, c.name
-      ORDER BY c.name, p.code`,
-      []
-    );
+    `;
+    const params: any[] = [];
+
+    // If user can't view all, only show their own timesheet images
+    if (!canViewAll) {
+      sql += ` AND t.user_id = $1`;
+      params.push(req.user!.id);
+    }
+
+    sql += ` GROUP BY t.project_id, p.code, p.name, c.name ORDER BY c.name, p.code`;
+
+    const result = await query(sql, params);
 
     res.json(result.rows);
   } catch (error) {
@@ -334,30 +362,48 @@ router.get('/logos', authenticate, requirePermission('can_manage_settings'), asy
   try {
     const logosDir = path.join(__dirname, '../../uploads/logos');
     
-    // Check if directory exists
+    // Check if directory exists, create it if it doesn't
     if (!fs.existsSync(logosDir)) {
+      fs.mkdirSync(logosDir, { recursive: true });
       return res.json([]);
     }
 
     // Read directory and get file stats
-    const files = fs.readdirSync(logosDir);
+    let files: string[];
+    try {
+      files = fs.readdirSync(logosDir);
+    } catch (readError) {
+      console.error('Failed to read logos directory:', readError);
+      return res.json([]);
+    }
+
     const logos = await Promise.all(
       files.map(async (filename: string) => {
-        const filePath = path.join(logosDir, filename);
-        const stats = fs.statSync(filePath);
-        return {
-          url: `/uploads/logos/${filename}`,
-          filename,
-          upload_date: stats.birthtime || stats.mtime,
-          file_size: stats.size
-        };
+        try {
+          const filePath = path.join(logosDir, filename);
+          const stats = fs.statSync(filePath);
+          // Skip directories
+          if (stats.isDirectory()) {
+            return null;
+          }
+          return {
+            url: `/uploads/logos/${filename}`,
+            filename,
+            upload_date: stats.birthtime || stats.mtime,
+            file_size: stats.size
+          };
+        } catch (statError) {
+          console.error(`Failed to get stats for ${filename}:`, statError);
+          return null;
+        }
       })
     );
 
-    // Sort by upload date (newest first)
-    logos.sort((a, b) => new Date(b.upload_date).getTime() - new Date(a.upload_date).getTime());
+    // Filter out null values and sort by upload date (newest first)
+    const validLogos = logos.filter((logo): logo is NonNullable<typeof logo> => logo !== null);
+    validLogos.sort((a, b) => new Date(b.upload_date).getTime() - new Date(a.upload_date).getTime());
 
-    res.json(logos);
+    res.json(validLogos);
   } catch (error) {
     console.error('Get logos error:', error);
     res.status(500).json({ error: 'Failed to fetch logos' });
