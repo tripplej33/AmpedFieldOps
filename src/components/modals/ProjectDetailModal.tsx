@@ -40,6 +40,11 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
   const [clients, setClients] = useState<Client[]>([]);
   const [costCenters, setCostCenters] = useState<CostCenter[]>([]);
   const [projectFinancials, setProjectFinancials] = useState<ProjectFinancials | null>(null);
+  const [projectFiles, setProjectFiles] = useState<ProjectFile[]>([]);
+  const [safetyDocuments, setSafetyDocuments] = useState<SafetyDocument[]>([]);
+  const [selectedFile, setSelectedFile] = useState<ProjectFile | null>(null);
+  const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [uploadFiles, setUploadFiles] = useState<File[]>([]);
   
   // Cost Center form
   const [showCostCenterForm, setShowCostCenterForm] = useState(false);
@@ -315,21 +320,21 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
                       <DollarSign className="w-4 h-4 text-muted-foreground" />
                       <span className="text-sm font-mono text-muted-foreground uppercase">Budget</span>
                     </div>
-                    <p className="text-xl font-bold font-mono">${projectFinancials.financials.budget.toLocaleString()}</p>
+                    <p className="text-xl font-bold font-mono">${String(projectFinancials.financials.budget).toLocaleString()}</p>
                   </div>
                   <div>
                     <div className="flex items-center gap-2 mb-2">
                       <ShoppingCart className="w-4 h-4 text-purple-400" />
                       <span className="text-sm font-mono text-muted-foreground uppercase">PO Commitments</span>
                     </div>
-                    <p className="text-xl font-bold font-mono text-purple-400">${projectFinancials.financials.po_commitments.toLocaleString()}</p>
+                    <p className="text-xl font-bold font-mono text-purple-400">${String(projectFinancials.financials.po_commitments).toLocaleString()}</p>
                   </div>
                   <div>
                     <div className="flex items-center gap-2 mb-2">
                       <Receipt className="w-4 h-4 text-electric" />
                       <span className="text-sm font-mono text-muted-foreground uppercase">Actual Costs</span>
                     </div>
-                    <p className="text-xl font-bold font-mono text-electric">${projectFinancials.financials.actual_cost.toLocaleString()}</p>
+                    <p className="text-xl font-bold font-mono text-electric">${String(projectFinancials.financials.actual_cost).toLocaleString()}</p>
                   </div>
                   <div>
                     <div className="flex items-center gap-2 mb-2">
@@ -337,7 +342,7 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
                       <span className="text-sm font-mono text-muted-foreground uppercase">Available</span>
                     </div>
                     <p className={cn('text-xl font-bold font-mono', projectFinancials.financials.available_budget < 0 ? 'text-warning' : 'text-voltage')}>
-                      ${projectFinancials.financials.available_budget.toLocaleString()}
+                      ${String(projectFinancials.financials.available_budget).toLocaleString()}
                     </p>
                   </div>
                 </div>
@@ -345,32 +350,32 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
                   <div className="space-y-2">
                     <div className="flex items-center justify-between text-sm">
                       <span className="font-mono text-muted-foreground">Budget Utilization</span>
-                      <span className={cn('font-mono font-bold', ((parseFloat(projectFinancials.financials.actual_cost) || 0) + (parseFloat(projectFinancials.financials.po_commitments) || 0)) / (parseFloat(projectFinancials.financials.budget) || 1) > 1 ? 'text-warning' : 'text-foreground')}>
-                        {(parseFloat(projectFinancials.financials.budget) || 0) > 0 
-                          ? Math.round(((parseFloat(projectFinancials.financials.actual_cost) || 0) + (parseFloat(projectFinancials.financials.po_commitments) || 0)) / (parseFloat(projectFinancials.financials.budget) || 1) * 100)
+                      <span className={cn('font-mono font-bold', ((projectFinancials.financials.actual_cost || 0) + (projectFinancials.financials.po_commitments || 0)) / (projectFinancials.financials.budget || 1) > 1 ? 'text-warning' : 'text-foreground')}>
+                        {(projectFinancials.financials.budget || 0) > 0 
+                          ? Math.round(((projectFinancials.financials.actual_cost || 0) + (projectFinancials.financials.po_commitments || 0)) / (projectFinancials.financials.budget || 1) * 100)
                           : 0}%
                       </span>
                     </div>
                     <Progress
-                      value={Math.min(((parseFloat(projectFinancials.financials.actual_cost) || 0) + (parseFloat(projectFinancials.financials.po_commitments) || 0)) / (parseFloat(projectFinancials.financials.budget) || 1) * 100, 100)}
-                      className={cn('h-3', ((parseFloat(projectFinancials.financials.actual_cost) || 0) + (parseFloat(projectFinancials.financials.po_commitments) || 0)) / (parseFloat(projectFinancials.financials.budget) || 1) > 1 ? '[&>div]:bg-warning' : '[&>div]:bg-electric')}
+                      value={Math.min(((projectFinancials.financials.actual_cost || 0) + (projectFinancials.financials.po_commitments || 0)) / (projectFinancials.financials.budget || 1) * 100, 100)}
+                      className={cn('h-3', ((projectFinancials.financials.actual_cost || 0) + (projectFinancials.financials.po_commitments || 0)) / (projectFinancials.financials.budget || 1) > 1 ? '[&>div]:bg-warning' : '[&>div]:bg-electric')}
                     />
                   </div>
                   <div className="grid grid-cols-3 gap-4 pt-3 border-t border-border text-xs">
                     <div>
                       <span className="text-muted-foreground font-mono uppercase">POs: </span>
-                      <span className="font-bold">{projectFinancials.purchase_orders.total_count} (${(parseFloat(projectFinancials.purchase_orders.total_committed) || 0).toFixed(0)})</span>
+                      <span className="font-bold">{projectFinancials.purchase_orders.total_count} (${(projectFinancials.purchase_orders.total_committed || 0).toFixed(0)})</span>
                     </div>
                     <div>
                       <span className="text-muted-foreground font-mono uppercase">Bills: </span>
-                      <span className="font-bold">{projectFinancials.bills.total_count} (${(parseFloat(projectFinancials.bills.total_amount) || 0).toFixed(0)})</span>
+                      <span className="font-bold">{projectFinancials.bills.total_count} (${(projectFinancials.bills.total_amount || 0).toFixed(0)})</span>
                     </div>
                     <div>
                       <span className="text-muted-foreground font-mono uppercase">Expenses: </span>
-                      <span className="font-bold">{projectFinancials.expenses.total_count} (${(parseFloat(projectFinancials.expenses.total_amount) || 0).toFixed(0)})</span>
+                      <span className="font-bold">{projectFinancials.expenses.total_count} (${(projectFinancials.expenses.total_amount || 0).toFixed(0)})</span>
                     </div>
                   </div>
-                  {(parseFloat(projectFinancials.financials.available_budget) || 0) < 0 && (
+                  {(projectFinancials.financials.available_budget || 0) < 0 && (
                     <p className="text-xs text-warning font-mono">⚠ Project is over budget</p>
                   )}
                 </div>
@@ -994,6 +999,75 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
             </Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* File Upload Modal */}
+      <Dialog open={isUploadModalOpen} onOpenChange={setIsUploadModalOpen}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Upload Files</DialogTitle>
+            <DialogDescription>
+              Upload files for project {project?.name}
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <FileUpload
+              onFileSelect={setUploadFiles}
+              multiple={true}
+              accept="image/*,application/pdf,.doc,.docx"
+              maxSize={50 * 1024 * 1024}
+            />
+            <div className="flex items-center justify-end gap-3 pt-4 border-t border-border">
+              <Button variant="outline" onClick={() => setIsUploadModalOpen(false)}>
+                Cancel
+              </Button>
+              <Button
+                onClick={async () => {
+                  if (!project || uploadFiles.length === 0) {
+                    toast.error('Please select files to upload');
+                    return;
+                  }
+                  try {
+                    const formData = new FormData();
+                    uploadFiles.forEach((file) => {
+                      formData.append('files', file);
+                    });
+                    formData.append('project_id', project.id);
+                    await api.uploadFile(formData);
+                    toast.success('Files uploaded successfully');
+                    setIsUploadModalOpen(false);
+                    setUploadFiles([]);
+                    loadProjectFiles();
+                  } catch (error: any) {
+                    toast.error(error.message || 'Failed to upload files');
+                  }
+                }}
+                disabled={uploadFiles.length === 0}
+              >
+                Upload {uploadFiles.length > 0 && `(${uploadFiles.length})`}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* File Viewer Modal */}
+      <Dialog open={!!selectedFile} onOpenChange={(open) => !open && setSelectedFile(null)}>
+        <DialogContent className="max-w-4xl max-h-[90vh]">
+          <DialogHeader>
+            <DialogTitle>{selectedFile?.file_name}</DialogTitle>
+          </DialogHeader>
+          {selectedFile && (
+            <div className="mt-4">
+              <DocumentViewer
+                fileId={selectedFile.id}
+                fileName={selectedFile.file_name}
+                fileType={selectedFile.file_type}
+                mimeType={selectedFile.mime_type}
+              />
+            </div>
+          )}
         </DialogContent>
       </Dialog>
   );

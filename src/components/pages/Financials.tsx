@@ -854,7 +854,7 @@ export default function Financials() {
                     <span className="font-medium">{client.name}</span>
                   </div>
                   <span className="font-mono font-bold text-electric">
-                    ${parseFloat(client.total_revenue).toLocaleString()}
+                    ${(Number(client.total_revenue) || 0).toLocaleString()}
                   </span>
                 </div>
               ))}
