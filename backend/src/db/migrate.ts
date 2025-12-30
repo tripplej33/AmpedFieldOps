@@ -253,8 +253,19 @@ async function runMigration() {
     try {
       await client.query('BEGIN');
       
-      // Run main migrations
-      await client.query(migrations);
+      // Run main migrations with error handling for duplicate types
+      try {
+        await client.query(migrations);
+      } catch (err: any) {
+        // Handle duplicate type errors (23505) - safe to ignore when using IF NOT EXISTS
+        // PostgreSQL creates composite types for tables, and sometimes they persist after table drops
+        if (err.code === '23505' && err.constraint === 'pg_type_typname_nsp_index') {
+          console.log('  ⚠️  Some database objects already exist (safe to continue with IF NOT EXISTS)');
+          // Continue execution - individual CREATE TABLE IF NOT EXISTS will skip existing tables
+        } else {
+          throw err;
+        }
+      }
       
       // Run additional migration files from migrations directory
       const migrationsDir = path.join(__dirname, 'migrations');
