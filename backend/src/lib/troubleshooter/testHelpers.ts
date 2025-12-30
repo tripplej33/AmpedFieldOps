@@ -53,7 +53,7 @@ export async function apiRequest(
     method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
     body?: any;
     token?: string;
-    expectedStatus?: number;
+    expectedStatus?: number | number[];
   } = {}
 ): Promise<any> {
   const { method = 'GET', body, token, expectedStatus } = options;
@@ -79,8 +79,11 @@ export async function apiRequest(
   const response = await fetch(`${baseUrl}${endpoint}`, config);
   const data = await response.json().catch(() => ({}));
 
-  if (expectedStatus !== undefined && response.status !== expectedStatus) {
-    throw new Error(`Expected status ${expectedStatus}, got ${response.status}: ${JSON.stringify(data)}`);
+  if (expectedStatus !== undefined) {
+    const expectedStatuses = Array.isArray(expectedStatus) ? expectedStatus : [expectedStatus];
+    if (!expectedStatuses.includes(response.status)) {
+      throw new Error(`Expected status ${expectedStatuses.join(' or ')}, got ${response.status}: ${JSON.stringify(data)}`);
+    }
   }
 
   if (!response.ok && expectedStatus === undefined) {

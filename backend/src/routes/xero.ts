@@ -457,13 +457,7 @@ router.get('/callback', async (req, res) => {
         errorMessage = `${errorDescStr}\n\nClient ID: ${clientId || 'NOT SET'}\nRedirect URI: ${redirectUri || 'NOT SET'}`;
       }
       
-      return sendPopupOrRedirect(
-        res,
-        frontendUrl,
-        'error',
-        errorMessage,
-        `?xero_error=${encodeURIComponent(errorStr)}&xero_error_msg=${encodeURIComponent(errorMessage)}`
-      );
+      return res.redirect(`${frontendUrl}/settings?tab=integrations&xero_error=${encodeURIComponent(errorStr)}&xero_error_msg=${encodeURIComponent(errorMessage)}`);
     }
 
     // Ensure code is a string
@@ -477,13 +471,7 @@ router.get('/callback', async (req, res) => {
     
     if (!codeStr) {
       console.error('[Xero] No authorization code received:', { query: req.query });
-      return sendPopupOrRedirect(
-        res,
-        frontendUrl,
-        'error',
-        'No authorization code received from Xero',
-        `?xero_error=no_code&xero_error_msg=${encodeURIComponent('No authorization code received from Xero')}`
-      );
+      return res.redirect(`${frontendUrl}/settings?tab=integrations&xero_error=no_code&xero_error_msg=${encodeURIComponent('No authorization code received from Xero')}`);
     }
 
     // Get credentials from database settings
@@ -491,13 +479,7 @@ router.get('/callback', async (req, res) => {
 
     if (!clientId || !clientSecret) {
       console.error('[Xero] Missing credentials in callback');
-      return sendPopupOrRedirect(
-        res,
-        frontendUrl,
-        'error',
-        'Xero credentials not found. Please configure them in Settings.',
-        `?xero_error=credentials_missing&xero_error_msg=${encodeURIComponent('Xero credentials not found. Please configure them in Settings.')}`
-      );
+      return res.redirect(`${frontendUrl}/settings?tab=integrations&xero_error=credentials_missing&xero_error_msg=${encodeURIComponent('Xero credentials not found. Please configure them in Settings.')}`);
     }
 
     // Ensure credentials are trimmed and valid
@@ -508,13 +490,7 @@ router.get('/callback', async (req, res) => {
     // Validate Client ID format before token exchange
     if (trimmedClientId.includes('@')) {
       console.error('[Xero] ERROR: Client ID is an email address during token exchange:', trimmedClientId);
-      return sendPopupOrRedirect(
-        res,
-        frontendUrl,
-        'error',
-        'Client ID appears to be an email address. Please enter your 32-character Xero Client ID from the Xero Developer Portal.',
-        `?xero_error=invalid_client_id&xero_error_msg=${encodeURIComponent('Client ID appears to be an email address. Please enter your 32-character Xero Client ID from the Xero Developer Portal.')}`
-      );
+      return res.redirect(`${frontendUrl}/settings?tab=integrations&xero_error=invalid_client_id&xero_error_msg=${encodeURIComponent('Client ID appears to be an email address. Please enter your 32-character Xero Client ID from the Xero Developer Portal.')}`);
     }
     
     if (trimmedClientId.length !== 32) {
@@ -523,13 +499,7 @@ router.get('/callback', async (req, res) => {
         expected: 32,
         clientId: `${trimmedClientId.substring(0, 8)}...`
       });
-      return sendPopupOrRedirect(
-        res,
-        frontendUrl,
-        'error',
-        `Client ID must be exactly 32 characters (currently ${trimmedClientId.length}). Please verify your Client ID in Settings.`,
-        `?xero_error=invalid_client_id&xero_error_msg=${encodeURIComponent(`Client ID must be exactly 32 characters (currently ${trimmedClientId.length}). Please verify your Client ID in Settings.`)}`
-      );
+      return res.redirect(`${frontendUrl}/settings?tab=integrations&xero_error=invalid_client_id&xero_error_msg=${encodeURIComponent(`Client ID must be exactly 32 characters (currently ${trimmedClientId.length}). Please verify your Client ID in Settings.`)}`);
     }
 
     // Log Client Secret info (first 4 and last 4 chars for debugging, but not full secret)
@@ -632,13 +602,7 @@ router.get('/callback', async (req, res) => {
       
       const fullErrorMessage = errorDetails ? `${errorMsg}\n\n${errorDetails}` : errorMsg;
       
-      return sendPopupOrRedirect(
-        res,
-        frontendUrl,
-        'error',
-        fullErrorMessage,
-        `?xero_error=token_exchange_failed&xero_error_msg=${encodeURIComponent(fullErrorMessage)}&client_id=${encodeURIComponent(trimmedClientId)}&redirect_uri=${encodeURIComponent(trimmedRedirectUri)}`
-      );
+      return res.redirect(`${frontendUrl}/settings?tab=integrations&xero_error=token_exchange_failed&xero_error_msg=${encodeURIComponent(fullErrorMessage)}&client_id=${encodeURIComponent(trimmedClientId)}&redirect_uri=${encodeURIComponent(trimmedRedirectUri)}`);
     }
 
     interface XeroTokenResponse {
@@ -757,7 +721,7 @@ router.get('/callback', async (req, res) => {
           </div>
           <script>
                 setTimeout(() => {
-                  window.location.href = '${frontendUrl}/settings?xero_error=storage_failed&xero_error_msg=${encodeURIComponent('Connection successful but failed to save. Please try reconnecting.')}';
+                  window.location.href = '${frontendUrl}/settings?tab=integrations&xero_error=storage_failed&xero_error_msg=${encodeURIComponent('Connection successful but failed to save. Please try reconnecting.')}';
                 }, 3000);
           </script>
             </div>
@@ -766,8 +730,8 @@ router.get('/callback', async (req, res) => {
     `);
     }
 
-    // Return HTML that closes the popup and notifies the parent window
-    return sendPopupOrRedirect(res, frontendUrl, 'success', 'Successfully connected to Xero');
+    // Redirect to frontend with success
+    return res.redirect(`${frontendUrl}/settings?tab=integrations&xero_connected=true`);
   } catch (error: any) {
     console.error('[Xero] Callback error:', {
       error: error.message,
@@ -811,7 +775,7 @@ router.get('/callback', async (req, res) => {
             <p>This window will close automatically...</p>
           </div>
           <script>
-              window.location.href = '${frontendUrl}/settings?xero_error=callback_failed';
+              window.location.href = '${frontendUrl}/settings?tab=integrations&xero_error=callback_failed';
           </script>
         </body>
       </html>

@@ -112,10 +112,25 @@ export default function Settings() {
       loadRolePermissions();
     }
 
-    // Check for Xero OAuth errors in URL params
+    // Check for Xero OAuth callback parameters
     const urlParams = new URLSearchParams(window.location.search);
+    const xeroConnected = urlParams.get('xero_connected');
     const xeroError = urlParams.get('xero_error');
     const xeroErrorMsg = urlParams.get('xero_error_msg');
+    
+    if (xeroConnected === 'true') {
+      toast.success('Xero connected successfully');
+      if (hasPermission('can_sync_xero')) {
+        api.getXeroStatus().then((status) => {
+          setXeroStatus(status);
+          // Trigger sidebar refresh by dispatching custom event
+          window.dispatchEvent(new CustomEvent('xero-status-updated'));
+        }).catch(console.error);
+      }
+      // Clean up URL
+      window.history.replaceState({}, '', window.location.pathname + '?tab=integrations');
+      return; // Exit early, don't check for errors if connection succeeded
+    }
     
     if (xeroError) {
       const errorMessages: Record<string, string> = {
@@ -178,15 +193,7 @@ export default function Settings() {
       });
       
       // Clean up URL
-      window.history.replaceState({}, '', window.location.pathname);
-    }
-
-    // Check if we're returning from a successful Xero connection
-    if (urlParams.get('xero_connected') === 'true') {
-      toast.success('Successfully connected to Xero!');
-      loadSettings();
-      // Clean up URL
-      window.history.replaceState({}, '', window.location.pathname);
+      window.history.replaceState({}, '', window.location.pathname + '?tab=integrations');
     }
   }, []);
   
@@ -393,46 +400,8 @@ export default function Settings() {
           return;
         }
         
-        // Listen for messages from the popup
-        const messageListener = (event: MessageEvent) => {
-          // Verify origin for security
-          if (event.origin !== window.location.origin) {
-            return;
-          }
-          
-          if (event.data.type === 'XERO_OAUTH_SUCCESS') {
-            window.removeEventListener('message', messageListener);
-            if (popup && !popup.closed) {
-              popup.close();
-            }
-            toast.success('Successfully connected to Xero!');
-            // Reload Xero status and refresh sidebar
-            if (hasPermission('can_sync_xero')) {
-              api.getXeroStatus().then((status) => {
-                setXeroStatus(status);
-                // Trigger sidebar refresh by dispatching custom event
-                window.dispatchEvent(new CustomEvent('xero-status-updated'));
-              }).catch(console.error);
-            }
-            loadSettings();
-          } else if (event.data.type === 'XERO_OAUTH_ERROR') {
-            window.removeEventListener('message', messageListener);
-            if (popup && !popup.closed) {
-              popup.close();
-            }
-            toast.error(event.data.message || 'Failed to connect to Xero');
-          }
-        };
-        
-        window.addEventListener('message', messageListener);
-        
-        // Check if popup was closed manually
-        const checkClosed = setInterval(() => {
-          if (popup.closed) {
-            clearInterval(checkClosed);
-            window.removeEventListener('message', messageListener);
-          }
-        }, 500);
+        // Popup will redirect back to this page with URL params after OAuth completes
+        // The useEffect hook will handle the callback and refresh the status
         
       } else if (!response.configured) {
         toast.error('Xero credentials not configured. Please save your credentials and try again.');
