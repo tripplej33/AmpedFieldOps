@@ -328,11 +328,11 @@ export default function PurchaseOrderModal({ projectId: initialProjectId, open, 
                   </div>
                   <div className="col-span-2">
                     <Select
-                      value={item.cost_center_id || ''}
+                      value={item.cost_center_id || undefined}
                       onValueChange={(value) => updateLineItem(index, 'cost_center_id', value || undefined)}
                     >
                       <SelectTrigger>
-                        <SelectValue placeholder="Select" />
+                        <SelectValue placeholder="Select (optional)" />
                       </SelectTrigger>
                       <SelectContent>
                         {costCenters.map(cc => (

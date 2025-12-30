@@ -182,8 +182,8 @@ export default function ExpenseModal({ projectId: initialProjectId, open, onOpen
             <div>
               <Label className="font-mono text-xs uppercase tracking-wider">Cost Center (Optional)</Label>
               <Select
-                value={formData.cost_center_id}
-                onValueChange={(value) => setFormData({ ...formData, cost_center_id: value })}
+                value={formData.cost_center_id || undefined}
+                onValueChange={(value) => setFormData({ ...formData, cost_center_id: value || '' })}
               >
                 <SelectTrigger className="mt-2">
                   <SelectValue placeholder="Select cost center (optional)" />
