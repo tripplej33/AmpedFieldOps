@@ -62,8 +62,8 @@ clear
 echo -e "${GREEN}${BOLD}"
 echo "╔═══════════════════════════════════════════════════════════════════════════════╗"
 echo "║                                                                               ║"
-echo "║              ${CYAN}${BOLD}AmpedFieldOps Installation Script${GREEN}${BOLD}                      ║"
-echo "║         ${MAGENTA}Electrical Contracting Service Management${GREEN}${BOLD}                    ║"
+echo -e "║              ${CYAN}${BOLD}AmpedFieldOps Installation Script${GREEN}${BOLD}                      ║"
+echo -e "║         ${MAGENTA}Electrical Contracting Service Management${GREEN}${BOLD}                    ║"
 echo "║                                                                               ║"
 echo "╚═══════════════════════════════════════════════════════════════════════════════╝"
 echo -e "${NC}"
@@ -121,9 +121,21 @@ SERVER_IP=$(countdown_input "Server IP address" "localhost" 30)
 
 # Update .env with server IP
 if [ "$SERVER_IP" != "localhost" ]; then
-    sed -i "s|VITE_API_URL=http://localhost:3001|VITE_API_URL=http://$SERVER_IP:3001|" .env
-    sed -i "s|FRONTEND_URL=http://localhost:3000|FRONTEND_URL=http://$SERVER_IP:3000|" .env
-    sed -i "s|FRONTEND_URL=http://localhost:5173|FRONTEND_URL=http://$SERVER_IP:3000|" .env
+    # Use perl for safer string replacement if available, otherwise use sed with proper escaping
+    if command -v perl &> /dev/null; then
+        perl -i -pe "s|VITE_API_URL=http://localhost:3001|VITE_API_URL=http://$SERVER_IP:3001|g" .env
+        perl -i -pe "s|FRONTEND_URL=http://localhost:3000|FRONTEND_URL=http://$SERVER_IP:3000|g" .env
+        perl -i -pe "s|FRONTEND_URL=http://localhost:5173|FRONTEND_URL=http://$SERVER_IP:3000|g" .env
+    else
+        # Escape special characters in SERVER_IP for sed
+        ESCAPED_IP=$(printf '%s\n' "$SERVER_IP" | sed 's/[[\.*^$()+?{|]/\\&/g')
+        sed -i "s|VITE_API_URL=http://localhost:3001|VITE_API_URL=http://${ESCAPED_IP}:3001|g" .env 2>/dev/null || \
+        sed -i '' "s|VITE_API_URL=http://localhost:3001|VITE_API_URL=http://${ESCAPED_IP}:3001|g" .env
+        sed -i "s|FRONTEND_URL=http://localhost:3000|FRONTEND_URL=http://${ESCAPED_IP}:3000|g" .env 2>/dev/null || \
+        sed -i '' "s|FRONTEND_URL=http://localhost:3000|FRONTEND_URL=http://${ESCAPED_IP}:3000|g" .env
+        sed -i "s|FRONTEND_URL=http://localhost:5173|FRONTEND_URL=http://${ESCAPED_IP}:3000|g" .env 2>/dev/null || \
+        sed -i '' "s|FRONTEND_URL=http://localhost:5173|FRONTEND_URL=http://${ESCAPED_IP}:3000|g" .env
+    fi
     echo -e "${GREEN}${BOLD}✓${NC} ${GREEN}Configured for remote access at ${BOLD}$SERVER_IP${NC}"
 fi
 
