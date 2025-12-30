@@ -272,8 +272,9 @@ export default function Settings() {
         }
         
         // Load Google Drive credentials from settings
+        // Use same origin as frontend (API is proxied through Nginx)
         const googleDriveRedirectUri = settingsData.google_drive_redirect_uri || 
-          `${window.location.origin.replace('admin.', 'api.')}/api/backups/google-drive/callback`;
+          `${window.location.origin}/api/backups/google-drive/callback`;
         
         setGoogleDriveCredentials({
           clientId: settingsData.google_drive_client_id || '',
@@ -637,8 +638,9 @@ export default function Settings() {
     setIsSavingGoogleDriveCredentials(true);
     try {
       // Use provided redirect URI or default
+      // Use same origin as frontend (API is proxied through Nginx)
       const currentRedirectUri = redirectUri.trim() || 
-        `${window.location.origin.replace('admin.', 'api.')}/api/backups/google-drive/callback`;
+        `${window.location.origin}/api/backups/google-drive/callback`;
       
       // Warn if redirect URI contains localhost in production
       if (currentRedirectUri.includes('localhost') && !window.location.hostname.includes('localhost')) {
