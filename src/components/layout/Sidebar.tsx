@@ -14,7 +14,9 @@ import {
   Activity,
   LogOut,
   User,
-  Wrench
+  Wrench,
+  FolderOpen,
+  Shield
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState, useEffect } from 'react';
@@ -35,6 +37,7 @@ const mainNavigation: NavItem[] = [
   { name: 'Projects', href: '/projects', icon: Briefcase },
   { name: 'Clients', href: '/clients', icon: Users },
   { name: 'Timesheets', href: '/timesheets', icon: Clock },
+  { name: 'Files', href: '/files', icon: FolderOpen, permission: 'can_view_financials' },
   { name: 'Reports', href: '/reports', icon: FileText },
   { name: 'Financials', href: '/financials', icon: DollarSign, permission: 'can_view_financials' },
 ];
@@ -42,6 +45,7 @@ const mainNavigation: NavItem[] = [
 const adminNavigation: NavItem[] = [
   { name: 'Users', href: '/users', icon: UserCog, permission: 'can_manage_users' },
   { name: 'Activity Types', href: '/activity-types', icon: Activity, permission: 'can_edit_activity_types' },
+  { name: 'Safety Documents', href: '/safety-documents', icon: Shield, permission: 'can_view_financials' },
   { name: 'Troubleshooter', href: '/troubleshooter', icon: Wrench, permission: 'can_manage_users' },
   { name: 'Settings', href: '/settings', icon: Settings },
 ];

@@ -895,6 +895,129 @@ class ApiClient {
       category: string;
     }>>('/api/troubleshooter/suites');
   }
+
+  // File Management
+  async getFiles(params?: { project_id?: string; cost_center_id?: string; file_type?: string }) {
+    const searchParams = new URLSearchParams(params as Record<string, string>);
+    return this.request<import('../types').ProjectFile[]>(`/api/files?${searchParams}`);
+  }
+
+  async getFile(id: string) {
+    return this.request<import('../types').ProjectFile>(`/api/files/${id}`);
+  }
+
+
+  async uploadProjectFile(file: File, projectId: string, costCenterId?: string): Promise<import('../types').ProjectFile> {
+    // Create FormData manually to include additional fields
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('project_id', projectId);
+    if (costCenterId) {
+      formData.append('cost_center_id', costCenterId);
+    }
+
+    const headers: Record<string, string> = {};
+    if (this.token) {
+      headers['Authorization'] = `Bearer ${this.token}`;
+    }
+
+    try {
+      const response = await fetch(`${API_URL}/api/files`, {
+        method: 'POST',
+        headers,
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Upload failed' }));
+        const error = new Error(errorData.error || 'Upload failed');
+        this.logApiError('/api/files', error, 'api');
+        throw error;
+      }
+
+      return response.json();
+    } catch (error: any) {
+      if (error.name === 'TypeError' && error.message.includes('fetch')) {
+        const networkError = new Error('Network error during file upload');
+        this.logApiError('/api/files', networkError, 'network');
+        throw networkError;
+      }
+      throw error;
+    }
+  }
+
+  async deleteFile(id: string) {
+    return this.request<{ message: string }>(`/api/files/${id}`, { method: 'DELETE' });
+  }
+
+  async downloadFile(id: string): Promise<Blob> {
+    const response = await fetch(`/api/files/${id}/download`, {
+      headers: {
+        'Authorization': `Bearer ${this.getToken()}`,
+      },
+    });
+    if (!response.ok) {
+      throw new Error('Failed to download file');
+    }
+    return response.blob();
+  }
+
+  async getProjectFiles(projectId: string) {
+    return this.request<import('../types').ProjectFile[]>(`/api/files/projects/${projectId}`);
+  }
+
+  async getCostCenterFiles(costCenterId: string) {
+    return this.request<import('../types').ProjectFile[]>(`/api/files/cost-centers/${costCenterId}`);
+  }
+
+  // Safety Documents
+  async getSafetyDocuments(params?: { project_id?: string; cost_center_id?: string; document_type?: string; status?: string }) {
+    const searchParams = new URLSearchParams(params as Record<string, string>);
+    return this.request<import('../types').SafetyDocument[]>(`/api/safety-documents?${searchParams}`);
+  }
+
+  async getSafetyDocument(id: string) {
+    return this.request<import('../types').SafetyDocument>(`/api/safety-documents/${id}`);
+  }
+
+  async createSafetyDocument(data: {
+    project_id: string;
+    cost_center_id?: string;
+    document_type: 'jsa' | 'electrical_compliance' | 'electrical_safety_certificate';
+    title: string;
+    data: import('../types').JSAData | import('../types').ComplianceData | import('../types').SafetyCertificateData;
+    status?: 'draft' | 'completed' | 'approved';
+  }) {
+    return this.request<import('../types').SafetyDocument>('/api/safety-documents', { method: 'POST', body: data });
+  }
+
+  async updateSafetyDocument(id: string, data: {
+    title?: string;
+    data?: import('../types').JSAData | import('../types').ComplianceData | import('../types').SafetyCertificateData;
+    status?: 'draft' | 'completed' | 'approved';
+  }) {
+    return this.request<import('../types').SafetyDocument>(`/api/safety-documents/${id}`, { method: 'PUT', body: data });
+  }
+
+  async deleteSafetyDocument(id: string) {
+    return this.request<{ message: string }>(`/api/safety-documents/${id}`, { method: 'DELETE' });
+  }
+
+  async generateSafetyDocumentPDF(id: string) {
+    return this.request<{ message: string; file_path: string }>(`/api/safety-documents/${id}/generate-pdf`, { method: 'POST' });
+  }
+
+  async downloadSafetyDocumentPDF(id: string): Promise<Blob> {
+    const response = await fetch(`/api/safety-documents/${id}/pdf`, {
+      headers: {
+        'Authorization': `Bearer ${this.getToken()}`,
+      },
+    });
+    if (!response.ok) {
+      throw new Error('Failed to download PDF');
+    }
+    return response.blob();
+  }
 }
 
 export const api = new ApiClient();

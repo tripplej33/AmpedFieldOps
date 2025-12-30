@@ -17,8 +17,10 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card } from '@/components/ui/card';
 import { api } from '@/lib/api';
-import { DollarSign, Clock, Calendar, Send, TrendingUp, Wrench, Loader2, Pencil, Plus, FolderOpen, Trash2, ShoppingCart, Receipt } from 'lucide-react';
-import { ProjectFinancials } from '@/types';
+import { DollarSign, Clock, Calendar, Send, TrendingUp, Wrench, Loader2, Pencil, Plus, FolderOpen, Trash2, ShoppingCart, Receipt, File, Shield, Upload, Eye, Download as DownloadIcon } from 'lucide-react';
+import { ProjectFinancials, ProjectFile, SafetyDocument } from '@/types';
+import { FileUpload } from '@/components/ui/file-upload';
+import { DocumentViewer } from '@/components/ui/document-viewer';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -63,6 +65,8 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
       loadClients();
       loadCostCenters();
       loadProjectFinancials();
+      loadProjectFiles();
+      loadSafetyDocuments();
       // Reset edit form when project changes
       setEditForm({
         name: project.name,
@@ -75,6 +79,34 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
       setShowCostCenterForm(false);
     }
   }, [project, open]);
+
+  const loadProjectFiles = async () => {
+    if (!project) return;
+    try {
+      const files = await api.getProjectFiles(project.id);
+      setProjectFiles(files);
+    } catch (error: any) {
+      console.error('Failed to load project files:', error);
+    }
+  };
+
+  const loadSafetyDocuments = async () => {
+    if (!project) return;
+    try {
+      const docs = await api.getSafetyDocuments({ project_id: project.id });
+      setSafetyDocuments(docs);
+    } catch (error: any) {
+      console.error('Failed to load safety documents:', error);
+    }
+  };
+
+  const formatFileSize = (bytes: number) => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+  };
 
   const loadProjectFinancials = async () => {
     if (!project) return;
@@ -389,10 +421,12 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
 
           {/* Tabs */}
           <Tabs defaultValue="costcenters" className="w-full">
-            <TabsList className="grid w-full grid-cols-4">
+            <TabsList className="grid w-full grid-cols-6">
               <TabsTrigger value="costcenters">Cost Centers</TabsTrigger>
               <TabsTrigger value="breakdown">Breakdown</TabsTrigger>
               <TabsTrigger value="timesheets">Timesheets</TabsTrigger>
+              <TabsTrigger value="files">Files</TabsTrigger>
+              <TabsTrigger value="safety">Safety</TabsTrigger>
               <TabsTrigger value="details">Details</TabsTrigger>
             </TabsList>
 
@@ -627,6 +661,176 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
               )}
             </TabsContent>
 
+            {/* Files Tab */}
+            <TabsContent value="files" className="space-y-4 mt-4">
+              <div className="flex items-center justify-between">
+                <h4 className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
+                  Project Files ({projectFiles.length})
+                </h4>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsUploadModalOpen(true)}
+                >
+                  <Upload className="w-4 h-4 mr-1" />
+                  Upload Files
+                </Button>
+              </div>
+
+              {projectFiles.length === 0 ? (
+                <Card className="p-6 bg-card border-border">
+                  <p className="text-center text-muted-foreground">No files uploaded</p>
+                </Card>
+              ) : (
+                <div className="space-y-2">
+                  {projectFiles.map((file) => (
+                    <Card key={file.id} className="p-4 hover:border-electric transition-colors">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3 flex-1 min-w-0">
+                          <File className="w-5 h-5 text-electric" />
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium truncate">{file.file_name}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {formatFileSize(file.file_size)} • {new Date(file.created_at).toLocaleDateString()}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setSelectedFile(file)}
+                          >
+                            <Eye className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={async () => {
+                              try {
+                                const blob = await api.downloadFile(file.id);
+                                const url = URL.createObjectURL(blob);
+                                const a = document.createElement('a');
+                                a.href = url;
+                                a.download = file.file_name;
+                                document.body.appendChild(a);
+                                a.click();
+                                document.body.removeChild(a);
+                                URL.revokeObjectURL(url);
+                              } catch (error: any) {
+                                toast.error('Failed to download file');
+                              }
+                            }}
+                          >
+                            <DownloadIcon className="w-4 h-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={async () => {
+                              if (!confirm(`Delete ${file.file_name}?`)) return;
+                              try {
+                                await api.deleteFile(file.id);
+                                toast.success('File deleted');
+                                loadProjectFiles();
+                              } catch (error: any) {
+                                toast.error('Failed to delete file');
+                              }
+                            }}
+                          >
+                            <Trash2 className="w-4 h-4 text-destructive" />
+                          </Button>
+                        </div>
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </TabsContent>
+
+            {/* Safety Documents Tab */}
+            <TabsContent value="safety" className="space-y-4 mt-4">
+              <div className="flex items-center justify-between">
+                <h4 className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
+                  Safety Documents ({safetyDocuments.length})
+                </h4>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => toast.info('Create safety document feature coming soon')}
+                >
+                  <Plus className="w-4 h-4 mr-1" />
+                  New Document
+                </Button>
+              </div>
+
+              {safetyDocuments.length === 0 ? (
+                <Card className="p-6 bg-card border-border">
+                  <p className="text-center text-muted-foreground">No safety documents</p>
+                </Card>
+              ) : (
+                <div className="space-y-2">
+                  {safetyDocuments.map((doc) => (
+                    <Card key={doc.id} className="p-4 hover:border-electric transition-colors">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3 flex-1">
+                          <Shield className="w-5 h-5 text-electric" />
+                          <div className="flex-1">
+                            <p className="font-medium">{doc.title}</p>
+                            <p className="text-xs text-muted-foreground">
+                              {doc.document_type.replace('_', ' ')} • {doc.status} • {new Date(doc.created_at).toLocaleDateString()}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          {doc.file_path ? (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={async () => {
+                                try {
+                                  const blob = await api.downloadSafetyDocumentPDF(doc.id);
+                                  const url = URL.createObjectURL(blob);
+                                  const a = document.createElement('a');
+                                  a.href = url;
+                                  a.download = `${doc.title}.pdf`;
+                                  document.body.appendChild(a);
+                                  a.click();
+                                  document.body.removeChild(a);
+                                  URL.revokeObjectURL(url);
+                                } catch (error: any) {
+                                  toast.error('Failed to download PDF');
+                                }
+                              }}
+                            >
+                              <DownloadIcon className="w-4 h-4 mr-1" />
+                              PDF
+                            </Button>
+                          ) : (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={async () => {
+                                try {
+                                  await api.generateSafetyDocumentPDF(doc.id);
+                                  toast.success('PDF generated');
+                                  loadSafetyDocuments();
+                                } catch (error: any) {
+                                  toast.error('Failed to generate PDF');
+                                }
+                              }}
+                            >
+                              Generate PDF
+                            </Button>
+                          )}
+                        </div>
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </TabsContent>
+
             {/* Details */}
             <TabsContent value="details" className="space-y-4 mt-4">
               <Card className="p-4 bg-card border-border">
@@ -788,9 +992,9 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
               <Pencil className="w-4 h-4 mr-2" />
               {isEditing ? 'Cancel Edit' : 'Edit Project'}
             </Button>
+            </div>
           </div>
-        </div>
-      </DialogContent>
-    </Dialog>
+        </DialogContent>
+      </Dialog>
   );
 }

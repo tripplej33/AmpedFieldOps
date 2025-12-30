@@ -97,3 +97,59 @@ export const logoUpload = multer({
     fileSize: 5 * 1024 * 1024 // 5MB
   }
 });
+
+// File upload storage for project files with organized directory structure
+const fileUploadStorage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const projectId = req.body?.project_id || 'general';
+    const costCenterId = req.body?.cost_center_id;
+    
+    // Create directory: uploads/projects/{project_id}/files/
+    let uploadDir = path.join(__dirname, '../../uploads/projects', projectId, 'files');
+    
+    // If cost center is specified, add it to the path
+    if (costCenterId) {
+      uploadDir = path.join(uploadDir, costCenterId);
+    }
+    
+    // Ensure directory exists
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    
+    cb(null, uploadDir);
+  },
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname);
+    cb(null, `${uuidv4()}${ext}`);
+  }
+});
+
+// File filter for project files - allows images, PDFs, and common document types
+const fileUploadFilter = (req: Express.Request, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
+  const allowedTypes = [
+    'image/jpeg', 'image/png', 'image/gif', 'image/webp',
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.ms-excel',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    'text/plain',
+    'text/csv'
+  ];
+  
+  if (allowedTypes.includes(file.mimetype)) {
+    cb(null, true);
+  } else {
+    cb(new Error(`Invalid file type: ${file.mimetype}. Allowed types: images, PDFs, documents, spreadsheets, text files.`));
+  }
+};
+
+// File upload middleware for project files
+export const fileUpload = multer({
+  storage: fileUploadStorage,
+  fileFilter: fileUploadFilter,
+  limits: {
+    fileSize: 50 * 1024 * 1024 // 50MB
+  }
+});

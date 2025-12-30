@@ -406,3 +406,97 @@ export interface ErrorLogEntry {
   user_name?: string;
   created_at: string;
 }
+
+export interface ProjectFile {
+  id: string;
+  project_id: string;
+  cost_center_id?: string;
+  file_name: string;
+  file_path: string;
+  file_type: 'image' | 'pdf' | 'document';
+  file_size: number;
+  mime_type?: string;
+  uploaded_by?: string;
+  uploaded_by_name?: string;
+  project_code?: string;
+  project_name?: string;
+  client_name?: string;
+  cost_center_code?: string;
+  cost_center_name?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SafetyDocument {
+  id: string;
+  project_id: string;
+  cost_center_id?: string;
+  document_type: 'jsa' | 'electrical_compliance' | 'electrical_safety_certificate';
+  title: string;
+  data: JSAData | ComplianceData | SafetyCertificateData;
+  file_path?: string;
+  status: 'draft' | 'completed' | 'approved';
+  created_by?: string;
+  created_by_name?: string;
+  approved_by?: string;
+  approved_by_name?: string;
+  approved_at?: string;
+  project_code?: string;
+  project_name?: string;
+  client_name?: string;
+  cost_center_code?: string;
+  cost_center_name?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface JSAData {
+  job_description: string;
+  location: string;
+  date: string;
+  prepared_by?: string;
+  prepared_by_name?: string;
+  prepared_by_date?: string;
+  approved_by_name?: string;
+  approved_by_date?: string;
+  hazards?: Array<{
+    description: string;
+    risk_level: string;
+    control_measures: string;
+  }>;
+  notes?: string;
+}
+
+export interface ComplianceData {
+  certificate_number: string;
+  issue_date: string;
+  location: string;
+  description: string;
+  installation_date?: string;
+  testing_results?: string | Array<{
+    test: string;
+    result: string;
+  }>;
+  compliance_standards?: string[];
+  inspector_name?: string;
+  inspector_license?: string;
+  inspection_date?: string;
+  inspector_signature_date?: string;
+}
+
+export interface SafetyCertificateData {
+  certificate_number: string;
+  issue_date: string;
+  expiry_date?: string;
+  location: string;
+  description: string;
+  safety_checks?: Array<{
+    check: string;
+    status: string;
+    notes?: string;
+  }>;
+  inspector_name?: string;
+  inspector_license?: string;
+  inspection_date?: string;
+  inspector_signature_date?: string;
+}
