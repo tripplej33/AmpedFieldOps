@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import { body, validationResult } from 'express-validator';
 import { query } from '../db';
 import { authenticate, requirePermission, AuthRequest } from '../middleware/auth';
+import { env } from '../config/env';
 
 const router = Router();
 
@@ -43,9 +44,14 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
 
     const result = await query(sql, params);
     res.json(result.rows);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Get clients error:', error);
-    res.status(500).json({ error: 'Failed to fetch clients' });
+    const errorMessage = error.message || 'Failed to fetch clients';
+    const isTableError = errorMessage.includes('does not exist') || errorMessage.includes('relation') || error.code === '42P01';
+    res.status(500).json({ 
+      error: isTableError ? 'Database tables not found. Please run migrations.' : 'Failed to fetch clients',
+      details: env.NODE_ENV === 'development' ? errorMessage : undefined
+    });
   }
 });
 

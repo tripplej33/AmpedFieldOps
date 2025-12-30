@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import { query } from '../db';
 import { authenticate, requirePermission, AuthRequest } from '../middleware/auth';
 import { fileUpload } from '../middleware/upload';
+import { env } from '../config/env';
 import path from 'path';
 import fs from 'fs';
 
@@ -313,9 +314,11 @@ router.get('/timesheet-images/:projectId', authenticate, async (req: AuthRequest
     res.json(images);
   } catch (error: any) {
     console.error('Get timesheet images error:', error);
+    const errorMessage = error.message || 'Failed to fetch timesheet images';
+    const isTableError = errorMessage.includes('does not exist') || errorMessage.includes('relation') || error.code === '42P01';
     res.status(500).json({ 
-      error: 'Failed to fetch timesheet images',
-      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      error: isTableError ? 'Database tables not found. Please run migrations.' : 'Failed to fetch timesheet images',
+      details: env.NODE_ENV === 'development' ? errorMessage : undefined
     });
   }
 });
@@ -363,9 +366,11 @@ router.get('/timesheet-images', authenticate, async (req: AuthRequest, res: Resp
     res.json(rows);
   } catch (error: any) {
     console.error('Get timesheet images summary error:', error);
+    const errorMessage = error.message || 'Failed to fetch timesheet images summary';
+    const isTableError = errorMessage.includes('does not exist') || errorMessage.includes('relation') || error.code === '42P01';
     res.status(500).json({ 
-      error: 'Failed to fetch timesheet images summary',
-      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      error: isTableError ? 'Database tables not found. Please run migrations.' : 'Failed to fetch timesheet images summary',
+      details: env.NODE_ENV === 'development' ? errorMessage : undefined
     });
   }
 });
@@ -419,9 +424,10 @@ router.get('/logos', authenticate, requirePermission('can_manage_settings'), asy
     res.json(validLogos);
   } catch (error: any) {
     console.error('Get logos error:', error);
+    const errorMessage = error.message || 'Failed to fetch logos';
     res.status(500).json({ 
       error: 'Failed to fetch logos',
-      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      details: env.NODE_ENV === 'development' ? errorMessage : undefined
     });
   }
 });
