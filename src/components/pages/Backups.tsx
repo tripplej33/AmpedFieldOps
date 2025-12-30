@@ -206,7 +206,7 @@ export default function Backups() {
 
   return (
     <div className="space-y-6">
-      <Header title="Backups" description="Manage database and file backups" />
+      <Header title="Backups" subtitle="Manage database and file backups" />
       
       <div className="grid gap-6 md:grid-cols-2">
         {/* Create Backup Card */}

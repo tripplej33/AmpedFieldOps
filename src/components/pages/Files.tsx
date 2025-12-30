@@ -28,7 +28,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 
-interface ProjectWithFiles extends Project {
+interface ProjectWithFiles extends Omit<Project, 'files'> {
   files?: ProjectFile[];
   timesheetImages?: Array<{
     url: string;
@@ -60,7 +60,7 @@ export default function Files() {
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
   const [expandedTimesheetImages, setExpandedTimesheetImages] = useState<Set<string>>(new Set());
   const [expandedLogos, setExpandedLogos] = useState(false);
-  const [selectedProject, setSelectedProject] = useState<Project | null>(null);
+  const [selectedProject, setSelectedProject] = useState<ProjectWithFiles | null>(null);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<ProjectFile | null>(null);
   const [uploadFiles, setUploadFiles] = useState<File[]>([]);

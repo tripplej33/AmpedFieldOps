@@ -216,8 +216,8 @@ export default function Financials() {
   const handleSync = async () => {
     setIsSyncing(true);
     try {
-      const result = await api.syncXero('all');
-      toast.success(`Xero sync completed at ${new Date(result.synced_at).toLocaleTimeString()}`);
+      const result = await api.syncXero('all') as any;
+      toast.success(`Xero sync completed at ${new Date(result.synced_at || Date.now()).toLocaleTimeString()}`);
       // Refresh Xero status
       window.dispatchEvent(new CustomEvent('xero-status-updated'));
       loadData();
@@ -485,7 +485,7 @@ export default function Financials() {
                                 <Button 
                                   variant="ghost" 
                                   size="sm"
-                                  onClick={() => handleMarkAsPaid(invoice.id)}
+                                  onClick={() => handleMarkAsPaid(String(invoice.id))}
                                 >
                                   Mark as Paid
                                 </Button>
@@ -612,7 +612,7 @@ export default function Financials() {
                             {new Date(payment.payment_date).toLocaleDateString()}
                           </td>
                           <td className="px-6 py-4 text-right font-mono font-bold">
-                            ${(parseFloat(payment.amount) || 0).toFixed(2)}
+                            ${(Number(payment.amount) || 0).toFixed(2)}
                           </td>
                           <td className="px-6 py-4">{payment.payment_method.replace('_', ' ')}</td>
                           <td className="px-6 py-4 text-muted-foreground">{payment.reference || '-'}</td>
@@ -665,7 +665,7 @@ export default function Financials() {
                             {new Date(po.date).toLocaleDateString()}
                           </td>
                           <td className="px-6 py-4 text-right font-mono font-bold">
-                            ${(parseFloat(po.total_amount) || 0).toFixed(2)}
+                            ${(Number(po.total_amount) || 0).toFixed(2)}
                           </td>
                           <td className="px-6 py-4 text-center">
                             {getStatusBadge(po.status)}
@@ -740,10 +740,10 @@ export default function Financials() {
                             {new Date(bill.date).toLocaleDateString()}
                           </td>
                           <td className="px-6 py-4 text-right font-mono font-bold">
-                            ${(parseFloat(bill.amount) || 0).toFixed(2)}
+                            ${(Number(bill.amount) || 0).toFixed(2)}
                           </td>
                           <td className="px-6 py-4 text-right font-mono">
-                            ${(parseFloat(bill.amount_due) || 0).toFixed(2)}
+                            ${(Number(bill.amount_due) || 0).toFixed(2)}
                           </td>
                           <td className="px-6 py-4 text-center">
                             {getStatusBadge(bill.status)}
@@ -756,7 +756,7 @@ export default function Financials() {
                                   size="sm"
                                   onClick={async () => {
                                     try {
-                                      await api.markBillAsPaid(bill.id, { amount: parseFloat(bill.amount_due) || 0 });
+                                      await api.markBillAsPaid(String(bill.id), { amount: Number(bill.amount_due) || 0 });
                                       toast.success('Bill marked as paid');
                                       loadData();
                                     } catch (error: any) {
@@ -819,7 +819,7 @@ export default function Financials() {
                           <td className="px-6 py-4">{expense.project_name || expense.project_code || '-'}</td>
                           <td className="px-6 py-4">{expense.cost_center_name || expense.cost_center_code || '-'}</td>
                           <td className="px-6 py-4 text-right font-mono font-bold">
-                            ${(parseFloat(expense.amount) || 0).toFixed(2)}
+                            ${(Number(expense.amount) || 0).toFixed(2)}
                           </td>
                           <td className="px-6 py-4 text-center">
                             {getStatusBadge(expense.status)}
