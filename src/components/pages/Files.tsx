@@ -452,26 +452,26 @@ export default function Files() {
                   <p className="text-muted-foreground">No files found</p>
                 ) : (
                   filteredClients.map((client) => (
-                  <div key={client.id} className="border border-border rounded-lg">
-                    <button
-                      onClick={() => toggleClient(client.id)}
-                      className="w-full flex items-center gap-2 p-3 hover:bg-muted/50 transition-colors text-left"
-                    >
-                      {expandedClients.has(client.id) ? (
-                        <ChevronDown className="w-4 h-4" />
-                      ) : (
-                        <ChevronRight className="w-4 h-4" />
-                      )}
-                      <FolderOpen className="w-4 h-4 text-electric" />
-                      <span className="font-medium">{client.name}</span>
-                      <Badge variant="outline" className="ml-auto">
-                        {client.projects?.reduce((sum, p) => sum + (p.files?.length || 0), 0)} files
-                      </Badge>
-                    </button>
+                    <div key={client.id} className="border border-border rounded-lg">
+                      <button
+                        onClick={() => toggleClient(client.id)}
+                        className="w-full flex items-center gap-2 p-3 hover:bg-muted/50 transition-colors text-left"
+                      >
+                        {expandedClients.has(client.id) ? (
+                          <ChevronDown className="w-4 h-4" />
+                        ) : (
+                          <ChevronRight className="w-4 h-4" />
+                        )}
+                        <FolderOpen className="w-4 h-4 text-electric" />
+                        <span className="font-medium">{client.name}</span>
+                        <Badge variant="outline" className="ml-auto">
+                          {client.projects?.reduce((sum, p) => sum + (p.files?.length || 0), 0)} files
+                        </Badge>
+                      </button>
 
-                    {expandedClients.has(client.id) && (
-                      <div className="pl-6 border-t border-border">
-                        {client.projects?.map((project) => (
+                      {expandedClients.has(client.id) && (
+                        <div className="pl-6 border-t border-border">
+                          {client.projects?.map((project) => (
                           <div key={project.id} className="border-b border-border last:border-b-0">
                             <button
                               onClick={() => toggleProject(project.id)}
@@ -612,11 +612,12 @@ export default function Files() {
                               </div>
                             )}
                           </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ))}
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))
+                )}
               </div>
             )}
           </Card>
