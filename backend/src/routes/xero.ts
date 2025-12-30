@@ -845,8 +845,14 @@ router.get('/status', authenticate, async (req: AuthRequest, res: Response) => {
       last_sync: token.updated_at ? token.updated_at.toISOString() : null,
       needs_refresh: isExpired
     });
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to get Xero status' });
+  } catch (error: any) {
+    console.error('Failed to get Xero status:', error);
+    const errorMessage = error.message || 'Failed to get Xero status';
+    const isTableError = errorMessage.includes('does not exist') || errorMessage.includes('relation') || error.code === '42P01';
+    res.status(500).json({ 
+      error: isTableError ? 'Database tables not found. Please run migrations.' : 'Failed to get Xero status',
+      details: env.NODE_ENV === 'development' ? errorMessage : undefined
+    });
   }
 });
 
