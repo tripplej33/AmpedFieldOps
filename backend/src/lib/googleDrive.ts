@@ -12,7 +12,7 @@ const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
 const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || '';
 
 // Get Google Drive OAuth credentials from database or environment
-async function getGoogleDriveCredentials(): Promise<{ clientId: string; clientSecret: string; redirectUri: string }> {
+export async function getGoogleDriveCredentials(): Promise<{ clientId: string; clientSecret: string; redirectUri: string }> {
   try {
     // Try to get credentials from database first
     const clientIdResult = await query("SELECT value FROM settings WHERE key = 'google_drive_client_id' ORDER BY updated_at DESC LIMIT 1");

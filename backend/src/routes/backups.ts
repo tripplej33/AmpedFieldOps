@@ -341,7 +341,6 @@ router.get('/google-drive/auth', authenticate, requirePermission('can_manage_use
     const authUrl = await getAuthUrl(state);
     
     // Get credentials to return redirect URI for verification
-    const { getGoogleDriveCredentials } = await import('../lib/googleDrive');
     const { redirectUri } = await getGoogleDriveCredentials();
     
     res.json({ 
