@@ -206,6 +206,140 @@ CREATE TABLE IF NOT EXISTS xero_quotes (
 ALTER TABLE timesheets 
 ADD COLUMN IF NOT EXISTS invoice_id UUID REFERENCES xero_invoices(id) ON DELETE SET NULL;
 
+-- Xero Purchase Orders table
+CREATE TABLE IF NOT EXISTS xero_purchase_orders (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  xero_po_id VARCHAR(100) UNIQUE,
+  po_number VARCHAR(50),
+  supplier_id UUID REFERENCES clients(id) ON DELETE SET NULL,
+  project_id UUID NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+  status VARCHAR(50) DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'SUBMITTED', 'AUTHORISED', 'BILLED', 'CANCELLED')),
+  date DATE NOT NULL,
+  delivery_date DATE,
+  total_amount DECIMAL(15,2) DEFAULT 0,
+  currency VARCHAR(10) DEFAULT 'USD',
+  line_items JSONB,
+  bill_id UUID,
+  notes TEXT,
+  synced_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Purchase Order Line Items table
+CREATE TABLE IF NOT EXISTS xero_purchase_order_line_items (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  po_id UUID NOT NULL REFERENCES xero_purchase_orders(id) ON DELETE CASCADE,
+  description TEXT,
+  quantity DECIMAL(10,2),
+  unit_amount DECIMAL(15,2),
+  account_code VARCHAR(50),
+  cost_center_id UUID REFERENCES cost_centers(id) ON DELETE SET NULL,
+  item_id UUID,
+  line_amount DECIMAL(15,2),
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Xero Bills table
+CREATE TABLE IF NOT EXISTS xero_bills (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  xero_bill_id VARCHAR(100) UNIQUE,
+  bill_number VARCHAR(50),
+  supplier_id UUID REFERENCES clients(id) ON DELETE SET NULL,
+  purchase_order_id UUID REFERENCES xero_purchase_orders(id) ON DELETE SET NULL,
+  project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
+  amount DECIMAL(15,2) NOT NULL,
+  amount_paid DECIMAL(15,2) DEFAULT 0,
+  amount_due DECIMAL(15,2),
+  currency VARCHAR(10) DEFAULT 'USD',
+  date DATE NOT NULL,
+  due_date DATE,
+  status VARCHAR(50) DEFAULT 'AUTHORISED' CHECK (status IN ('DRAFT', 'SUBMITTED', 'AUTHORISED', 'PAID', 'VOIDED')),
+  paid_date DATE,
+  line_items JSONB,
+  synced_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Xero Expenses table
+CREATE TABLE IF NOT EXISTS xero_expenses (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  xero_expense_id VARCHAR(100) UNIQUE,
+  project_id UUID REFERENCES projects(id) ON DELETE SET NULL,
+  cost_center_id UUID REFERENCES cost_centers(id) ON DELETE SET NULL,
+  amount DECIMAL(15,2) NOT NULL,
+  date DATE NOT NULL,
+  description TEXT,
+  receipt_url TEXT,
+  status VARCHAR(50) DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'SUBMITTED', 'APPROVED', 'PAID')),
+  synced_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Xero Payments table
+CREATE TABLE IF NOT EXISTS xero_payments (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  xero_payment_id VARCHAR(100) UNIQUE,
+  invoice_id UUID REFERENCES xero_invoices(id) ON DELETE SET NULL,
+  amount DECIMAL(15,2) NOT NULL,
+  payment_date DATE NOT NULL,
+  payment_method VARCHAR(50) NOT NULL,
+  reference VARCHAR(255),
+  bank_transaction_id UUID,
+  account_code VARCHAR(50),
+  currency VARCHAR(10) DEFAULT 'USD',
+  exchange_rate DECIMAL(10,4) DEFAULT 1,
+  synced_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Bank Transactions table
+CREATE TABLE IF NOT EXISTS bank_transactions (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  xero_bank_transaction_id VARCHAR(100) UNIQUE,
+  bank_account_code VARCHAR(50),
+  bank_account_name VARCHAR(255),
+  date DATE NOT NULL,
+  amount DECIMAL(15,2) NOT NULL,
+  type VARCHAR(20) NOT NULL CHECK (type IN ('RECEIVE', 'SPEND')),
+  description TEXT,
+  reference VARCHAR(255),
+  contact_id UUID REFERENCES clients(id) ON DELETE SET NULL,
+  reconciled BOOLEAN DEFAULT false,
+  payment_id UUID REFERENCES xero_payments(id) ON DELETE SET NULL,
+  reconciled_date DATE,
+  synced_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Xero Credit Notes table
+CREATE TABLE IF NOT EXISTS xero_credit_notes (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  xero_credit_note_id VARCHAR(100) UNIQUE,
+  credit_note_number VARCHAR(50),
+  invoice_id UUID REFERENCES xero_invoices(id) ON DELETE SET NULL,
+  amount DECIMAL(15,2) NOT NULL,
+  date DATE NOT NULL,
+  reason TEXT,
+  status VARCHAR(50) DEFAULT 'AUTHORISED' CHECK (status IN ('DRAFT', 'SUBMITTED', 'AUTHORISED', 'VOIDED')),
+  synced_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Update projects table to add PO commitments tracking
+ALTER TABLE projects 
+ADD COLUMN IF NOT EXISTS po_commitments DECIMAL(15,2) DEFAULT 0;
+
+-- Update xero_invoices table to add last_payment_date
+ALTER TABLE xero_invoices 
+ADD COLUMN IF NOT EXISTS last_payment_date DATE;
+
 -- Activity Logs table
 CREATE TABLE IF NOT EXISTS activity_logs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -242,6 +376,32 @@ CREATE INDEX IF NOT EXISTS idx_projects_status ON projects(status);
 CREATE INDEX IF NOT EXISTS idx_clients_name ON clients(name);
 CREATE INDEX IF NOT EXISTS idx_activity_logs_user_id ON activity_logs(user_id);
 CREATE INDEX IF NOT EXISTS idx_activity_logs_created_at ON activity_logs(created_at);
+
+-- Xero tables indexes
+CREATE INDEX IF NOT EXISTS idx_xero_purchase_orders_project_id ON xero_purchase_orders(project_id);
+CREATE INDEX IF NOT EXISTS idx_xero_purchase_orders_supplier_id ON xero_purchase_orders(supplier_id);
+CREATE INDEX IF NOT EXISTS idx_xero_purchase_orders_status ON xero_purchase_orders(status);
+CREATE INDEX IF NOT EXISTS idx_xero_purchase_orders_date ON xero_purchase_orders(date);
+CREATE INDEX IF NOT EXISTS idx_xero_po_line_items_po_id ON xero_purchase_order_line_items(po_id);
+CREATE INDEX IF NOT EXISTS idx_xero_po_line_items_cost_center_id ON xero_purchase_order_line_items(cost_center_id);
+CREATE INDEX IF NOT EXISTS idx_xero_bills_supplier_id ON xero_bills(supplier_id);
+CREATE INDEX IF NOT EXISTS idx_xero_bills_purchase_order_id ON xero_bills(purchase_order_id);
+CREATE INDEX IF NOT EXISTS idx_xero_bills_project_id ON xero_bills(project_id);
+CREATE INDEX IF NOT EXISTS idx_xero_bills_status ON xero_bills(status);
+CREATE INDEX IF NOT EXISTS idx_xero_expenses_project_id ON xero_expenses(project_id);
+CREATE INDEX IF NOT EXISTS idx_xero_expenses_cost_center_id ON xero_expenses(cost_center_id);
+CREATE INDEX IF NOT EXISTS idx_xero_expenses_date ON xero_expenses(date);
+CREATE INDEX IF NOT EXISTS idx_xero_payments_invoice_id ON xero_payments(invoice_id);
+CREATE INDEX IF NOT EXISTS idx_xero_payments_payment_date ON xero_payments(payment_date);
+CREATE INDEX IF NOT EXISTS idx_xero_payments_xero_payment_id ON xero_payments(xero_payment_id);
+CREATE INDEX IF NOT EXISTS idx_bank_transactions_date ON bank_transactions(date);
+CREATE INDEX IF NOT EXISTS idx_bank_transactions_reconciled ON bank_transactions(reconciled);
+CREATE INDEX IF NOT EXISTS idx_bank_transactions_payment_id ON bank_transactions(payment_id);
+CREATE INDEX IF NOT EXISTS idx_bank_transactions_xero_bank_transaction_id ON bank_transactions(xero_bank_transaction_id);
+CREATE INDEX IF NOT EXISTS idx_xero_credit_notes_invoice_id ON xero_credit_notes(invoice_id);
+CREATE INDEX IF NOT EXISTS idx_xero_credit_notes_date ON xero_credit_notes(date);
+CREATE INDEX IF NOT EXISTS idx_xero_credit_notes_status ON xero_credit_notes(status);
+CREATE INDEX IF NOT EXISTS idx_xero_credit_notes_xero_credit_note_id ON xero_credit_notes(xero_credit_note_id);
 
 -- Full-text search indexes
 CREATE INDEX IF NOT EXISTS idx_clients_search ON clients USING gin(to_tsvector('english', name || ' ' || COALESCE(contact_name, '') || ' ' || COALESCE(address, '')));
