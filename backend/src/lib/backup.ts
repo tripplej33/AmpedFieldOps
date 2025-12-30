@@ -98,7 +98,11 @@ async function backupDatabase(): Promise<string> {
       await execAsync(plainDumpCmd, { env: envVars });
       return dumpFile;
     } catch (retryError: any) {
-      throw new Error(`Database backup failed: ${retryError.message}`);
+      // Check if pg_dump is available
+      if (retryError.message.includes('pg_dump') || retryError.message.includes('not found') || retryError.message.includes('ENOENT')) {
+        throw new Error('pg_dump command not found. Please ensure PostgreSQL client tools are installed on the server.');
+      }
+      throw new Error(`Database backup failed: ${retryError.message || retryError.stderr || 'Unknown error'}`);
     }
   }
 }
@@ -151,8 +155,12 @@ async function compressBackup(files: string[], outputPath: string): Promise<stri
       resolve(outputPath);
     });
 
-    archive.on('error', (err) => {
-      reject(new Error(`Compression failed: ${err.message}`));
+    archive.on('error', (err: any) => {
+      reject(new Error(`Compression failed: ${err.message || 'Unknown error'}`));
+    });
+
+    output.on('error', (err: any) => {
+      reject(new Error(`Compression failed: ${err.message || 'Unknown error'}`));
     });
 
     archive.pipe(output);

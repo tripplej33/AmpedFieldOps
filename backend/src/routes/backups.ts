@@ -76,16 +76,25 @@ router.post('/', authenticate, requirePermission('can_manage_users'), async (req
     }
 
     // Create backup
-    const backupResult = await createBackup({
-      type: type as 'full' | 'database' | 'files',
-      userId: req.user!.id,
-      storageType: storage_type as 'local' | 'google_drive'
-    });
+    let backupResult;
+    try {
+      backupResult = await createBackup({
+        type: type as 'full' | 'database' | 'files',
+        userId: req.user!.id,
+        storageType: storage_type as 'local' | 'google_drive'
+      });
+    } catch (error: any) {
+      console.error('Backup creation error:', error);
+      return res.status(500).json({ 
+        error: 'Backup creation failed', 
+        details: error.message || 'Unknown error occurred'
+      });
+    }
 
     if (!backupResult.success) {
       return res.status(500).json({ 
         error: 'Backup creation failed', 
-        details: backupResult.error 
+        details: backupResult.error || 'Unknown error occurred'
       });
     }
 
@@ -399,10 +408,18 @@ router.post('/schedule', authenticate, requirePermission('can_manage_users'), as
 // Get backup schedule
 router.get('/schedule', authenticate, requirePermission('can_manage_users'), async (req: AuthRequest, res: Response) => {
   try {
-    const result = await query(
+    // Try to get user-specific schedule first, then global
+    let result = await query(
       "SELECT value FROM settings WHERE key = 'backup_schedule' AND user_id = $1",
       [req.user!.id]
     );
+
+    // If no user-specific schedule, try global (user_id IS NULL)
+    if (result.rows.length === 0) {
+      result = await query(
+        "SELECT value FROM settings WHERE key = 'backup_schedule' AND user_id IS NULL ORDER BY updated_at DESC LIMIT 1"
+      );
+    }
 
     if (result.rows.length === 0) {
       return res.json({
@@ -417,7 +434,14 @@ router.get('/schedule', authenticate, requirePermission('can_manage_users'), asy
     res.json(JSON.parse(result.rows[0].value));
   } catch (error: any) {
     console.error('Failed to get backup schedule:', error);
-    res.status(500).json({ error: 'Failed to get backup schedule' });
+    // Return default schedule on error instead of 500
+    res.json({
+      enabled: false,
+      frequency: 'daily',
+      retention_days: 30,
+      backup_type: 'full',
+      storage_type: 'local'
+    });
   }
 });
 

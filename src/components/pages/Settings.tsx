@@ -19,7 +19,7 @@ import {
   TabsList,
   TabsTrigger,
 } from '@/components/ui/tabs';
-import { RefreshCw, CheckCircle, Link2, Upload, Download, Loader2, Mail, Send, Shield, Plus, Trash2, Edit, X, Settings as SettingsIcon, Plug, Lock, X as XIcon } from 'lucide-react';
+import { RefreshCw, CheckCircle, Link2, Upload, Download, Loader2, Mail, Send, Shield, Plus, Trash2, Edit, X, Settings as SettingsIcon, Plug, Lock, X as XIcon, Cloud } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
@@ -34,6 +34,8 @@ export default function Settings() {
   const [isUploading, setIsUploading] = useState(false);
   const [isSendingTestEmail, setIsSendingTestEmail] = useState(false);
   const [testEmailAddress, setTestEmailAddress] = useState('');
+  const [googleDriveConnected, setGoogleDriveConnected] = useState(false);
+  const [isConnectingGoogleDrive, setIsConnectingGoogleDrive] = useState(false);
   
   // Role-based permissions management
   const [rolePermissions, setRolePermissions] = useState<Record<string, Record<string, boolean>>>({});
@@ -219,6 +221,16 @@ export default function Settings() {
       if (hasPermission('can_sync_xero')) {
         const xeroData = await api.getXeroStatus();
         setXeroStatus(xeroData);
+      }
+
+      // Load Google Drive status
+      if (hasPermission('can_manage_users')) {
+        try {
+          const driveStatus = await api.getGoogleDriveStatus();
+          setGoogleDriveConnected(driveStatus.connected);
+        } catch (error) {
+          setGoogleDriveConnected(false);
+        }
       }
     } catch (error) {
       toast.error('Failed to load settings');
@@ -1067,6 +1079,142 @@ export default function Settings() {
             </div>
           </div>
             )}
+          </Card>
+          )}
+
+            {/* Google Drive Integration */}
+            {hasPermission('can_manage_users') && (
+            <Card className="p-6 bg-card border-border">
+          <div className="flex items-start justify-between mb-6">
+            <div>
+              <h3 className="text-lg font-bold mb-1">Google Drive Integration</h3>
+              <p className="text-sm text-muted-foreground">Connect Google Drive for cloud backup storage</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className={cn(
+                "w-2 h-2 rounded-full",
+                googleDriveConnected ? "bg-voltage animate-pulse" : "bg-muted-foreground"
+              )} />
+              <span className={cn(
+                "text-sm font-mono",
+                googleDriveConnected ? "text-voltage" : "text-muted-foreground"
+              )}>
+                {googleDriveConnected ? 'Connected' : 'Not Connected'}
+              </span>
+            </div>
+          </div>
+
+          {googleDriveConnected ? (
+            <div className="space-y-4">
+              <div className="bg-muted/20 border border-border rounded-lg p-4">
+                <div className="flex items-center gap-3 mb-3">
+                  <Cloud className="w-5 h-5 text-voltage" />
+                  <div>
+                    <p className="text-sm font-medium">Google Drive Connected</p>
+                    <p className="text-xs text-muted-foreground">Backups can be stored in Google Drive</p>
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Your backups will be automatically uploaded to Google Drive when you select "Google Drive" as the storage option.
+                </p>
+              </div>
+
+              <div className="flex gap-3">
+                <Button 
+                  variant="outline"
+                  onClick={async () => {
+                    try {
+                      // Disconnect by clearing tokens (would need a disconnect endpoint)
+                      toast.info('To disconnect, revoke access in your Google Account settings');
+                    } catch (error: any) {
+                      toast.error(error.message || 'Failed to disconnect');
+                    }
+                  }}
+                >
+                  Manage Connection
+                </Button>
+                <Button 
+                  variant="outline"
+                  onClick={() => window.open('/backups', '_blank')}
+                >
+                  <Cloud className="w-4 h-4 mr-2" />
+                  Go to Backups
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="bg-muted/20 border border-border rounded-lg p-4">
+                <p className="text-sm text-muted-foreground mb-4">
+                  Connect your Google Drive account to enable cloud backup storage. Backups stored in Google Drive are accessible from anywhere and provide an additional layer of data protection.
+                </p>
+                <div className="space-y-2 text-xs text-muted-foreground">
+                  <p>• Backups are stored in a dedicated "AmpedFieldOps Backups" folder</p>
+                  <p>• Only files created by this app will be accessible</p>
+                  <p>• You can revoke access at any time from your Google Account</p>
+                </div>
+              </div>
+
+              <Button 
+                onClick={async () => {
+                  try {
+                    setIsConnectingGoogleDrive(true);
+                    const { url } = await api.getGoogleDriveAuthUrl();
+                    const popup = window.open(url, 'google-drive-auth', 'width=600,height=700');
+                    
+                    // Poll for connection status
+                    const checkInterval = setInterval(async () => {
+                      try {
+                        const status = await api.getGoogleDriveStatus();
+                        if (status.connected) {
+                          clearInterval(checkInterval);
+                          setGoogleDriveConnected(true);
+                          toast.success('Google Drive connected successfully');
+                          if (popup) popup.close();
+                        }
+                      } catch (error) {
+                        // Ignore errors during polling
+                      }
+                    }, 2000);
+
+                    // Stop polling after 5 minutes
+                    setTimeout(() => clearInterval(checkInterval), 5 * 60 * 1000);
+
+                    // Listen for popup close
+                    const checkClosed = setInterval(() => {
+                      if (popup?.closed) {
+                        clearInterval(checkClosed);
+                        clearInterval(checkInterval);
+                        setIsConnectingGoogleDrive(false);
+                      }
+                    }, 500);
+                  } catch (error: any) {
+                    toast.error(error.message || 'Failed to get Google Drive auth URL');
+                  } finally {
+                    setIsConnectingGoogleDrive(false);
+                  }
+                }}
+                className="w-full bg-electric text-background hover:bg-electric/90"
+                disabled={isConnectingGoogleDrive}
+              >
+                {isConnectingGoogleDrive ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Connecting...
+                  </>
+                ) : (
+                  <>
+                    <Cloud className="w-4 h-4 mr-2" />
+                    Connect Google Drive
+                  </>
+                )}
+              </Button>
+
+              <p className="text-xs text-muted-foreground text-center">
+                You'll be redirected to Google to authorize access. This app will only access files it creates.
+              </p>
+            </div>
+          )}
           </Card>
           )}
 
