@@ -155,8 +155,8 @@ export default function ExpenseModal({ projectId: initialProjectId, open, onOpen
           <div>
             <Label className="font-mono text-xs uppercase tracking-wider">Project (Optional)</Label>
             <Select
-              value={formData.project_id}
-              onValueChange={(value) => setFormData({ ...formData, project_id: value, cost_center_id: '' })}
+              value={formData.project_id || undefined}
+              onValueChange={(value) => setFormData({ ...formData, project_id: value || '', cost_center_id: '' })}
               disabled={!!initialProjectId}
             >
               <SelectTrigger className="mt-2">

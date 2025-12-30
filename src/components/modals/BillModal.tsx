@@ -222,7 +222,7 @@ export default function BillModal({ purchaseOrderId, open, onOpenChange, onBillC
             <div>
               <Label className="font-mono text-xs uppercase tracking-wider">From Purchase Order (Optional)</Label>
               <Select
-                value={formData.purchase_order_id}
+                value={formData.purchase_order_id || undefined}
                 onValueChange={(value) => setFormData({ ...formData, purchase_order_id: value || '' })}
                 disabled={!!purchaseOrderId}
               >
@@ -252,8 +252,8 @@ export default function BillModal({ purchaseOrderId, open, onOpenChange, onBillC
             <div>
               <Label className="font-mono text-xs uppercase tracking-wider">Project (Optional)</Label>
               <Select
-                value={formData.project_id}
-                onValueChange={(value) => setFormData({ ...formData, project_id: value })}
+                value={formData.project_id || undefined}
+                onValueChange={(value) => setFormData({ ...formData, project_id: value || '' })}
               >
                 <SelectTrigger className="mt-2">
                   <SelectValue placeholder="Select project (optional)" />
