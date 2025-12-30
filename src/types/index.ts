@@ -500,3 +500,18 @@ export interface SafetyCertificateData {
   inspection_date?: string;
   inspector_signature_date?: string;
 }
+
+export interface Backup {
+  id: string;
+  backup_type: 'full' | 'database' | 'files';
+  storage_type: 'local' | 'google_drive';
+  file_path?: string;
+  file_size?: number;
+  google_drive_file_id?: string;
+  status: 'pending' | 'completed' | 'failed';
+  error_message?: string;
+  created_by?: string;
+  created_by_name?: string;
+  created_at: string;
+  expires_at?: string;
+}

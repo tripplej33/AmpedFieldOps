@@ -16,7 +16,8 @@ import {
   User,
   Wrench,
   FolderOpen,
-  Shield
+  Shield,
+  HardDrive
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState, useEffect } from 'react';
@@ -46,6 +47,7 @@ const adminNavigation: NavItem[] = [
   { name: 'Users', href: '/users', icon: UserCog, permission: 'can_manage_users' },
   { name: 'Activity Types', href: '/activity-types', icon: Activity, permission: 'can_edit_activity_types' },
   { name: 'Safety Documents', href: '/safety-documents', icon: Shield, permission: 'can_view_financials' },
+  { name: 'Backups', href: '/backups', icon: HardDrive, permission: 'can_manage_users' },
   { name: 'Troubleshooter', href: '/troubleshooter', icon: Wrench, permission: 'can_manage_users' },
   { name: 'Settings', href: '/settings', icon: Settings },
 ];

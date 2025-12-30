@@ -1018,6 +1018,80 @@ class ApiClient {
     }
     return response.blob();
   }
+
+  // Backups
+  async getBackups() {
+    return this.request<any[]>('/api/backups');
+  }
+
+  async getBackup(id: string) {
+    return this.request<any>(`/api/backups/${id}`);
+  }
+
+  async createBackup(data: { type: 'full' | 'database' | 'files'; storage_type?: 'local' | 'google_drive' }) {
+    return this.request<any>('/api/backups', { method: 'POST', body: data });
+  }
+
+  async downloadBackup(id: string): Promise<Blob> {
+    const response = await fetch(`/api/backups/${id}/download`, {
+      headers: {
+        'Authorization': `Bearer ${this.getToken()}`,
+      },
+    });
+    if (!response.ok) {
+      throw new Error('Failed to download backup');
+    }
+    return response.blob();
+  }
+
+  async deleteBackup(id: string) {
+    return this.request<{ message: string }>(`/api/backups/${id}`, { method: 'DELETE' });
+  }
+
+  async restoreBackup(id: string, confirm: boolean = true) {
+    return this.request<{ message: string }>(`/api/backups/${id}/restore`, { 
+      method: 'POST', 
+      body: { confirm } 
+    });
+  }
+
+  async getGoogleDriveAuthUrl() {
+    return this.request<{ url: string }>('/api/backups/google-drive/auth');
+  }
+
+  async getGoogleDriveStatus() {
+    return this.request<{ connected: boolean }>('/api/backups/google-drive/status');
+  }
+
+  async getBackupSchedule() {
+    return this.request<{
+      enabled: boolean;
+      frequency: string;
+      retention_days: number;
+      backup_type: 'full' | 'database' | 'files';
+      storage_type: 'local' | 'google_drive';
+    }>('/api/backups/schedule');
+  }
+
+  async updateBackupSchedule(schedule: {
+    enabled: boolean;
+    frequency: string;
+    retention_days: number;
+    backup_type: 'full' | 'database' | 'files';
+    storage_type: 'local' | 'google_drive';
+  }) {
+    return this.request<{ message: string; schedule: any }>('/api/backups/schedule', {
+      method: 'POST',
+      body: schedule
+    });
+  }
+
+  async cleanupBackups(retention_days: number = 30) {
+    return this.request<{ message: string }>('/api/backups/cleanup', {
+      method: 'POST',
+      body: { retention_days }
+    });
+  }
 }
 
 export const api = new ApiClient();

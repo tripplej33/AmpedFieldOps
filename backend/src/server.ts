@@ -24,6 +24,7 @@ import healthRoutes from './routes/health';
 import troubleshooterRoutes from './routes/troubleshooter';
 import filesRoutes from './routes/files';
 import safetyDocumentsRoutes from './routes/safetyDocuments';
+import backupsRoutes from './routes/backups';
 
 const app = express();
 
@@ -69,6 +70,7 @@ app.use('/api/health', healthRoutes);
 app.use('/api/troubleshooter', troubleshooterRoutes);
 app.use('/api/files', filesRoutes);
 app.use('/api/safety-documents', safetyDocumentsRoutes);
+app.use('/api/backups', backupsRoutes);
 
 // Error handling middleware
 app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
@@ -91,6 +93,15 @@ app.listen(env.PORT, async () => {
   } catch (error) {
     // Email verification is optional, don't fail startup
     console.log('📧 Email configuration check skipped');
+  }
+
+  // Start backup scheduler
+  try {
+    const { startBackupScheduler } = await import('./jobs/backupScheduler');
+    startBackupScheduler();
+    console.log('💾 Backup scheduler initialized');
+  } catch (error) {
+    console.error('❌ Failed to start backup scheduler:', error);
   }
 });
 
