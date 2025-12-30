@@ -252,5 +252,154 @@ router.get('/cost-centers/:costCenterId', authenticate, requirePermission('can_v
   }
 });
 
+// Get timesheet images for a specific project
+router.get('/timesheet-images/:projectId', authenticate, requirePermission('can_view_financials'), async (req: AuthRequest, res: Response) => {
+  try {
+    const result = await query(
+      `SELECT 
+        t.id as timesheet_id,
+        t.date as timesheet_date,
+        t.image_urls,
+        t.created_at,
+        u.name as user_name,
+        p.code as project_code,
+        p.name as project_name
+      FROM timesheets t
+      LEFT JOIN users u ON t.user_id = u.id
+      LEFT JOIN projects p ON t.project_id = p.id
+      WHERE t.project_id = $1 
+        AND t.image_urls IS NOT NULL 
+        AND array_length(t.image_urls, 1) > 0
+      ORDER BY t.date DESC, t.created_at DESC`,
+      [req.params.projectId]
+    );
+
+    // Flatten image_urls into individual image objects
+    const images: any[] = [];
+    result.rows.forEach((row: any) => {
+      if (row.image_urls && Array.isArray(row.image_urls)) {
+        row.image_urls.forEach((url: string, index: number) => {
+          const filename = url.split('/').pop() || '';
+          images.push({
+            url,
+            filename,
+            timesheet_id: row.timesheet_id,
+            timesheet_date: row.timesheet_date,
+            upload_date: row.created_at,
+            user_name: row.user_name,
+            project_code: row.project_code,
+            project_name: row.project_name,
+            image_index: index
+          });
+        });
+      }
+    });
+
+    res.json(images);
+  } catch (error) {
+    console.error('Get timesheet images error:', error);
+    res.status(500).json({ error: 'Failed to fetch timesheet images' });
+  }
+});
+
+// Get all timesheet images across all projects (summary)
+router.get('/timesheet-images', authenticate, requirePermission('can_view_financials'), async (req: AuthRequest, res: Response) => {
+  try {
+    const result = await query(
+      `SELECT 
+        t.project_id,
+        p.code as project_code,
+        p.name as project_name,
+        c.name as client_name,
+        COUNT(*) FILTER (WHERE t.image_urls IS NOT NULL AND array_length(t.image_urls, 1) > 0) as timesheets_with_images,
+        SUM(array_length(t.image_urls, 1)) FILTER (WHERE t.image_urls IS NOT NULL) as total_images
+      FROM timesheets t
+      LEFT JOIN projects p ON t.project_id = p.id
+      LEFT JOIN clients c ON p.client_id = c.id
+      WHERE t.image_urls IS NOT NULL AND array_length(t.image_urls, 1) > 0
+      GROUP BY t.project_id, p.code, p.name, c.name
+      ORDER BY c.name, p.code`,
+      []
+    );
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Get timesheet images summary error:', error);
+    res.status(500).json({ error: 'Failed to fetch timesheet images summary' });
+  }
+});
+
+// Get all logo files
+router.get('/logos', authenticate, requirePermission('can_manage_settings'), async (req: AuthRequest, res: Response) => {
+  try {
+    const logosDir = path.join(__dirname, '../../uploads/logos');
+    
+    // Check if directory exists
+    if (!fs.existsSync(logosDir)) {
+      return res.json([]);
+    }
+
+    // Read directory and get file stats
+    const files = fs.readdirSync(logosDir);
+    const logos = await Promise.all(
+      files.map(async (filename: string) => {
+        const filePath = path.join(logosDir, filename);
+        const stats = fs.statSync(filePath);
+        return {
+          url: `/uploads/logos/${filename}`,
+          filename,
+          upload_date: stats.birthtime || stats.mtime,
+          file_size: stats.size
+        };
+      })
+    );
+
+    // Sort by upload date (newest first)
+    logos.sort((a, b) => new Date(b.upload_date).getTime() - new Date(a.upload_date).getTime());
+
+    res.json(logos);
+  } catch (error) {
+    console.error('Get logos error:', error);
+    res.status(500).json({ error: 'Failed to fetch logos' });
+  }
+});
+
+// Delete a logo file
+router.delete('/logos/:filename', authenticate, requirePermission('can_manage_settings'), async (req: AuthRequest, res: Response) => {
+  try {
+    const filename = req.params.filename;
+    // Sanitize filename to prevent directory traversal
+    const safeFilename = path.basename(filename);
+    const filePath = path.join(__dirname, '../../uploads/logos', safeFilename);
+
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ error: 'Logo file not found' });
+    }
+
+    // Delete file from filesystem
+    fs.unlinkSync(filePath);
+
+    // Check if this logo is set as company_logo in settings and remove it
+    await query(
+      `UPDATE settings 
+       SET value = NULL, updated_at = CURRENT_TIMESTAMP
+       WHERE key = 'company_logo' AND value = $1`,
+      [`/uploads/logos/${safeFilename}`]
+    );
+
+    // Log activity
+    await query(
+      `INSERT INTO activity_logs (user_id, action, entity_type, details) 
+       VALUES ($1, $2, $3, $4)`,
+      [req.user!.id, 'delete', 'logo', JSON.stringify({ filename: safeFilename })]
+    );
+
+    res.json({ message: 'Logo deleted successfully' });
+  } catch (error) {
+    console.error('Delete logo error:', error);
+    res.status(500).json({ error: 'Failed to delete logo' });
+  }
+});
+
 export default router;
 

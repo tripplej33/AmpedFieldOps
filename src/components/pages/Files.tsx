@@ -11,6 +11,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
 import Header from '@/components/layout/Header';
+import ImageViewer from '@/components/modals/ImageViewer';
+import { useAuth } from '@/contexts/AuthContext';
 import { 
   FolderOpen, 
   ChevronRight, 
@@ -28,16 +30,36 @@ import { toast } from 'sonner';
 
 interface ProjectWithFiles extends Project {
   files?: ProjectFile[];
+  timesheetImages?: Array<{
+    url: string;
+    filename: string;
+    timesheet_id: string;
+    timesheet_date: string;
+    upload_date: string;
+    user_name: string;
+    image_index: number;
+  }>;
 }
 
 interface ClientWithProjects extends Client {
   projects?: ProjectWithFiles[];
 }
 
+interface LogoFile {
+  url: string;
+  filename: string;
+  upload_date: string;
+  file_size: number;
+}
+
 export default function Files() {
+  const { hasPermission } = useAuth();
   const [clients, setClients] = useState<ClientWithProjects[]>([]);
+  const [logos, setLogos] = useState<LogoFile[]>([]);
   const [expandedClients, setExpandedClients] = useState<Set<string>>(new Set());
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
+  const [expandedTimesheetImages, setExpandedTimesheetImages] = useState<Set<string>>(new Set());
+  const [expandedLogos, setExpandedLogos] = useState(false);
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<ProjectFile | null>(null);
@@ -45,6 +67,9 @@ export default function Files() {
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<string>('all');
   const [loading, setLoading] = useState(true);
+  const [viewingImages, setViewingImages] = useState<string[]>([]);
+  const [viewingImageIndex, setViewingImageIndex] = useState(0);
+  const [isImageViewerOpen, setIsImageViewerOpen] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -59,6 +84,17 @@ export default function Files() {
         api.getFiles()
       ]);
 
+      // Load logos if user has permission
+      let logosData: LogoFile[] = [];
+      if (hasPermission('can_manage_settings')) {
+        try {
+          logosData = await api.getLogos();
+        } catch (error) {
+          console.error('Failed to load logos:', error);
+        }
+      }
+      setLogos(logosData);
+
       // Organize files by project
       const filesByProject = new Map<string, ProjectFile[]>();
       filesData.forEach((file: ProjectFile) => {
@@ -67,6 +103,25 @@ export default function Files() {
         }
         filesByProject.get(file.project_id)!.push(file);
       });
+
+      // Load timesheet images for each project
+      const timesheetImagesByProject = new Map<string, any[]>();
+      try {
+        const projectsWithImages = await api.getTimesheetImages();
+        // Load detailed images for each project
+        for (const project of projectsData) {
+          try {
+            const images = await api.getTimesheetImages(project.id);
+            if (images && images.length > 0) {
+              timesheetImagesByProject.set(project.id, images);
+            }
+          } catch (error) {
+            console.error(`Failed to load timesheet images for project ${project.id}:`, error);
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load timesheet images summary:', error);
+      }
 
       // Organize projects by client
       const projectsByClient = new Map<string, Project[]>();
@@ -84,6 +139,7 @@ export default function Files() {
         projects: (projectsByClient.get(client.id) || []).map((project: Project) => ({
           ...project,
           files: filesByProject.get(project.id) || [],
+          timesheetImages: timesheetImagesByProject.get(project.id) || [],
         })),
       }));
 
@@ -114,6 +170,59 @@ export default function Files() {
       newExpanded.add(projectId);
     }
     setExpandedProjects(newExpanded);
+  };
+
+  const toggleTimesheetImages = (projectId: string) => {
+    const newExpanded = new Set(expandedTimesheetImages);
+    if (newExpanded.has(projectId)) {
+      newExpanded.delete(projectId);
+    } else {
+      newExpanded.add(projectId);
+    }
+    setExpandedTimesheetImages(newExpanded);
+  };
+
+  const handleViewImage = (imageUrl: string, allImages: string[], index: number) => {
+    setViewingImages(allImages);
+    setViewingImageIndex(index);
+    setIsImageViewerOpen(true);
+  };
+
+  const handleDeleteTimesheetImage = async (timesheetId: string, imageIndex: number, projectId: string) => {
+    if (!confirm('Delete this image?')) return;
+
+    try {
+      await api.deleteTimesheetImage(timesheetId, imageIndex);
+      toast.success('Image deleted');
+      loadData();
+    } catch (error: any) {
+      toast.error('Failed to delete image');
+      console.error(error);
+    }
+  };
+
+  const handleDeleteLogo = async (filename: string) => {
+    if (!confirm(`Delete ${filename}?`)) return;
+
+    try {
+      await api.deleteLogo(filename);
+      toast.success('Logo deleted');
+      loadData();
+    } catch (error: any) {
+      toast.error('Failed to delete logo');
+      console.error(error);
+    }
+  };
+
+  const handleUploadLogo = async (file: File) => {
+    try {
+      await api.uploadCompanyLogo(file);
+      toast.success('Logo uploaded');
+      loadData();
+    } catch (error: any) {
+      toast.error('Failed to upload logo');
+      console.error(error);
+    }
   };
 
   const handleUpload = async () => {
@@ -196,7 +305,10 @@ export default function Files() {
       const matchesFiles = client.projects?.some((p) =>
         p.files?.some((f) => f.file_name.toLowerCase().includes(searchTerm.toLowerCase()))
       );
-      if (!matchesClient && !matchesProjects && !matchesFiles) return false;
+      const matchesTimesheetImages = client.projects?.some((p) =>
+        p.timesheetImages?.some((img) => img.filename.toLowerCase().includes(searchTerm.toLowerCase()))
+      );
+      if (!matchesClient && !matchesProjects && !matchesFiles && !matchesTimesheetImages) return false;
     }
 
     if (filterType !== 'all') {
@@ -206,6 +318,13 @@ export default function Files() {
       if (!hasMatchingFiles) return false;
     }
 
+    return true;
+  });
+
+  const filteredLogos = logos.filter((logo) => {
+    if (searchTerm) {
+      return logo.filename.toLowerCase().includes(searchTerm.toLowerCase());
+    }
     return true;
   });
 
@@ -253,11 +372,86 @@ export default function Files() {
             <h2 className="text-lg font-bold mb-4 font-mono uppercase">File Hierarchy</h2>
             {loading ? (
               <p className="text-muted-foreground">Loading...</p>
-            ) : filteredClients.length === 0 ? (
-              <p className="text-muted-foreground">No files found</p>
             ) : (
               <div className="space-y-2">
-                {filteredClients.map((client) => (
+                {/* Logos Section */}
+                {hasPermission('can_manage_settings') && (
+                  <div className="border border-border rounded-lg mb-4">
+                    <button
+                      onClick={() => setExpandedLogos(!expandedLogos)}
+                      className="w-full flex items-center gap-2 p-3 hover:bg-muted/50 transition-colors text-left"
+                    >
+                      {expandedLogos ? (
+                        <ChevronDown className="w-4 h-4" />
+                      ) : (
+                        <ChevronRight className="w-4 h-4" />
+                      )}
+                      <FolderOpen className="w-4 h-4 text-electric" />
+                      <span className="font-medium">Logos</span>
+                      <Badge variant="outline" className="ml-auto">
+                        {filteredLogos.length} files
+                      </Badge>
+                    </button>
+
+                        {expandedLogos && (
+                      <div className="pl-6 border-t border-border">
+                        {filteredLogos.length > 0 ? (
+                          <div className="divide-y divide-border">
+                            {filteredLogos.map((logo) => (
+                              <div
+                                key={logo.filename}
+                                className="flex items-center gap-3 p-3 hover:bg-muted/50 transition-colors"
+                              >
+                                <ImageIcon className="w-4 h-4" />
+                                <div className="flex-1 min-w-0">
+                                  <p className="text-sm font-medium truncate">{logo.filename}</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {formatFileSize(logo.file_size)} • {new Date(logo.upload_date).toLocaleDateString()}
+                                  </p>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleViewImage(logo.url, [logo.url], 0)}
+                                  >
+                                    <Eye className="w-4 h-4" />
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    onClick={() => handleDeleteLogo(logo.filename)}
+                                  >
+                                    <Trash2 className="w-4 h-4 text-destructive" />
+                                  </Button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="p-3 text-sm text-muted-foreground">
+                            {searchTerm ? 'No logos match your search' : 'No logos'}
+                          </p>
+                        )}
+                        <div className="p-3 border-t border-border">
+                          <FileUpload
+                            onFileSelect={(files) => {
+                              if (files.length > 0) {
+                                handleUploadLogo(files[0]);
+                              }
+                            }}
+                            accept="image/*"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {filteredClients.length === 0 ? (
+                  <p className="text-muted-foreground">No files found</p>
+                ) : (
+                  filteredClients.map((client) => (
                   <div key={client.id} className="border border-border rounded-lg">
                     <button
                       onClick={() => toggleClient(client.id)}
@@ -296,49 +490,124 @@ export default function Files() {
                             </button>
 
                             {expandedProjects.has(project.id) && (
-                              <div className="pl-6 bg-muted/20">
-                                {project.files && project.files.length > 0 ? (
-                                  <div className="divide-y divide-border">
-                                    {project.files.map((file) => (
-                                      <div
-                                        key={file.id}
-                                        className="flex items-center gap-3 p-3 hover:bg-muted/50 transition-colors"
-                                      >
-                                        {getFileIcon(file.file_type)}
-                                        <div className="flex-1 min-w-0">
-                                          <p className="text-sm font-medium truncate">{file.file_name}</p>
-                                          <p className="text-xs text-muted-foreground">
-                                            {formatFileSize(file.file_size)} • {new Date(file.created_at).toLocaleDateString()}
-                                          </p>
+                              <div className="pl-6 bg-muted/20 space-y-2">
+                                {/* Project Files */}
+                                <div>
+                                  <p className="text-xs font-medium text-muted-foreground px-3 py-2 uppercase">Files</p>
+                                  {project.files && project.files.length > 0 ? (
+                                    <div className="divide-y divide-border">
+                                      {project.files.map((file) => (
+                                        <div
+                                          key={file.id}
+                                          className="flex items-center gap-3 p-3 hover:bg-muted/50 transition-colors"
+                                        >
+                                          {getFileIcon(file.file_type)}
+                                          <div className="flex-1 min-w-0">
+                                            <p className="text-sm font-medium truncate">{file.file_name}</p>
+                                            <p className="text-xs text-muted-foreground">
+                                              {formatFileSize(file.file_size)} • {new Date(file.created_at).toLocaleDateString()}
+                                            </p>
+                                          </div>
+                                          <div className="flex items-center gap-2">
+                                            <Button
+                                              variant="ghost"
+                                              size="sm"
+                                              onClick={() => setSelectedFile(file)}
+                                            >
+                                              <Eye className="w-4 h-4" />
+                                            </Button>
+                                            <Button
+                                              variant="ghost"
+                                              size="sm"
+                                              onClick={() => handleDownload(file)}
+                                            >
+                                              <Download className="w-4 h-4" />
+                                            </Button>
+                                            <Button
+                                              variant="ghost"
+                                              size="sm"
+                                              onClick={() => handleDelete(file)}
+                                            >
+                                              <Trash2 className="w-4 h-4 text-destructive" />
+                                            </Button>
+                                          </div>
                                         </div>
-                                        <div className="flex items-center gap-2">
-                                          <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            onClick={() => setSelectedFile(file)}
-                                          >
-                                            <Eye className="w-4 h-4" />
-                                          </Button>
-                                          <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            onClick={() => handleDownload(file)}
-                                          >
-                                            <Download className="w-4 h-4" />
-                                          </Button>
-                                          <Button
-                                            variant="ghost"
-                                            size="sm"
-                                            onClick={() => handleDelete(file)}
-                                          >
-                                            <Trash2 className="w-4 h-4 text-destructive" />
-                                          </Button>
+                                      ))}
+                                    </div>
+                                  ) : (
+                                    <p className="p-3 text-sm text-muted-foreground">No files</p>
+                                  )}
+                                </div>
+
+                                {/* Timesheet Images */}
+                                {project.timesheetImages && project.timesheetImages.length > 0 && (
+                                  <div className="border-t border-border pt-2">
+                                    <button
+                                      onClick={() => toggleTimesheetImages(project.id)}
+                                      className="w-full flex items-center gap-2 p-2 hover:bg-muted/30 transition-colors text-left"
+                                    >
+                                      {expandedTimesheetImages.has(project.id) ? (
+                                        <ChevronDown className="w-3 h-3" />
+                                      ) : (
+                                        <ChevronRight className="w-3 h-3" />
+                                      )}
+                                      <ImageIcon className="w-3 h-3 text-voltage" />
+                                      <span className="text-xs font-medium">Timesheet Images</span>
+                                      <Badge variant="outline" className="ml-auto text-xs">
+                                        {project.timesheetImages.length}
+                                      </Badge>
+                                    </button>
+
+                                    {expandedTimesheetImages.has(project.id) && (
+                                      <div className="pl-6 mt-2">
+                                        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
+                                          {project.timesheetImages.map((image, idx) => {
+                                            const allImageUrls = project.timesheetImages!.map(img => img.url);
+                                            return (
+                                              <div
+                                                key={`${image.timesheet_id}-${image.image_index}`}
+                                                className="relative group border border-border rounded-lg overflow-hidden hover:border-electric transition-colors"
+                                              >
+                                                <img
+                                                  src={image.url}
+                                                  alt={image.filename}
+                                                  className="w-full h-24 object-cover cursor-pointer"
+                                                  onClick={() => handleViewImage(image.url, allImageUrls, idx)}
+                                                />
+                                                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/50 transition-colors flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100">
+                                                  <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="h-8 text-white hover:bg-white/20"
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      handleViewImage(image.url, allImageUrls, idx);
+                                                    }}
+                                                  >
+                                                    <Eye className="w-3 h-3" />
+                                                  </Button>
+                                                  <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="h-8 text-white hover:bg-red-500/20"
+                                                    onClick={(e) => {
+                                                      e.stopPropagation();
+                                                      handleDeleteTimesheetImage(image.timesheet_id, image.image_index, project.id);
+                                                    }}
+                                                  >
+                                                    <Trash2 className="w-3 h-3" />
+                                                  </Button>
+                                                </div>
+                                                <div className="absolute bottom-0 left-0 right-0 bg-black/70 text-white text-xs p-1 truncate">
+                                                  {image.filename}
+                                                </div>
+                                              </div>
+                                            );
+                                          })}
                                         </div>
                                       </div>
-                                    ))}
+                                    )}
                                   </div>
-                                ) : (
-                                  <p className="p-3 text-sm text-muted-foreground">No files</p>
                                 )}
                               </div>
                             )}
@@ -408,6 +677,15 @@ export default function Files() {
         file={selectedFile}
         open={!!selectedFile}
         onOpenChange={(open) => !open && setSelectedFile(null)}
+      />
+
+      {/* Image Viewer */}
+      <ImageViewer
+        images={viewingImages}
+        currentIndex={viewingImageIndex}
+        open={isImageViewerOpen}
+        onOpenChange={setIsImageViewerOpen}
+        showDelete={false}
       />
     </div>
   );

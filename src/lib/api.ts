@@ -429,6 +429,45 @@ class ApiClient {
     return this.request(`/api/timesheets/${timesheetId}/images/${imageIndex}`, { method: 'DELETE' });
   }
 
+  // Timesheet Images
+  async getTimesheetImages(projectId?: string) {
+    if (projectId) {
+      return this.request<Array<{
+        url: string;
+        filename: string;
+        timesheet_id: string;
+        timesheet_date: string;
+        upload_date: string;
+        user_name: string;
+        project_code: string;
+        project_name: string;
+        image_index: number;
+      }>>(`/api/files/timesheet-images/${projectId}`);
+    }
+    return this.request<Array<{
+      project_id: string;
+      project_code: string;
+      project_name: string;
+      client_name: string;
+      timesheets_with_images: number;
+      total_images: number;
+    }>>('/api/files/timesheet-images');
+  }
+
+  // Logos
+  async getLogos() {
+    return this.request<Array<{
+      url: string;
+      filename: string;
+      upload_date: string;
+      file_size: number;
+    }>>('/api/files/logos');
+  }
+
+  async deleteLogo(filename: string) {
+    return this.request<{ message: string }>(`/api/files/logos/${encodeURIComponent(filename)}`, { method: 'DELETE' });
+  }
+
   // Cost Centers
   async getCostCenters(activeOnly = false, projectId?: string) {
     const params = new URLSearchParams();
