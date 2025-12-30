@@ -262,7 +262,7 @@ export default function Settings() {
         setXeroStatus(xeroData);
       }
 
-      // Load Google Drive status
+      // Load Google Drive status and credentials
       if (hasPermission('can_manage_users')) {
         try {
           const driveStatus = await api.getGoogleDriveStatus();
@@ -270,6 +270,22 @@ export default function Settings() {
         } catch (error) {
           setGoogleDriveConnected(false);
         }
+        
+        // Load Google Drive credentials from settings
+        const googleDriveRedirectUri = settingsData.google_drive_redirect_uri || 
+          `${window.location.origin.replace('admin.', 'api.')}/api/backups/google-drive/callback`;
+        
+        setGoogleDriveCredentials({
+          clientId: settingsData.google_drive_client_id || '',
+          clientSecret: settingsData.google_drive_client_secret || '',
+          redirectUri: googleDriveRedirectUri
+        });
+        
+        setSavedGoogleDriveCredentials({
+          clientId: settingsData.google_drive_client_id || '',
+          clientSecret: settingsData.google_drive_client_secret || '',
+          redirectUri: googleDriveRedirectUri
+        });
       }
     } catch (error) {
       toast.error('Failed to load settings');
@@ -606,6 +622,70 @@ export default function Settings() {
       toast.error(error.message || 'Failed to save credentials');
     } finally {
       setIsSavingCredentials(false);
+    }
+  };
+
+  const handleSaveGoogleDriveCredentials = async () => {
+    const { clientId, clientSecret, redirectUri } = googleDriveCredentials;
+    
+    // Validate credentials
+    if (!clientId || !clientSecret) {
+      toast.error('Please enter both Client ID and Client Secret');
+      return;
+    }
+    
+    setIsSavingGoogleDriveCredentials(true);
+    try {
+      // Use provided redirect URI or default
+      const currentRedirectUri = redirectUri.trim() || 
+        `${window.location.origin.replace('admin.', 'api.')}/api/backups/google-drive/callback`;
+      
+      // Warn if redirect URI contains localhost in production
+      if (currentRedirectUri.includes('localhost') && !window.location.hostname.includes('localhost')) {
+        toast.warning('Redirect URI contains localhost. Make sure this matches your Google OAuth app settings.', {
+          duration: 8000
+        });
+      }
+      
+      // Save all credentials at once
+      await api.updateSetting('google_drive_client_id', clientId.trim(), true);
+      await api.updateSetting('google_drive_client_secret', clientSecret.trim(), true);
+      await api.updateSetting('google_drive_redirect_uri', currentRedirectUri, true);
+      
+      // Update settings state
+      setSettings((prev: any) => ({
+        ...prev,
+        google_drive_client_id: clientId.trim(),
+        google_drive_client_secret: clientSecret.trim(),
+        google_drive_redirect_uri: currentRedirectUri
+      }));
+      
+      // Update local credentials state to match
+      const updatedCredentials = {
+        clientId: clientId.trim(),
+        clientSecret: clientSecret.trim(),
+        redirectUri: currentRedirectUri
+      };
+      
+      setGoogleDriveCredentials(updatedCredentials);
+      // Update saved credentials to mark them as saved
+      setSavedGoogleDriveCredentials(updatedCredentials);
+      
+      toast.success('Google Drive credentials saved successfully!', {
+        description: googleDriveConnected 
+          ? 'Credentials updated. Your Google Drive connection remains active.'
+          : 'You can now connect to Google Drive using the "Connect Google Drive" button.'
+      });
+      
+      console.log('[Google Drive] Credentials saved:', {
+        clientId: `${clientId.substring(0, 8)}...`,
+        redirectUri: currentRedirectUri
+      });
+    } catch (error: any) {
+      console.error('[Google Drive] Failed to save credentials:', error);
+      toast.error(error.message || 'Failed to save credentials');
+    } finally {
+      setIsSavingGoogleDriveCredentials(false);
     }
   };
 
