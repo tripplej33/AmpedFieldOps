@@ -3,7 +3,8 @@ import { authenticate, requirePermission, AuthRequest } from '../middleware/auth
 import { query } from '../db';
 import { createBackup, cleanupOldBackups, getBackupFileStream } from '../lib/backup';
 import { 
-  getAuthUrl, 
+  getAuthUrl,
+  getGoogleDriveCredentials,
   exchangeCodeForTokens, 
   uploadToGoogleDrive, 
   deleteFromGoogleDrive,
