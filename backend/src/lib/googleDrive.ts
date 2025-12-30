@@ -11,20 +11,47 @@ const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || '';
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET || '';
 const GOOGLE_REDIRECT_URI = process.env.GOOGLE_REDIRECT_URI || '';
 
-// Get OAuth2 client
-function getOAuth2Client(): OAuth2Client {
-  // Redirect URI should point to the backend API endpoint
-  // If not explicitly set, construct from BACKEND_URL or default
-  const redirectUri = GOOGLE_REDIRECT_URI || 
-    `${process.env.BACKEND_URL || process.env.API_URL || 'http://localhost:3001'}/api/backups/google-drive/callback`;
-  
-  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
-    throw new Error('Google Drive OAuth credentials not configured. Please set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET environment variables.');
+// Get Google Drive OAuth credentials from database or environment
+async function getGoogleDriveCredentials(): Promise<{ clientId: string; clientSecret: string; redirectUri: string }> {
+  try {
+    // Try to get credentials from database first
+    const clientIdResult = await query("SELECT value FROM settings WHERE key = 'google_drive_client_id' ORDER BY updated_at DESC LIMIT 1");
+    const clientSecretResult = await query("SELECT value FROM settings WHERE key = 'google_drive_client_secret' ORDER BY updated_at DESC LIMIT 1");
+    const redirectUriResult = await query("SELECT value FROM settings WHERE key = 'google_drive_redirect_uri' ORDER BY updated_at DESC LIMIT 1");
+    
+    const clientIdFromDb = clientIdResult.rows[0]?.value;
+    const clientSecretFromDb = clientSecretResult.rows[0]?.value;
+    const redirectUriFromDb = redirectUriResult.rows[0]?.value;
+    
+    // Use database values if available, otherwise fall back to environment variables
+    const clientId = clientIdFromDb || GOOGLE_CLIENT_ID;
+    const clientSecret = clientSecretFromDb || GOOGLE_CLIENT_SECRET;
+    
+    // Construct redirect URI
+    let redirectUri = redirectUriFromDb || GOOGLE_REDIRECT_URI;
+    if (!redirectUri || redirectUri.trim() === '') {
+      // Default to backend URL + callback path
+      redirectUri = `${process.env.BACKEND_URL || process.env.API_URL || 'http://localhost:3001'}/api/backups/google-drive/callback`;
+    }
+    
+    if (!clientId || !clientSecret) {
+      throw new Error('Google Drive OAuth credentials not configured. Please set Google Drive Client ID and Client Secret in Settings → Integrations.');
+    }
+    
+    return { clientId, clientSecret, redirectUri };
+  } catch (error: any) {
+    console.error('Failed to get Google Drive credentials:', error);
+    throw new Error(`Failed to get Google Drive credentials: ${error.message}`);
   }
+}
 
+// Get OAuth2 client
+async function getOAuth2Client(): Promise<OAuth2Client> {
+  const { clientId, clientSecret, redirectUri } = await getGoogleDriveCredentials();
+  
   return new google.auth.OAuth2(
-    GOOGLE_CLIENT_ID,
-    GOOGLE_CLIENT_SECRET,
+    clientId,
+    clientSecret,
     redirectUri
   );
 }
