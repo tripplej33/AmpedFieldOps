@@ -368,7 +368,7 @@ router.get('/google-drive/callback', async (req: any, res: Response) => {
     }
 
     // Use state as userId if provided
-    const userId = (state && typeof state === 'string') ? state : null;
+    const userId = (state && typeof state === 'string') ? state : undefined;
 
     await exchangeCodeForTokens(code, userId);
 
