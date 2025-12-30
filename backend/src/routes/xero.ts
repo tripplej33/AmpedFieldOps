@@ -1917,14 +1917,46 @@ async function syncPurchaseOrdersBidirectional(
             }
           }
 
+          // Try to find a project for this supplier
+          // First, try to find an active project with this supplier as client
+          let projectId: string | null = null;
+          if (supplierId) {
+            const projectResult = await query(
+              `SELECT id FROM projects 
+               WHERE client_id = $1 AND status IN ('quoted', 'in-progress') 
+               ORDER BY created_at DESC LIMIT 1`,
+              [supplierId]
+            );
+            if (projectResult.rows.length > 0) {
+              projectId = projectResult.rows[0].id;
+            }
+          }
+
+          // If no project found, try to get any project (for uncategorized POs)
+          if (!projectId) {
+            const anyProjectResult = await query(
+              `SELECT id FROM projects ORDER BY created_at DESC LIMIT 1`
+            );
+            if (anyProjectResult.rows.length > 0) {
+              projectId = anyProjectResult.rows[0].id;
+            }
+          }
+
+          // Skip if still no project found (project_id is NOT NULL)
+          if (!projectId) {
+            console.warn(`[Xero] Skipping purchase order ${po.PurchaseOrderNumber}: No project found to link it to`);
+            continue;
+          }
+
           await query(
             `INSERT INTO xero_purchase_orders 
-             (xero_po_id, po_number, supplier_id, status, total_amount, date, delivery_date, synced_at)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, CURRENT_TIMESTAMP)`,
+             (xero_po_id, po_number, supplier_id, project_id, status, total_amount, date, delivery_date, synced_at)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, CURRENT_TIMESTAMP)`,
             [
               po.PurchaseOrderID,
               po.PurchaseOrderNumber,
               supplierId,
+              projectId,
               po.Status,
               po.Total || 0,
               po.Date ? new Date(po.Date) : null,
