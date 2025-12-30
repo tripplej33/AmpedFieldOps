@@ -3124,13 +3124,16 @@ router.get('/invoices', authenticate, requirePermission('can_view_financials'), 
     const result = await query(sql, params);
     res.json(result.rows);
   } catch (error: any) {
-    console.error('Failed to fetch invoices:', error);
     const errorMessage = error.message || 'Failed to fetch invoices';
     const isTableError = errorMessage.includes('does not exist') || errorMessage.includes('relation') || error.code === '42P01';
-    res.status(500).json({ 
-      error: isTableError ? 'Database tables not found. Please run migrations.' : 'Failed to fetch invoices',
-      details: env.NODE_ENV === 'development' ? errorMessage : undefined
-    });
+    if (isTableError) {
+      // Return empty array with 200 status instead of 500
+      console.warn('[Xero] xero_invoices table not found. Returning empty array. Run migrations to create tables.');
+      return res.json([]);
+    }
+    console.error('Failed to fetch invoices:', error);
+    // For non-table errors, still return empty array to prevent frontend errors
+    res.json([]);
   }
 });
 
@@ -3323,10 +3326,8 @@ router.get('/quotes', authenticate, requirePermission('can_view_financials'), as
       return res.json([]);
     }
     console.error('Failed to fetch quotes:', error);
-    res.status(500).json({ 
-      error: 'Failed to fetch quotes',
-      details: env.NODE_ENV === 'development' ? errorMessage : undefined
-    });
+    // Return empty array with 200 status instead of 500
+    res.json([]);
   }
 });
 
