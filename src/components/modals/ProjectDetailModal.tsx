@@ -282,6 +282,7 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
   }
 
   return (
+    <>
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
@@ -1029,12 +1030,10 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
                     return;
                   }
                   try {
-                    const formData = new FormData();
-                    uploadFiles.forEach((file) => {
-                      formData.append('files', file);
-                    });
-                    formData.append('project_id', project.id);
-                    await api.uploadFile(formData);
+                    // Upload files one by one
+                    for (const file of uploadFiles) {
+                      await api.uploadProjectFile(file, project.id);
+                    }
                     toast.success('Files uploaded successfully');
                     setIsUploadModalOpen(false);
                     setUploadFiles([]);
@@ -1053,22 +1052,13 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
       </Dialog>
 
       {/* File Viewer Modal */}
-      <Dialog open={!!selectedFile} onOpenChange={(open) => !open && setSelectedFile(null)}>
-        <DialogContent className="max-w-4xl max-h-[90vh]">
-          <DialogHeader>
-            <DialogTitle>{selectedFile?.file_name}</DialogTitle>
-          </DialogHeader>
-          {selectedFile && (
-            <div className="mt-4">
-              <DocumentViewer
-                fileId={selectedFile.id}
-                fileName={selectedFile.file_name}
-                fileType={selectedFile.file_type}
-                mimeType={selectedFile.mime_type}
-              />
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
+      {selectedFile && (
+        <DocumentViewer
+          file={selectedFile}
+          open={!!selectedFile}
+          onOpenChange={(open) => !open && setSelectedFile(null)}
+        />
+      )}
+    </>
   );
 }
