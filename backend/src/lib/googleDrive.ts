@@ -71,7 +71,7 @@ export async function storeTokens(tokens: any, userId?: string): Promise<void> {
 
 // Get authorized OAuth2 client
 export async function getAuthorizedClient(userId?: string): Promise<OAuth2Client | null> {
-  const oauth2Client = getOAuth2Client();
+  const oauth2Client = await getOAuth2Client();
   const tokens = await getStoredTokens();
 
   if (!tokens || !tokens.access_token) {
@@ -125,7 +125,7 @@ export async function getAuthUrl(state?: string): Promise<string> {
 
 // Exchange authorization code for tokens
 export async function exchangeCodeForTokens(code: string, userId?: string): Promise<any> {
-  const oauth2Client = getOAuth2Client();
+  const oauth2Client = await getOAuth2Client();
   
   try {
     const { tokens } = await oauth2Client.getToken(code);

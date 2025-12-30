@@ -367,8 +367,8 @@ router.get('/google-drive/callback', async (req: any, res: Response) => {
       return res.redirect(`${frontendUrl}/settings?tab=integrations&google_drive_error=${encodeURIComponent('Authorization code missing')}`);
     }
 
-    // Use state as userId if provided, otherwise try to get from session/token
-    const userId = state || null;
+    // Use state as userId if provided
+    const userId = (state && typeof state === 'string') ? state : null;
 
     await exchangeCodeForTokens(code, userId);
 
