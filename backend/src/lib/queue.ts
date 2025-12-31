@@ -10,31 +10,51 @@ const redisConnection = {
   port: parseInt(process.env.REDIS_PORT || '6379'),
   password: process.env.REDIS_PASSWORD || undefined,
   maxRetriesPerRequest: null, // Required for BullMQ
+  retryStrategy: (times: number) => {
+    // Retry with exponential backoff, max 3 times
+    if (times > 3) {
+      return null; // Stop retrying
+    }
+    return Math.min(times * 200, 2000);
+  },
+  enableReadyCheck: false, // Don't fail if Redis isn't ready immediately
 };
 
-// Create queues
-export const xeroSyncQueue = new Queue('xero-sync', {
-  connection: redisConnection,
-  defaultJobOptions: {
-    attempts: 3,
-    backoff: {
-      type: 'exponential',
-      delay: 2000,
-    },
-    removeOnComplete: {
-      age: 24 * 3600, // Keep completed jobs for 24 hours
-      count: 1000, // Keep last 1000 completed jobs
-    },
-    removeOnFail: {
-      age: 7 * 24 * 3600, // Keep failed jobs for 7 days
-    },
-  },
-});
+// Create queues with error handling
+let xeroSyncQueue: Queue;
+let xeroSyncQueueEvents: QueueEvents;
 
-// Queue event listeners for monitoring
-export const xeroSyncQueueEvents = new QueueEvents('xero-sync', {
-  connection: redisConnection,
-});
+try {
+  xeroSyncQueue = new Queue('xero-sync', {
+    connection: redisConnection,
+    defaultJobOptions: {
+      attempts: 3,
+      backoff: {
+        type: 'exponential',
+        delay: 2000,
+      },
+      removeOnComplete: {
+        age: 24 * 3600, // Keep completed jobs for 24 hours
+        count: 1000, // Keep last 1000 completed jobs
+      },
+      removeOnFail: {
+        age: 7 * 24 * 3600, // Keep failed jobs for 7 days
+      },
+    },
+  });
+
+  // Queue event listeners for monitoring
+  xeroSyncQueueEvents = new QueueEvents('xero-sync', {
+    connection: redisConnection,
+  });
+} catch (error) {
+  console.warn('[Queue] Failed to initialize queues. Redis may not be available. Xero syncs will not work until Redis is configured.');
+  // Create dummy queues that will fail gracefully
+  xeroSyncQueue = null as any;
+  xeroSyncQueueEvents = null as any;
+}
+
+export { xeroSyncQueue, xeroSyncQueueEvents };
 
 // Helper function to log sync attempts to sync_logs table
 async function logSyncAttempt(
@@ -65,7 +85,10 @@ async function logSyncAttempt(
 }
 
 // Worker to process Xero sync jobs
-export const xeroSyncWorker = new Worker(
+let xeroSyncWorker: Worker;
+
+try {
+  xeroSyncWorker = new Worker(
   'xero-sync',
   async (job) => {
     const { type, data } = job.data;
@@ -283,20 +306,29 @@ export const xeroSyncWorker = new Worker(
   }
 );
 
-// Worker event listeners
-xeroSyncWorker.on('completed', (job) => {
-  console.log(`[Xero Sync Worker] Job ${job.id} completed successfully`);
-});
+  // Worker event listeners
+  xeroSyncWorker.on('completed', (job) => {
+    console.log(`[Xero Sync Worker] Job ${job.id} completed successfully`);
+  });
 
-xeroSyncWorker.on('failed', (job, err) => {
-  console.error(`[Xero Sync Worker] Job ${job?.id} failed:`, err);
-});
+  xeroSyncWorker.on('failed', (job, err) => {
+    console.error(`[Xero Sync Worker] Job ${job?.id} failed:`, err);
+  });
 
-xeroSyncWorker.on('error', (err) => {
-  console.error('[Xero Sync Worker] Worker error:', err);
-});
+  xeroSyncWorker.on('error', (err) => {
+    console.error('[Xero Sync Worker] Worker error:', err);
+  });
+} catch (error) {
+  console.warn('[Queue] Failed to initialize worker. Redis may not be available. Xero syncs will not work until Redis is configured.');
+  xeroSyncWorker = null as any;
+}
+
+export { xeroSyncWorker };
 
 // Export helper function to add jobs to queue
 export async function addXeroSyncJob(type: string, data: any) {
+  if (!xeroSyncQueue) {
+    throw new Error('Queue not initialized. Please ensure Redis is running and configured.');
+  }
   return await xeroSyncQueue.add(type, { type, data });
 }

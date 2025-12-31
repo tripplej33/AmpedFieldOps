@@ -3373,9 +3373,22 @@ router.post('/invoices/from-timesheets', authenticate, requirePermission('can_sy
         dueDate: due_date || null,
         timesheetIds,
       });
-    } catch (queueError) {
+    } catch (queueError: any) {
       console.error('Failed to queue Xero sync job:', queueError);
-      // Don't fail the request - invoice is created, sync will be retried
+      // Update invoice sync status to indicate queue failure
+      await query(
+        `UPDATE xero_invoices 
+         SET sync_status = 'failed', updated_at = CURRENT_TIMESTAMP
+         WHERE id = $1`,
+        [invoiceId]
+      );
+      // Log the error
+      await query(
+        `INSERT INTO sync_logs (entity_type, entity_id, request_payload, response_payload, status_code, error_message, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)`,
+        ['invoice', invoiceId, null, null, null, `Queue initialization failed: ${queueError.message}`]
+      );
+      // Don't fail the request - invoice is created, user can retry sync later
     }
 
     // Return 202 Accepted - invoice created, sync in progress
@@ -3821,9 +3834,22 @@ router.post('/purchase-orders', authenticate, requirePermission('can_sync_xero')
         currency: currency || 'USD',
         poNumber,
       });
-    } catch (queueError) {
+    } catch (queueError: any) {
       console.error('Failed to queue Xero sync job:', queueError);
-      // Don't fail the request - PO is created, sync will be retried
+      // Update PO sync status to indicate queue failure
+      await query(
+        `UPDATE xero_purchase_orders 
+         SET sync_status = 'failed', updated_at = CURRENT_TIMESTAMP
+         WHERE id = $1`,
+        [poId]
+      );
+      // Log the error
+      await query(
+        `INSERT INTO sync_logs (entity_type, entity_id, request_payload, response_payload, status_code, error_message, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)`,
+        ['purchase_order', poId, null, null, null, `Queue initialization failed: ${queueError.message}`]
+      );
+      // Don't fail the request - PO is created, user can retry sync later
     }
 
     // Get created PO with details
