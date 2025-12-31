@@ -25,6 +25,11 @@ interface EnvConfig {
   XERO_CLIENT_SECRET?: string;
   XERO_REDIRECT_URI?: string;
   
+  // Redis (optional)
+  REDIS_HOST?: string;
+  REDIS_PORT?: string;
+  REDIS_PASSWORD?: string;
+  
   // Email/SMTP (optional)
   SMTP_HOST?: string;
   SMTP_PORT?: string;
@@ -60,6 +65,9 @@ function validateEnv(): EnvConfig {
     XERO_CLIENT_ID: getEnvVar('XERO_CLIENT_ID', false),
     XERO_CLIENT_SECRET: getEnvVar('XERO_CLIENT_SECRET', false),
     XERO_REDIRECT_URI: getEnvVar('XERO_REDIRECT_URI', false),
+    REDIS_HOST: getEnvVar('REDIS_HOST', false),
+    REDIS_PORT: getEnvVar('REDIS_PORT', false),
+    REDIS_PASSWORD: getEnvVar('REDIS_PASSWORD', false),
     SMTP_HOST: getEnvVar('SMTP_HOST', false),
     SMTP_PORT: getEnvVar('SMTP_PORT', false),
     SMTP_USER: getEnvVar('SMTP_USER', false),

@@ -19,6 +19,20 @@ services:
       timeout: 5s
       retries: 5
 
+  redis:
+    image: redis:7-alpine
+    container_name: ampedfieldops-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   backend:
     build:
       context: ./backend
@@ -28,12 +42,17 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
       NODE_ENV: production
       DATABASE_URL: postgresql://ampedfieldops:${DB_PASSWORD:-changeme123}@postgres:5432/ampedfieldops
       JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-key-change-in-production}
       PORT: 3001
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-}
       XERO_CLIENT_ID: ${XERO_CLIENT_ID:-}
       XERO_CLIENT_SECRET: ${XERO_CLIENT_SECRET:-}
       XERO_REDIRECT_URI: ${XERO_REDIRECT_URI:-http://localhost:3001/api/xero/callback}
@@ -73,3 +92,4 @@ services:
 
 volumes:
   postgres_data:
+  redis_data:

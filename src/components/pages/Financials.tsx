@@ -66,6 +66,10 @@ export default function Financials() {
   const [isCreateFromTimesheetsModalOpen, setIsCreateFromTimesheetsModalOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [isCreatingFromTimesheets, setIsCreatingFromTimesheets] = useState(false);
+  const [syncingInvoices, setSyncingInvoices] = useState<Set<string>>(new Set());
+  const [syncingPOs, setSyncingPOs] = useState<Set<string>>(new Set());
+  const [syncErrors, setSyncErrors] = useState<Record<string, any>>({});
+  const [selectedErrorEntity, setSelectedErrorEntity] = useState<{ type: string; id: string } | null>(null);
   const [clients, setClients] = useState<Client[]>([]);
   const [projects, setProjects] = useState<Project[]>([]);
   const [invoiceForm, setInvoiceForm] = useState({
@@ -260,8 +264,21 @@ export default function Financials() {
         due_date: timesheetInvoiceForm.due_date
       });
       
-      const timesheetCount = (result as any)?.timesheet_count || (result as any)?.timesheet_ids?.length || 0;
-      toast.success(`Invoice created from ${timesheetCount} timesheet${timesheetCount !== 1 ? 's' : ''}`);
+      const invoiceId = (result as any)?.id;
+      const timesheetCount = (result as any)?.timesheets_count || (result as any)?.timesheet_ids?.length || 0;
+      
+      // Check if async sync (202 Accepted)
+      if ((result as any)?.async || (result as any)?.sync_status === 'pending') {
+        toast.success(`Invoice created. Syncing to Xero...`);
+        if (invoiceId) {
+          setSyncingInvoices(prev => new Set(prev).add(invoiceId));
+          // Poll for sync status
+          pollInvoiceSyncStatus(invoiceId);
+        }
+      } else {
+        toast.success(`Invoice created from ${timesheetCount} timesheet${timesheetCount !== 1 ? 's' : ''}`);
+      }
+      
       setIsCreateFromTimesheetsModalOpen(false);
       setTimesheetInvoiceForm({
         client_id: '',
@@ -276,6 +293,58 @@ export default function Financials() {
       toast.error(error.message || 'Failed to create invoice from timesheets');
     } finally {
       setIsCreatingFromTimesheets(false);
+    }
+  };
+
+  // Poll for invoice sync status
+  const pollInvoiceSyncStatus = async (invoiceId: string, retries = 0) => {
+    if (retries > 20) { // Stop after 20 attempts (100 seconds)
+      setSyncingInvoices(prev => {
+        const next = new Set(prev);
+        next.delete(invoiceId);
+        return next;
+      });
+      toast.error('Sync status check timed out. Please refresh to see current status.');
+      return;
+    }
+
+    try {
+      const status = await api.getInvoiceSyncStatus(invoiceId);
+      
+      if (status.sync_status === 'synced') {
+        setSyncingInvoices(prev => {
+          const next = new Set(prev);
+          next.delete(invoiceId);
+          return next;
+        });
+        toast.success('Invoice synced to Xero successfully!');
+        loadData();
+      } else if (status.sync_status === 'failed') {
+        setSyncingInvoices(prev => {
+          const next = new Set(prev);
+          next.delete(invoiceId);
+          return next;
+        });
+        // Load error details
+        try {
+          const logs = await api.getSyncLogs('invoice', invoiceId);
+          const errorLog = logs.find((log: any) => log.status_code && log.status_code >= 400);
+          if (errorLog) {
+            setSyncErrors(prev => ({ ...prev, [`invoice-${invoiceId}`]: errorLog }));
+          }
+        } catch (e) {
+          console.error('Failed to load error details:', e);
+        }
+        toast.error('Invoice sync to Xero failed. Click "View Error Details" for more information.');
+        loadData();
+      } else {
+        // Still pending, poll again after 5 seconds
+        setTimeout(() => pollInvoiceSyncStatus(invoiceId, retries + 1), 5000);
+      }
+    } catch (error) {
+      console.error('Failed to check sync status:', error);
+      // Continue polling on error
+      setTimeout(() => pollInvoiceSyncStatus(invoiceId, retries + 1), 5000);
     }
   };
 
@@ -462,7 +531,13 @@ export default function Financials() {
                         </td>
                       </tr>
                     ) : (
-                      invoices.map((invoice) => (
+                      invoices.map((invoice) => {
+                        const invoiceId = invoice.id;
+                        const isSyncing = syncingInvoices.has(invoiceId);
+                        const hasError = syncErrors[`invoice-${invoiceId}`];
+                        const syncStatus = (invoice as any).sync_status;
+                        
+                        return (
                         <tr key={invoice.id} className="hover:bg-muted/30 transition-colors">
                           <td className="px-6 py-4 font-mono font-medium">
                             {invoice.invoice_number}
@@ -477,10 +552,45 @@ export default function Financials() {
                             ${invoice.total?.toLocaleString() || '0'}
                           </td>
                           <td className="px-6 py-4 text-center">
-                            {getStatusBadge(invoice.status)}
+                            <div className="flex items-center justify-center gap-2">
+                              {getStatusBadge(invoice.status)}
+                              {isSyncing && (
+                                <Badge className="bg-warning/20 text-warning border-warning/30 flex items-center gap-1">
+                                  <Loader2 className="w-3 h-3 animate-spin" />
+                                  Syncing...
+                                </Badge>
+                              )}
+                              {syncStatus === 'pending' && !isSyncing && (
+                                <Badge className="bg-warning/20 text-warning border-warning/30">
+                                  Pending Sync
+                                </Badge>
+                              )}
+                              {syncStatus === 'synced' && (
+                                <Badge className="bg-voltage/20 text-voltage border-voltage/30 flex items-center gap-1">
+                                  <CheckCircle className="w-3 h-3" />
+                                  Synced
+                                </Badge>
+                              )}
+                              {syncStatus === 'failed' && (
+                                <Badge className="bg-destructive/20 text-destructive border-destructive/30">
+                                  Sync Failed
+                                </Badge>
+                              )}
+                            </div>
                           </td>
                           <td className="px-6 py-4 text-right">
                             <div className="flex items-center justify-end gap-2">
+                              {hasError && (
+                                <Button 
+                                  variant="ghost" 
+                                  size="sm"
+                                  onClick={() => setSelectedErrorEntity({ type: 'invoice', id: invoiceId })}
+                                  className="text-destructive"
+                                >
+                                  <AlertCircle className="w-4 h-4 mr-1" />
+                                  Error Details
+                                </Button>
+                              )}
                               {invoice.status !== 'PAID' && (
                                 <Button 
                                   variant="ghost" 
@@ -496,7 +606,8 @@ export default function Financials() {
                             </div>
                           </td>
                         </tr>
-                      ))
+                        );
+                      })
                     )}
                   </tbody>
                 </table>
@@ -1221,6 +1332,51 @@ export default function Financials() {
         onOpenChange={setIsExpenseModalOpen}
         onExpenseCreated={loadData}
       />
+
+      {/* Error Details Modal */}
+      <Dialog open={!!selectedErrorEntity} onOpenChange={(open) => !open && setSelectedErrorEntity(null)}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Sync Error Details</DialogTitle>
+          </DialogHeader>
+          {selectedErrorEntity && syncErrors[`${selectedErrorEntity.type}-${selectedErrorEntity.id}`] && (
+            <div className="space-y-4">
+              <div>
+                <Label className="text-sm font-mono text-muted-foreground">Status Code</Label>
+                <p className="mt-1 font-mono">{syncErrors[`${selectedErrorEntity.type}-${selectedErrorEntity.id}`].status_code || 'N/A'}</p>
+              </div>
+              {syncErrors[`${selectedErrorEntity.type}-${selectedErrorEntity.id}`].error_message && (
+                <div>
+                  <Label className="text-sm font-mono text-muted-foreground">Error Message</Label>
+                  <p className="mt-1 text-destructive">{syncErrors[`${selectedErrorEntity.type}-${selectedErrorEntity.id}`].error_message}</p>
+                </div>
+              )}
+              {syncErrors[`${selectedErrorEntity.type}-${selectedErrorEntity.id}`].request_payload && (
+                <div>
+                  <Label className="text-sm font-mono text-muted-foreground">Request Payload</Label>
+                  <pre className="mt-1 p-3 bg-muted rounded text-xs overflow-x-auto">
+                    {JSON.stringify(syncErrors[`${selectedErrorEntity.type}-${selectedErrorEntity.id}`].request_payload, null, 2)}
+                  </pre>
+                </div>
+              )}
+              {syncErrors[`${selectedErrorEntity.type}-${selectedErrorEntity.id}`].response_payload && (
+                <div>
+                  <Label className="text-sm font-mono text-muted-foreground">Response Payload</Label>
+                  <pre className="mt-1 p-3 bg-muted rounded text-xs overflow-x-auto">
+                    {JSON.stringify(syncErrors[`${selectedErrorEntity.type}-${selectedErrorEntity.id}`].response_payload, null, 2)}
+                  </pre>
+                </div>
+              )}
+              <div>
+                <Label className="text-sm font-mono text-muted-foreground">Timestamp</Label>
+                <p className="mt-1 font-mono text-sm">
+                  {new Date(syncErrors[`${selectedErrorEntity.type}-${selectedErrorEntity.id}`].created_at).toLocaleString()}
+                </p>
+              </div>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

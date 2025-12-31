@@ -103,6 +103,15 @@ app.listen(env.PORT, async () => {
   } catch (error) {
     console.error('❌ Failed to start backup scheduler:', error);
   }
+
+  // Initialize Xero sync queue worker
+  try {
+    const { xeroSyncWorker } = await import('./lib/queue');
+    console.log('🔄 Xero sync queue worker initialized');
+  } catch (error) {
+    console.error('❌ Failed to initialize Xero sync queue worker:', error);
+    // Don't fail startup if Redis is not available - queue will retry
+  }
 });
 
 export default app;

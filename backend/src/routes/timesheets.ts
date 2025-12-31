@@ -39,11 +39,11 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
         t.invoice_id
       FROM timesheets t
       LEFT JOIN users u ON t.user_id = u.id
-      LEFT JOIN projects p ON t.project_id = p.id
-      LEFT JOIN clients c ON t.client_id = c.id
+      LEFT JOIN projects p ON t.project_id = p.id AND p.deleted_at IS NULL
+      LEFT JOIN clients c ON t.client_id = c.id AND c.deleted_at IS NULL
       LEFT JOIN activity_types at ON t.activity_type_id = at.id
       LEFT JOIN cost_centers cc ON t.cost_center_id = cc.id
-      WHERE 1=1
+      WHERE t.deleted_at IS NULL
     `;
     const params: any[] = [];
     let paramCount = 1;
@@ -116,11 +116,11 @@ router.get('/:id', authenticate, async (req: AuthRequest, res: Response) => {
         t.invoice_id
        FROM timesheets t
        LEFT JOIN users u ON t.user_id = u.id
-       LEFT JOIN projects p ON t.project_id = p.id
-       LEFT JOIN clients c ON t.client_id = c.id
+       LEFT JOIN projects p ON t.project_id = p.id AND p.deleted_at IS NULL
+       LEFT JOIN clients c ON t.client_id = c.id AND c.deleted_at IS NULL
        LEFT JOIN activity_types at ON t.activity_type_id = at.id
        LEFT JOIN cost_centers cc ON t.cost_center_id = cc.id
-       WHERE t.id = $1`,
+       WHERE t.id = $1 AND t.deleted_at IS NULL`,
       [req.params.id]
     );
 
@@ -167,12 +167,38 @@ router.post('/', authenticate, uploadLimiter, projectUpload.array('images', 5), 
 
   // Get image URLs from uploaded files or from body
   let imageUrls: string[] = [];
+  let cloudImageUrls: string[] = [];
+  
   if (isFormData && files.length > 0) {
-    // Files were uploaded, use project-specific paths
-    imageUrls = files.map(f => `/uploads/projects/${project_id}/${f.filename}`);
+    // Files were uploaded - upload to cloud storage
+    try {
+      const { uploadFileToCloud } = await import('../lib/cloudStorage');
+      const folderPath = `projects/${project_id}`;
+      
+      // Upload each file to cloud storage
+      for (const file of files) {
+        try {
+          const cloudUrl = await uploadFileToCloud(file.path, file.filename, folderPath);
+          cloudImageUrls.push(cloudUrl);
+          // Keep local path for backward compatibility
+          imageUrls.push(`/uploads/projects/${project_id}/${file.filename}`);
+        } catch (uploadError: any) {
+          console.error(`Failed to upload ${file.filename} to cloud storage:`, uploadError);
+          // Fallback to local path if cloud upload fails
+          imageUrls.push(`/uploads/projects/${project_id}/${file.filename}`);
+          // Optionally clean up local file if cloud upload fails and we don't want local storage
+          // fs.unlinkSync(file.path);
+        }
+      }
+    } catch (error: any) {
+      console.error('Cloud storage upload error:', error);
+      // Fallback to local paths if cloud storage is not configured
+      imageUrls = files.map(f => `/uploads/projects/${project_id}/${f.filename}`);
+    }
   } else {
     // JSON request with pre-uploaded URLs
     imageUrls = req.body.image_urls || [];
+    cloudImageUrls = req.body.cloud_image_urls || [];
   }
 
   const { client_id, notes, location } = req.body;
@@ -181,7 +207,7 @@ router.post('/', authenticate, uploadLimiter, projectUpload.array('images', 5), 
       // Get client_id from project if not provided
       let finalClientId = client_id;
       if (!finalClientId) {
-        const project = await query('SELECT client_id FROM projects WHERE id = $1', [project_id]);
+        const project = await query('SELECT client_id FROM projects WHERE id = $1 AND deleted_at IS NULL', [project_id]);
         if (project.rows.length > 0) {
           finalClientId = project.rows[0].client_id;
         }
@@ -202,10 +228,10 @@ router.post('/', authenticate, uploadLimiter, projectUpload.array('images', 5), 
       }
 
       const result = await query(
-        `INSERT INTO timesheets (user_id, project_id, client_id, date, hours, activity_type_id, cost_center_id, notes, image_urls, location, billing_status)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'unbilled')
+        `INSERT INTO timesheets (user_id, project_id, client_id, date, hours, activity_type_id, cost_center_id, notes, image_urls, cloud_image_urls, location, billing_status)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'unbilled')
          RETURNING *`,
-        [userId, project_id, finalClientId, timesheetDate, timesheetHours, timesheetActivityTypeId, timesheetCostCenterId, notes, imageUrls, location]
+        [userId, project_id, finalClientId, timesheetDate, timesheetHours, timesheetActivityTypeId, timesheetCostCenterId, notes, imageUrls, cloudImageUrls.length > 0 ? cloudImageUrls : null, location]
       );
 
       // Update project actual_cost based on activity hourly rate
@@ -253,28 +279,65 @@ router.put('/:id', authenticate, projectUpload.array('images', 5),
     
     // Get image URLs from uploaded files or from body
     let imageUrls: string[] = [];
+    let cloudImageUrls: string[] = [];
+    
     if (isFormData && files.length > 0) {
-      // Files were uploaded, use project-specific paths
-      imageUrls = files.map(f => `/uploads/projects/${project_id}/${f.filename}`);
-      // Also include any existing image URLs from body
-      if (req.body.image_urls) {
-        try {
-          const existingUrls = typeof req.body.image_urls === 'string' 
-            ? JSON.parse(req.body.image_urls) 
-            : req.body.image_urls;
-          imageUrls = [...imageUrls, ...existingUrls];
-        } catch (e) {
-          // If parsing fails, just use the new files
+      // Files were uploaded - upload to cloud storage
+      try {
+        const { uploadFileToCloud } = await import('../lib/cloudStorage');
+        const folderPath = `projects/${project_id}`;
+        
+        // Upload each new file to cloud storage
+        for (const file of files) {
+          try {
+            const cloudUrl = await uploadFileToCloud(file.path, file.filename, folderPath);
+            cloudImageUrls.push(cloudUrl);
+            // Keep local path for backward compatibility
+            imageUrls.push(`/uploads/projects/${project_id}/${file.filename}`);
+          } catch (uploadError: any) {
+            console.error(`Failed to upload ${file.filename} to cloud storage:`, uploadError);
+            // Fallback to local path
+            imageUrls.push(`/uploads/projects/${project_id}/${file.filename}`);
+          }
         }
+        
+        // Also include any existing image URLs from body
+        if (req.body.image_urls) {
+          try {
+            const existingUrls = typeof req.body.image_urls === 'string' 
+              ? JSON.parse(req.body.image_urls) 
+              : req.body.image_urls;
+            imageUrls = [...imageUrls, ...existingUrls];
+          } catch (e) {
+            // If parsing fails, just use the new files
+          }
+        }
+        
+        // Include existing cloud URLs
+        if (req.body.cloud_image_urls) {
+          try {
+            const existingCloudUrls = typeof req.body.cloud_image_urls === 'string'
+              ? JSON.parse(req.body.cloud_image_urls)
+              : req.body.cloud_image_urls;
+            cloudImageUrls = [...cloudImageUrls, ...existingCloudUrls];
+          } catch (e) {
+            // If parsing fails, just use the new files
+          }
+        }
+      } catch (error: any) {
+        console.error('Cloud storage upload error:', error);
+        // Fallback to local paths
+        imageUrls = files.map(f => `/uploads/projects/${project_id}/${f.filename}`);
       }
     } else {
       // JSON request with pre-uploaded URLs or existing URLs
       imageUrls = req.body.image_urls || [];
+      cloudImageUrls = req.body.cloud_image_urls || [];
     }
 
     try {
       // Check ownership or permission
-      const existing = await query('SELECT user_id, hours, project_id, activity_type_id, COALESCE(billing_status, \'unbilled\') as billing_status FROM timesheets WHERE id = $1', [req.params.id]);
+      const existing = await query('SELECT user_id, hours, project_id, activity_type_id, COALESCE(billing_status, \'unbilled\') as billing_status FROM timesheets WHERE id = $1 AND deleted_at IS NULL', [req.params.id]);
       if (existing.rows.length === 0) {
         return res.status(404).json({ error: 'Timesheet not found' });
       }
@@ -308,6 +371,7 @@ router.put('/:id', authenticate, projectUpload.array('images', 5),
         cost_center_id, 
         notes, 
         image_urls: imageUrls.length > 0 ? imageUrls : undefined,
+        cloud_image_urls: cloudImageUrls.length > 0 ? cloudImageUrls : undefined,
         location, 
         synced 
       };
@@ -369,7 +433,7 @@ router.put('/:id', authenticate, projectUpload.array('images', 5),
 router.delete('/:id', authenticate, async (req: AuthRequest, res: Response) => {
   try {
     const existing = await query(
-      'SELECT user_id, hours, project_id, activity_type_id, COALESCE(billing_status, \'unbilled\') as billing_status FROM timesheets WHERE id = $1', 
+      'SELECT user_id, hours, project_id, activity_type_id, COALESCE(billing_status, \'unbilled\') as billing_status FROM timesheets WHERE id = $1 AND deleted_at IS NULL', 
       [req.params.id]
     );
     
@@ -460,17 +524,42 @@ router.post('/:id/images', authenticate, projectUpload.array('images', 5), async
     }
 
     const project_id = timesheet.rows[0].project_id;
-    const imageUrls = files.map(f => `/uploads/projects/${project_id}/${f.filename}`);
+    
+    // Upload files to cloud storage
+    let cloudImageUrls: string[] = [];
+    const localImageUrls = files.map(f => `/uploads/projects/${project_id}/${f.filename}`);
+    
+    try {
+      const { uploadFileToCloud } = await import('../lib/cloudStorage');
+      const folderPath = `projects/${project_id}`;
+      
+      for (const file of files) {
+        try {
+          const cloudUrl = await uploadFileToCloud(file.path, file.filename, folderPath);
+          cloudImageUrls.push(cloudUrl);
+        } catch (uploadError: any) {
+          console.error(`Failed to upload ${file.filename} to cloud storage:`, uploadError);
+        }
+      }
+    } catch (error: any) {
+      console.error('Cloud storage upload error:', error);
+    }
 
+    // Update both local and cloud URLs
     const result = await query(
       `UPDATE timesheets 
-       SET image_urls = array_cat(COALESCE(image_urls, '{}'), $1), updated_at = CURRENT_TIMESTAMP
-       WHERE id = $2
-       RETURNING image_urls`,
-      [imageUrls, req.params.id]
+       SET image_urls = array_cat(COALESCE(image_urls, '{}'), $1), 
+           cloud_image_urls = array_cat(COALESCE(cloud_image_urls, '{}'), $2),
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $3
+       RETURNING image_urls, cloud_image_urls`,
+      [localImageUrls, cloudImageUrls.length > 0 ? cloudImageUrls : [], req.params.id]
     );
 
-    res.json({ image_urls: result.rows[0].image_urls });
+    res.json({ 
+      image_urls: result.rows[0].image_urls,
+      cloud_image_urls: result.rows[0].cloud_image_urls || []
+    });
   } catch (error) {
     console.error('Upload images error:', error);
     res.status(500).json({ error: 'Failed to upload images' });

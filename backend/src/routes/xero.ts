@@ -3261,6 +3261,7 @@ router.post('/invoices/from-timesheets', authenticate, requirePermission('can_sy
       LEFT JOIN activity_types at ON t.activity_type_id = at.id
       WHERE t.client_id = $1 
         AND COALESCE(t.billing_status, 'unbilled') = 'unbilled'
+        AND t.deleted_at IS NULL
     `;
     const params: any[] = [client_id];
     let paramCount = 2;
@@ -3325,13 +3326,13 @@ router.post('/invoices/from-timesheets', authenticate, requirePermission('can_sy
     const total = lineItems.reduce((sum, item) => sum + item.amount, 0);
 
     // Generate invoice number
-    const countResult = await query('SELECT COUNT(*) as count FROM xero_invoices');
+    const countResult = await query('SELECT COUNT(*) as count FROM xero_invoices WHERE deleted_at IS NULL');
     const invoiceNumber = `INV-${String(parseInt(countResult.rows[0].count) + 1).padStart(5, '0')}`;
 
-    // Create invoice
+    // Create invoice locally with pending sync status
     const invoiceResult = await query(
-      `INSERT INTO xero_invoices (xero_invoice_id, invoice_number, client_id, project_id, status, line_items, total, amount_due, due_date, issue_date, synced_at)
-       VALUES ($1, $2, $3, $4, 'DRAFT', $5, $6, $6, $7, CURRENT_DATE, CURRENT_TIMESTAMP)
+      `INSERT INTO xero_invoices (xero_invoice_id, invoice_number, client_id, project_id, status, line_items, total, amount_due, due_date, issue_date, sync_status, synced_at)
+       VALUES ($1, $2, $3, $4, 'DRAFT', $5, $6, $6, $7, CURRENT_DATE, 'pending', CURRENT_TIMESTAMP)
        RETURNING *`,
       [invoiceNumber, invoiceNumber, client_id, project_id || null, JSON.stringify(lineItems), total, due_date || null]
     );
@@ -3355,13 +3356,34 @@ router.post('/invoices/from-timesheets', authenticate, requirePermission('can_sy
         invoice_number: invoiceNumber, 
         total, 
         timesheets_count: timesheetIds.length,
-        from_timesheets: true
+        from_timesheets: true,
+        sync_status: 'pending'
       })]
     );
 
-    res.status(201).json({
+    // Queue the Xero sync job (async, non-blocking)
+    try {
+      const { addXeroSyncJob } = await import('../lib/queue');
+      await addXeroSyncJob('sync_invoice_from_timesheets', {
+        invoiceId,
+        clientId: client_id,
+        projectId: project_id || null,
+        lineItems,
+        total,
+        dueDate: due_date || null,
+        timesheetIds,
+      });
+    } catch (queueError) {
+      console.error('Failed to queue Xero sync job:', queueError);
+      // Don't fail the request - invoice is created, sync will be retried
+    }
+
+    // Return 202 Accepted - invoice created, sync in progress
+    res.status(202).json({
       ...invoiceResult.rows[0],
-      timesheets_count: timesheetIds.length
+      timesheets_count: timesheetIds.length,
+      sync_status: 'pending',
+      message: 'Invoice created. Syncing to Xero in the background...'
     });
   } catch (error) {
     console.error('Failed to create invoice from timesheets:', error);
@@ -3734,61 +3756,25 @@ router.post('/purchase-orders', authenticate, requirePermission('can_sync_xero')
       return res.status(400).json({ error: 'Missing required fields: supplier_id, project_id, date, line_items' });
     }
 
-    // Verify project exists
-    const projectResult = await query('SELECT id FROM projects WHERE id = $1', [project_id]);
+    // Verify project exists (and not soft-deleted)
+    const projectResult = await query('SELECT id FROM projects WHERE id = $1 AND deleted_at IS NULL', [project_id]);
     if (projectResult.rows.length === 0) {
       return res.status(404).json({ error: 'Project not found' });
     }
 
-    // Get supplier Xero contact ID
-    const supplierResult = await query('SELECT xero_contact_id FROM clients WHERE id = $1', [supplier_id]);
+    // Get supplier Xero contact ID (and not soft-deleted)
+    const supplierResult = await query('SELECT xero_contact_id FROM clients WHERE id = $1 AND deleted_at IS NULL', [supplier_id]);
     if (supplierResult.rows.length === 0) {
       return res.status(404).json({ error: 'Supplier not found' });
     }
 
     const supplierXeroId = supplierResult.rows[0].xero_contact_id;
 
-    const tokenData = await getValidAccessToken();
-    if (!tokenData) {
-      return res.status(400).json({ error: 'Xero not connected or token expired' });
-    }
-
-    // Get project cost centers for tracking
-    const costCentersResult = await query(
-      `SELECT cc.xero_tracking_category_id, cc.code
-       FROM cost_centers cc
-       JOIN project_cost_centers pcc ON cc.id = pcc.cost_center_id
-       WHERE pcc.project_id = $1
-       LIMIT 1`,
-      [project_id]
-    );
-
-    let trackingCategories: Array<{ name: string; option: string }> | undefined;
-    if (costCentersResult.rows.length > 0 && costCentersResult.rows[0].xero_tracking_category_id) {
-      // This would need to be expanded based on Xero tracking category structure
-      // For now, we'll create the PO without tracking
-    }
-
-    // Create PO in Xero if supplier has Xero ID
-    let xeroPoId: string | undefined;
-    if (supplierXeroId) {
-      const xeroPO = await createPurchaseOrderInXero(
-        tokenData,
-        { supplier_id, project_id, date, delivery_date, line_items, notes, currency },
-        supplierXeroId,
-        trackingCategories
-      );
-
-      if (xeroPO) {
-        xeroPoId = xeroPO.PurchaseOrderID;
-      }
-    }
-
     // Generate PO number
-    const countResult = await query('SELECT COUNT(*) as count FROM xero_purchase_orders');
+    const countResult = await query('SELECT COUNT(*) as count FROM xero_purchase_orders WHERE deleted_at IS NULL');
     const poNumber = `PO-${String(parseInt(countResult.rows[0].count) + 1).padStart(5, '0')}`;
 
-    // Store PO in local database
+    // Store PO in local database with pending sync status
     const poId = await storePurchaseOrder({
       supplier_id,
       project_id,
@@ -3797,20 +3783,58 @@ router.post('/purchase-orders', authenticate, requirePermission('can_sync_xero')
       line_items,
       notes,
       currency,
-      xero_po_id: xeroPoId,
+      xero_po_id: null, // Will be set after sync
       po_number: poNumber,
     });
+
+    // Update sync status to pending
+    await query(
+      `UPDATE xero_purchase_orders 
+       SET sync_status = 'pending', updated_at = CURRENT_TIMESTAMP 
+       WHERE id = $1`,
+      [poId]
+    );
 
     // Log activity
     await query(
       `INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) 
        VALUES ($1, $2, $3, $4, $5)`,
-      [req.user!.id, 'create', 'purchase_order', poId, JSON.stringify({ po_number: poNumber, project_id, supplier_id })]
+      [req.user!.id, 'create', 'purchase_order', poId, JSON.stringify({ 
+        po_number: poNumber, 
+        project_id, 
+        supplier_id,
+        sync_status: 'pending'
+      })]
     );
+
+    // Queue the Xero sync job (async, non-blocking)
+    try {
+      const { addXeroSyncJob } = await import('../lib/queue');
+      await addXeroSyncJob('sync_purchase_order', {
+        poId,
+        supplierId: supplier_id,
+        projectId: project_id,
+        date,
+        deliveryDate: delivery_date || null,
+        lineItems: line_items,
+        notes: notes || null,
+        currency: currency || 'USD',
+        poNumber,
+      });
+    } catch (queueError) {
+      console.error('Failed to queue Xero sync job:', queueError);
+      // Don't fail the request - PO is created, sync will be retried
+    }
 
     // Get created PO with details
     const po = await getPurchaseOrderById(poId);
-    res.status(201).json(po);
+    
+    // Return 202 Accepted - PO created, sync in progress
+    res.status(202).json({
+      ...po,
+      sync_status: 'pending',
+      message: 'Purchase order created. Syncing to Xero in the background...'
+    });
   } catch (error: any) {
     console.error('Failed to create purchase order:', error);
     res.status(500).json({ error: 'Failed to create purchase order: ' + (error.message || 'Unknown error') });
@@ -3860,6 +3884,68 @@ router.get('/purchase-orders/project/:project_id', authenticate, requirePermissi
   } catch (error) {
     console.error('Failed to fetch purchase orders:', error);
     res.status(500).json({ error: 'Failed to fetch purchase orders' });
+  }
+});
+
+// Get sync status for invoice
+router.get('/invoices/:id/sync-status', authenticate, requirePermission('can_view_financials'), async (req: AuthRequest, res: Response) => {
+  try {
+    const result = await query(
+      'SELECT sync_status, xero_sync_id FROM xero_invoices WHERE id = $1 AND deleted_at IS NULL',
+      [req.params.id]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Invoice not found' });
+    }
+    
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Failed to get invoice sync status:', error);
+    res.status(500).json({ error: 'Failed to get sync status' });
+  }
+});
+
+// Get sync status for purchase order
+router.get('/purchase-orders/:id/sync-status', authenticate, requirePermission('can_view_financials'), async (req: AuthRequest, res: Response) => {
+  try {
+    const result = await query(
+      'SELECT sync_status, xero_sync_id FROM xero_purchase_orders WHERE id = $1 AND deleted_at IS NULL',
+      [req.params.id]
+    );
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Purchase order not found' });
+    }
+    
+    res.json(result.rows[0]);
+  } catch (error) {
+    console.error('Failed to get PO sync status:', error);
+    res.status(500).json({ error: 'Failed to get sync status' });
+  }
+});
+
+// Get sync logs for an entity
+router.get('/sync-logs', authenticate, requirePermission('can_view_financials'), async (req: AuthRequest, res: Response) => {
+  try {
+    const { entity_type, entity_id } = req.query;
+    
+    if (!entity_type || !entity_id) {
+      return res.status(400).json({ error: 'entity_type and entity_id are required' });
+    }
+    
+    const result = await query(
+      `SELECT * FROM sync_logs 
+       WHERE entity_type = $1 AND entity_id = $2 
+       ORDER BY created_at DESC 
+       LIMIT 10`,
+      [entity_type, entity_id]
+    );
+    
+    res.json(result.rows);
+  } catch (error) {
+    console.error('Failed to get sync logs:', error);
+    res.status(500).json({ error: 'Failed to get sync logs' });
   }
 });
 

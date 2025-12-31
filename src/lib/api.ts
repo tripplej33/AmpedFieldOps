@@ -697,7 +697,39 @@ class ApiClient {
   }
 
   async createInvoiceFromTimesheets(data: { client_id: string; project_id?: string; date_from?: string; date_to?: string; period?: 'week' | 'month'; due_date?: string }) {
-    return this.request('/api/xero/invoices/from-timesheets', { method: 'POST', body: data });
+    const response = await fetch(`${API_URL}/api/xero/invoices/from-timesheets`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}),
+      },
+      body: JSON.stringify(data),
+    });
+
+    const result = await response.json();
+    
+    // Handle 202 Accepted (async sync)
+    if (response.status === 202) {
+      return { ...result, sync_status: 'pending', async: true };
+    }
+    
+    if (!response.ok) {
+      throw new Error(result.error || 'Failed to create invoice from timesheets');
+    }
+    
+    return result;
+  }
+
+  async getSyncLogs(entityType: string, entityId: string) {
+    return this.request<any[]>(`/api/xero/sync-logs?entity_type=${entityType}&entity_id=${entityId}`);
+  }
+
+  async getInvoiceSyncStatus(invoiceId: string) {
+    return this.request<{ sync_status: string; xero_sync_id?: string }>(`/api/xero/invoices/${invoiceId}/sync-status`);
+  }
+
+  async getPOSyncStatus(poId: string) {
+    return this.request<{ sync_status: string; xero_sync_id?: string }>(`/api/xero/purchase-orders/${poId}/sync-status`);
   }
 
   async markInvoiceAsPaid(invoiceId: string) {
@@ -763,7 +795,27 @@ class ApiClient {
   }
 
   async createPurchaseOrder(data: { supplier_id: string; project_id: string; date: string; delivery_date?: string; line_items: Array<{ description: string; quantity: number; unit_amount: number; account_code?: string; cost_center_id?: string; item_id?: string }>; notes?: string; currency?: string }) {
-    return this.request<any>('/api/xero/purchase-orders', { method: 'POST', body: data });
+    const response = await fetch(`${API_URL}/api/xero/purchase-orders`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}),
+      },
+      body: JSON.stringify(data),
+    });
+
+    const result = await response.json();
+    
+    // Handle 202 Accepted (async sync)
+    if (response.status === 202) {
+      return { ...result, sync_status: 'pending', async: true };
+    }
+    
+    if (!response.ok) {
+      throw new Error(result.error || 'Failed to create purchase order');
+    }
+    
+    return result;
   }
 
   async updatePurchaseOrder(id: string, data: { status?: string }) {
