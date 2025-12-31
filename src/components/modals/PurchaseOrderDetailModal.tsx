@@ -110,10 +110,10 @@ export default function PurchaseOrderDetailModal({ purchaseOrder, open, onOpenCh
                     <div className="col-span-5 text-sm">{item.description || item.Description || '-'}</div>
                     <div className="col-span-2 text-right text-sm font-mono">{item.quantity || item.Quantity || 0}</div>
                     <div className="col-span-2 text-right text-sm font-mono">
-                      ${(item.unit_amount || item.UnitAmount || 0).toFixed(2)}
+                      ${(Number(item.unit_amount || item.UnitAmount) || 0).toFixed(2)}
                     </div>
                     <div className="col-span-3 text-right text-sm font-mono font-bold">
-                      ${(item.line_amount || item.LineAmount || 0).toFixed(2)}
+                      ${(Number(item.line_amount || item.LineAmount) || 0).toFixed(2)}
                     </div>
                   </div>
                 ))}
