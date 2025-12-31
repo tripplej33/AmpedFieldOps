@@ -960,6 +960,7 @@ export default function Timesheets() {
             removeImage={removeImage}
             fileInputRef={fileInputRef}
             cameraInputRef={cameraInputRef}
+            dropZoneRef={dropZoneRef}
             handleFileSelect={handleFileSelect}
             handleClientChange={handleClientChange}
             handleProjectChange={handleProjectChange}
@@ -972,6 +973,13 @@ export default function Timesheets() {
             updateActivityEntry={updateActivityEntry}
             toggleUserForActivity={toggleUserForActivity}
             updateUserHoursForActivity={updateUserHoursForActivity}
+            isDragging={isDragging}
+            uploadProgress={uploadProgress}
+            imageFiles={imageFiles}
+            handleDragEnter={handleDragEnter}
+            handleDragLeave={handleDragLeave}
+            handleDragOver={handleDragOver}
+            handleDrop={handleDrop}
           />
         </DialogContent>
       </Dialog>
