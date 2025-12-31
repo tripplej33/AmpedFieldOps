@@ -1495,6 +1495,12 @@ function parseXeroDate(dateString: string | null | undefined): Date | null {
   return isNaN(date.getTime()) ? null : date;
 }
 
+// Helper function to parse date with fallback (for required date fields)
+function parseXeroDateWithFallback(dateString: string | null | undefined, fallback: Date = new Date()): Date {
+  const parsed = parseXeroDate(dateString);
+  return parsed || fallback;
+}
+
 async function syncInvoicesBidirectional(
   tokenData: { accessToken: string; tenantId: string },
   userId: string
@@ -1909,8 +1915,8 @@ async function syncPurchaseOrdersBidirectional(
               po.PurchaseOrderNumber,
               po.Status,
               po.Total || 0,
-              parseXeroDate(po.Date),
-              parseXeroDate(po.DeliveryDate),
+              parseXeroDateWithFallback(po.Date), // date is required, use today if missing
+              parseXeroDate(po.DeliveryDate), // delivery_date can be null
               po.PurchaseOrderID
             ]
           );
@@ -1960,8 +1966,8 @@ async function syncPurchaseOrdersBidirectional(
               projectId,
               po.Status,
               po.Total || 0,
-              parseXeroDate(po.Date),
-              parseXeroDate(po.DeliveryDate)
+              parseXeroDateWithFallback(po.Date), // date is required, use today if missing
+              parseXeroDate(po.DeliveryDate) // delivery_date can be null
             ]
           );
           result.pulled.created++;
