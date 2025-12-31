@@ -63,6 +63,18 @@ export default function Financials() {
   const [isBillModalOpen, setIsBillModalOpen] = useState(false);
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false);
   const [selectedPOForBill, setSelectedPOForBill] = useState<string | undefined>(undefined);
+  const [selectedInvoice, setSelectedInvoice] = useState<XeroInvoice | null>(null);
+  const [isInvoiceDetailOpen, setIsInvoiceDetailOpen] = useState(false);
+  const [selectedPurchaseOrder, setSelectedPurchaseOrder] = useState<PurchaseOrder | null>(null);
+  const [isPODetailOpen, setIsPODetailOpen] = useState(false);
+  const [selectedQuote, setSelectedQuote] = useState<XeroQuote | null>(null);
+  const [isQuoteDetailOpen, setIsQuoteDetailOpen] = useState(false);
+  const [selectedPayment, setSelectedPayment] = useState<XeroPayment | null>(null);
+  const [isPaymentDetailOpen, setIsPaymentDetailOpen] = useState(false);
+  const [selectedBill, setSelectedBill] = useState<Bill | null>(null);
+  const [isBillDetailOpen, setIsBillDetailOpen] = useState(false);
+  const [selectedExpense, setSelectedExpense] = useState<Expense | null>(null);
+  const [isExpenseDetailOpen, setIsExpenseDetailOpen] = useState(false);
   
   // Create Invoice Modal state
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -739,12 +751,13 @@ export default function Financials() {
                       <th className="px-6 py-4 text-right text-xs font-mono font-bold text-muted-foreground uppercase">Amount</th>
                       <th className="px-6 py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">Method</th>
                       <th className="px-6 py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">Reference</th>
+                      <th className="px-6 py-4 text-right text-xs font-mono font-bold text-muted-foreground uppercase">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
                     {payments.length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="px-6 py-12 text-center text-muted-foreground">
+                        <td colSpan={7} className="px-6 py-12 text-center text-muted-foreground">
                           No payments found.
                         </td>
                       </tr>
@@ -921,7 +934,16 @@ export default function Financials() {
                                   Mark Paid
                                 </Button>
                               )}
-                              <Button variant="ghost" size="sm">View</Button>
+                              <Button 
+                                variant="ghost" 
+                                size="sm"
+                                onClick={() => {
+                                  setSelectedBill(bill);
+                                  setIsBillDetailOpen(true);
+                                }}
+                              >
+                                View
+                              </Button>
                             </div>
                           </td>
                         </tr>
@@ -979,7 +1001,16 @@ export default function Financials() {
                             {getStatusBadge(expense.status)}
                           </td>
                           <td className="px-6 py-4 text-right">
-                            <Button variant="ghost" size="sm">View</Button>
+                            <Button 
+                              variant="ghost" 
+                              size="sm"
+                              onClick={() => {
+                                setSelectedExpense(expense);
+                                setIsExpenseDetailOpen(true);
+                              }}
+                            >
+                              View
+                            </Button>
                           </td>
                         </tr>
                       ))
@@ -1433,6 +1464,34 @@ export default function Financials() {
         purchaseOrder={selectedPurchaseOrder}
         open={isPODetailOpen}
         onOpenChange={setIsPODetailOpen}
+      />
+
+      {/* Quote Detail Modal */}
+      <QuoteDetailModal
+        quote={selectedQuote}
+        open={isQuoteDetailOpen}
+        onOpenChange={setIsQuoteDetailOpen}
+      />
+
+      {/* Payment Detail Modal */}
+      <PaymentDetailModal
+        payment={selectedPayment}
+        open={isPaymentDetailOpen}
+        onOpenChange={setIsPaymentDetailOpen}
+      />
+
+      {/* Bill Detail Modal */}
+      <BillDetailModal
+        bill={selectedBill}
+        open={isBillDetailOpen}
+        onOpenChange={setIsBillDetailOpen}
+      />
+
+      {/* Expense Detail Modal */}
+      <ExpenseDetailModal
+        expense={selectedExpense}
+        open={isExpenseDetailOpen}
+        onOpenChange={setIsExpenseDetailOpen}
       />
     </>
   );
