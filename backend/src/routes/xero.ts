@@ -3683,6 +3683,7 @@ router.post('/bank-transactions', authenticate, requirePermission('can_sync_xero
 // Get bank transactions
 router.get('/bank-transactions', authenticate, requirePermission('can_view_financials'), async (req: AuthRequest, res: Response) => {
   try {
+    await ensureXeroTables(); // Ensure tables exist
     const { date_from, date_to, reconciled, payment_id } = req.query;
 
     const transactions = await getBankTransactions({
@@ -3692,10 +3693,10 @@ router.get('/bank-transactions', authenticate, requirePermission('can_view_finan
       payment_id: payment_id as string,
     });
 
-    res.json(transactions);
-  } catch (error) {
+    res.status(200).json(transactions);
+  } catch (error: any) {
     console.error('Failed to fetch bank transactions:', error);
-    res.status(500).json({ error: 'Failed to fetch bank transactions' });
+    res.status(200).json([]); // Return empty array with 200 status on any error
   }
 });
 
@@ -4280,18 +4281,18 @@ router.get('/reports/profit-loss', authenticate, requirePermission('can_view_fin
 
     const tokenData = await getValidAccessToken();
     if (!tokenData) {
-      return res.status(400).json({ error: 'Xero not connected or token expired' });
+      return res.status(200).json({ error: 'Xero not connected or token expired', report: null });
     }
 
     const report = await getProfitLossReport(tokenData, date_from as string, date_to as string);
     if (!report) {
-      return res.status(500).json({ error: 'Failed to fetch Profit & Loss report' });
+      return res.status(200).json({ error: 'Failed to fetch Profit & Loss report', report: null });
     }
 
-    res.json(report);
+    res.status(200).json(report);
   } catch (error: any) {
     console.error('Failed to fetch P&L report:', error);
-    res.status(500).json({ error: 'Failed to fetch Profit & Loss report: ' + (error.message || 'Unknown error') });
+    res.status(200).json({ error: 'Failed to fetch Profit & Loss report', report: null });
   }
 });
 
@@ -4301,18 +4302,18 @@ router.get('/reports/balance-sheet', authenticate, requirePermission('can_view_f
 
     const tokenData = await getValidAccessToken();
     if (!tokenData) {
-      return res.status(400).json({ error: 'Xero not connected or token expired' });
+      return res.status(200).json({ error: 'Xero not connected or token expired', report: null });
     }
 
     const report = await getBalanceSheetReport(tokenData, date as string);
     if (!report) {
-      return res.status(500).json({ error: 'Failed to fetch Balance Sheet report' });
+      return res.status(200).json({ error: 'Failed to fetch Balance Sheet report', report: null });
     }
 
-    res.json(report);
+    res.status(200).json(report);
   } catch (error: any) {
     console.error('Failed to fetch Balance Sheet report:', error);
-    res.status(500).json({ error: 'Failed to fetch Balance Sheet report: ' + (error.message || 'Unknown error') });
+    res.status(200).json({ error: 'Failed to fetch Balance Sheet report', report: null });
   }
 });
 
@@ -4322,18 +4323,18 @@ router.get('/reports/cash-flow', authenticate, requirePermission('can_view_finan
 
     const tokenData = await getValidAccessToken();
     if (!tokenData) {
-      return res.status(400).json({ error: 'Xero not connected or token expired' });
+      return res.status(200).json({ error: 'Xero not connected or token expired', report: null });
     }
 
     const report = await getCashFlowReport(tokenData, date_from as string, date_to as string);
     if (!report) {
-      return res.status(500).json({ error: 'Failed to fetch Cash Flow report' });
+      return res.status(200).json({ error: 'Failed to fetch Cash Flow report', report: null });
     }
 
-    res.json(report);
+    res.status(200).json(report);
   } catch (error: any) {
     console.error('Failed to fetch Cash Flow report:', error);
-    res.status(500).json({ error: 'Failed to fetch Cash Flow report: ' + (error.message || 'Unknown error') });
+    res.status(200).json({ error: 'Failed to fetch Cash Flow report', report: null });
   }
 });
 
@@ -4343,18 +4344,18 @@ router.get('/reports/aged-receivables', authenticate, requirePermission('can_vie
 
     const tokenData = await getValidAccessToken();
     if (!tokenData) {
-      return res.status(400).json({ error: 'Xero not connected or token expired' });
+      return res.status(200).json({ error: 'Xero not connected or token expired', report: null });
     }
 
     const report = await getAgedReceivablesReport(tokenData, date as string);
     if (!report) {
-      return res.status(500).json({ error: 'Failed to fetch Aged Receivables report' });
+      return res.status(200).json({ error: 'Failed to fetch Aged Receivables report', report: null });
     }
 
-    res.json(report);
+    res.status(200).json(report);
   } catch (error: any) {
     console.error('Failed to fetch Aged Receivables report:', error);
-    res.status(500).json({ error: 'Failed to fetch Aged Receivables report: ' + (error.message || 'Unknown error') });
+    res.status(200).json({ error: 'Failed to fetch Aged Receivables report', report: null });
   }
 });
 
@@ -4364,18 +4365,18 @@ router.get('/reports/aged-payables', authenticate, requirePermission('can_view_f
 
     const tokenData = await getValidAccessToken();
     if (!tokenData) {
-      return res.status(400).json({ error: 'Xero not connected or token expired' });
+      return res.status(200).json({ error: 'Xero not connected or token expired', report: null });
     }
 
     const report = await getAgedPayablesReport(tokenData, date as string);
     if (!report) {
-      return res.status(500).json({ error: 'Failed to fetch Aged Payables report' });
+      return res.status(200).json({ error: 'Failed to fetch Aged Payables report', report: null });
     }
 
-    res.json(report);
+    res.status(200).json(report);
   } catch (error: any) {
     console.error('Failed to fetch Aged Payables report:', error);
-    res.status(500).json({ error: 'Failed to fetch Aged Payables report: ' + (error.message || 'Unknown error') });
+    res.status(200).json({ error: 'Failed to fetch Aged Payables report', report: null });
   }
 });
 
