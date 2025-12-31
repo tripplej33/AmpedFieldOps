@@ -34,6 +34,10 @@ import PurchaseOrderDetailModal from '@/components/modals/PurchaseOrderDetailMod
 import BillModal from '@/components/modals/BillModal';
 import ExpenseModal from '@/components/modals/ExpenseModal';
 import InvoiceDetailModal from '@/components/modals/InvoiceDetailModal';
+import QuoteDetailModal from '@/components/modals/QuoteDetailModal';
+import PaymentDetailModal from '@/components/modals/PaymentDetailModal';
+import BillDetailModal from '@/components/modals/BillDetailModal';
+import ExpenseDetailModal from '@/components/modals/ExpenseDetailModal';
 import FinancialReportsTab from './FinancialReportsTab';
 import { XeroPayment, PurchaseOrder, Bill, Expense } from '@/types';
 import { cn } from '@/lib/utils';
