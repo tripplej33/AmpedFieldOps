@@ -161,12 +161,12 @@ async function seed() {
         }
       ];
 
-      for (const client of sampleClients) {
+      for (const sampleClient of sampleClients) {
         await client.query(
           `INSERT INTO clients (name, contact_name, email, phone, address, billing_address, billing_email, status)
            VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-          [client.name, client.contact_name, client.email, client.phone, client.address, 
-           client.billing_address, client.billing_email, client.status]
+          [sampleClient.name, sampleClient.contact_name, sampleClient.email, sampleClient.phone, sampleClient.address, 
+           sampleClient.billing_address, sampleClient.billing_email, sampleClient.status]
         );
       }
       console.log('  ✓ Sample clients seeded');
@@ -174,10 +174,10 @@ async function seed() {
 
     // Seed sample projects (only if no projects exist and clients exist)
     const existingProjects = await client.query(`SELECT id FROM projects LIMIT 1`);
-    const clients = await client.query(`SELECT id, name FROM clients ORDER BY created_at LIMIT 3`);
+    const clientsResult = await client.query(`SELECT id, name FROM clients ORDER BY created_at LIMIT 3`);
     
-    if (existingProjects.rows.length === 0 && clients.rows.length > 0) {
-      const clientIds = clients.rows.map(c => c.id);
+    if (existingProjects.rows.length === 0 && clientsResult.rows.length > 0) {
+      const clientIds = clientsResult.rows.map((c: any) => c.id);
       const sampleProjects = [
         {
           code: 'PROJ-001',
@@ -226,21 +226,21 @@ async function seed() {
 
     // Seed sample timesheets (only if no timesheets exist and we have projects, activity types, cost centers, and users)
     const existingTimesheets = await client.query(`SELECT id FROM timesheets LIMIT 1`);
-    const projects = await client.query(`SELECT id, client_id FROM projects ORDER BY created_at LIMIT 3`);
-    const activityTypes = await client.query(`SELECT id FROM activity_types ORDER BY created_at LIMIT 5`);
-    const costCenters = await client.query(`SELECT id FROM cost_centers ORDER BY created_at LIMIT 5`);
-    const users = await client.query(`SELECT id FROM users WHERE role = 'admin' LIMIT 1`);
+    const projectsResult = await client.query(`SELECT id, client_id FROM projects ORDER BY created_at LIMIT 3`);
+    const activityTypesResult = await client.query(`SELECT id FROM activity_types ORDER BY created_at LIMIT 5`);
+    const costCentersResult = await client.query(`SELECT id FROM cost_centers ORDER BY created_at LIMIT 5`);
+    const usersResult = await client.query(`SELECT id FROM users WHERE role = 'admin' LIMIT 1`);
     
     if (existingTimesheets.rows.length === 0 && 
-        projects.rows.length > 0 && 
-        activityTypes.rows.length > 0 && 
-        costCenters.rows.length > 0 && 
-        users.rows.length > 0) {
+        projectsResult.rows.length > 0 && 
+        activityTypesResult.rows.length > 0 && 
+        costCentersResult.rows.length > 0 && 
+        usersResult.rows.length > 0) {
       
-      const projectIds = projects.rows.map(p => p.id);
-      const activityTypeIds = activityTypes.rows.map(a => a.id);
-      const costCenterIds = costCenters.rows.map(c => c.id);
-      const userId = users.rows[0].id;
+      const projectIds = projectsResult.rows.map((p: any) => p.id);
+      const activityTypeIds = activityTypesResult.rows.map((a: any) => a.id);
+      const costCenterIds = costCentersResult.rows.map((c: any) => c.id);
+      const userId = usersResult.rows[0].id;
       
       // Generate timesheets for the last 30 days
       const timesheets = [];
@@ -264,7 +264,7 @@ async function seed() {
           const hours = Math.round((Math.random() * 7 + 1) * 100) / 100; // 1-8 hours
           
           // Get client_id from project
-          const project = projects.rows.find(p => p.id === projectId);
+          const project = projectsResult.rows.find((p: any) => p.id === projectId);
           const clientId = project?.client_id || null;
           
           timesheets.push({
