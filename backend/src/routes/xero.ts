@@ -3796,7 +3796,7 @@ router.post('/purchase-orders', authenticate, requirePermission('can_sync_xero')
       line_items,
       notes,
       currency,
-      xero_po_id: null, // Will be set after sync
+      xero_po_id: undefined, // Will be set after sync
       po_number: poNumber,
     });
 
