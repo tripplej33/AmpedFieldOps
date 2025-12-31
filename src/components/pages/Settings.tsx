@@ -1087,62 +1087,57 @@ export default function Settings() {
           ) : (
           <div>
             {/* Xero Credentials */}
-            <div className="space-y-4 p-4 rounded-lg bg-muted/20 border border-border mb-6">
-              <h4 className="text-sm font-bold font-mono uppercase tracking-wider">Xero Credentials</h4>
-              
-              <div>
-                <Label className="font-mono text-xs uppercase tracking-wider">
-                  Client ID *
-                </Label>
-                <Input
-                  value={xeroCredentials.clientId}
-                  onChange={(e) => setXeroCredentials(prev => ({ ...prev, clientId: e.target.value }))}
-                  placeholder="Enter Xero Client ID (32 characters)"
-                  className="mt-2 font-mono text-sm"
-                />
-                {xeroCredentials.clientId && xeroCredentials.clientId.length !== 32 && (
-                  <p className="text-xs text-warning mt-1">
-                    Client ID should be exactly 32 characters (currently {xeroCredentials.clientId.length})
-                  </p>
-                )}
-                {xeroCredentials.clientId && xeroCredentials.clientId.includes('@') && (
-                  <p className="text-xs text-destructive mt-1">
-                    ⚠️ Email addresses cannot be used as Client IDs
-                  </p>
-                )}
-              </div>
+            <div className="space-y-4">
+              <div className="grid grid-cols-1 gap-4">
+                <div>
+                  <Label className="font-mono text-xs uppercase tracking-wider">
+                    Client ID *
+                  </Label>
+                  <Input
+                    value={xeroCredentials.clientId}
+                    onChange={(e) => setXeroCredentials(prev => ({ ...prev, clientId: e.target.value }))}
+                    placeholder="Enter Xero Client ID (32 characters)"
+                    className="mt-2 font-mono text-sm"
+                  />
+                  {xeroCredentials.clientId && xeroCredentials.clientId.length !== 32 && (
+                    <p className="text-xs text-warning mt-1">
+                      Should be 32 characters (currently {xeroCredentials.clientId.length})
+                    </p>
+                  )}
+                </div>
 
-              <div>
-                <Label className="font-mono text-xs uppercase tracking-wider">
-                  Client Secret *
-                </Label>
-                <Input
-                  type="password"
-                  value={xeroCredentials.clientSecret}
-                  onChange={(e) => setXeroCredentials(prev => ({ ...prev, clientSecret: e.target.value }))}
-                  placeholder="Enter Xero Client Secret"
-                  className="mt-2 font-mono text-sm"
-                />
-              </div>
+                <div>
+                  <Label className="font-mono text-xs uppercase tracking-wider">
+                    Client Secret *
+                  </Label>
+                  <Input
+                    type="password"
+                    value={xeroCredentials.clientSecret}
+                    onChange={(e) => setXeroCredentials(prev => ({ ...prev, clientSecret: e.target.value }))}
+                    placeholder="Enter Xero Client Secret"
+                    className="mt-2 font-mono text-sm"
+                  />
+                </div>
 
-              <div>
-                <Label className="font-mono text-xs uppercase tracking-wider">
-                  Redirect URI
-                </Label>
-                <Input
-                  value={xeroCredentials.redirectUri}
-                  onChange={(e) => setXeroCredentials(prev => ({ ...prev, redirectUri: e.target.value }))}
-                  placeholder={`${window.location.origin}/api/xero/callback`}
-                  className="mt-2 font-mono text-sm"
-                />
+                <div>
+                  <Label className="font-mono text-xs uppercase tracking-wider">
+                    Redirect URI
+                  </Label>
+                  <Input
+                    value={xeroCredentials.redirectUri}
+                    onChange={(e) => setXeroCredentials(prev => ({ ...prev, redirectUri: e.target.value }))}
+                    placeholder={`${window.location.origin}/api/xero/callback`}
+                    className="mt-2 font-mono text-sm"
+                  />
+                </div>
               </div>
               
-              <div className="space-y-3 pt-2">
+              <div className="flex gap-2">
                 {showSaveButton && (
                   <Button
                     onClick={handleSaveXeroCredentials}
                     disabled={isSavingCredentials || !xeroCredentials.clientId || !xeroCredentials.clientSecret}
-                    className="w-full bg-electric text-background hover:bg-electric/90 h-10"
+                    className="flex-1 bg-electric text-background hover:bg-electric/90"
                   >
                     {isSavingCredentials ? (
                       <>
@@ -1157,56 +1152,25 @@ export default function Settings() {
                     )}
                   </Button>
                 )}
-                
-                {credentialsChanged && showSaveButton && (
-                  <p className="text-xs text-warning text-center py-1">
-                    ⚠️ Credentials have been modified. Click "Save Changes" to update.
-                  </p>
-                )}
-                
-                {!showSaveButton && !credentialsChanged && (
-                  <p className="text-xs text-muted-foreground text-center py-1">
-                    ✓ Credentials saved. Edit credentials above to make changes.
-                  </p>
-                )}
-                
-                {(!xeroCredentials.clientId || !xeroCredentials.clientSecret) && (
-                  <p className="text-xs text-muted-foreground text-center py-1">
-                    Enter your credentials above and click "Save Credentials" before connecting
-                  </p>
-                )}
-
-                <p className="text-xs text-muted-foreground text-center pt-2 border-t border-border">
-                  Get your credentials from the <a href="https://developer.xero.com/myapps" target="_blank" rel="noopener noreferrer" className="text-electric hover:underline">Xero Developer Portal</a>
-                </p>
-              </div>
-            </div>
-
-            <div className="text-center py-8 px-4">
-              <div className="flex flex-col items-center space-y-4">
-                <Link2 className="w-12 h-12 text-muted-foreground" />
-                <div className="space-y-2">
-                  <p className="text-sm font-medium text-foreground">
-                    Connect your Xero account
-                  </p>
-                  <p className="text-xs text-muted-foreground max-w-md">
-                    Sync invoices, quotes, and contacts with your Xero accounting system
-                  </p>
-                </div>
                 <Button 
                   onClick={handleXeroConnect}
-                  className="bg-electric text-background hover:bg-electric/90 h-10 px-6 min-w-[180px]"
+                  className="flex-1 bg-electric text-background hover:bg-electric/90"
                   disabled={!settings.xero_client_id || !settings.xero_client_secret}
                 >
                   <Link2 className="w-4 h-4 mr-2" />
                   Connect to Xero
                 </Button>
-                {(!settings.xero_client_id || !settings.xero_client_secret) && (
-                  <p className="text-xs text-warning">
-                    Please save your credentials above first
-                  </p>
-                )}
               </div>
+
+              {credentialsChanged && showSaveButton && (
+                <p className="text-xs text-warning text-center">
+                  ⚠️ Save credentials before connecting
+                </p>
+              )}
+
+              <p className="text-xs text-muted-foreground text-center">
+                Get credentials from <a href="https://developer.xero.com/myapps" target="_blank" rel="noopener noreferrer" className="text-electric hover:underline">Xero Developer Portal</a>
+              </p>
             </div>
           </div>
             )}
@@ -1630,53 +1594,39 @@ export default function Settings() {
                   {cloudStorageProvider === 'google-drive' && (
                     <div className="space-y-4">
                       {/* Connection Status */}
-                      <div className="p-4 rounded-lg bg-muted/20 border border-border">
-                        <div className="flex items-center justify-between mb-4">
-                          <div className="flex items-center gap-2">
-                            <div className={cn(
-                              "w-2 h-2 rounded-full",
-                              googleDriveConnected ? "bg-voltage animate-pulse" : "bg-muted-foreground"
-                            )} />
-                            <span className={cn(
-                              "text-sm font-mono",
-                              googleDriveConnected ? "text-voltage" : "text-muted-foreground"
-                            )}>
-                              {googleDriveConnected ? 'Connected' : 'Not Connected'}
-                            </span>
-                          </div>
-                          {googleDriveConnected && (
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={async () => {
-                                try {
-                                  toast.info('To disconnect, revoke access in your Google Account settings');
-                                } catch (error: any) {
-                                  toast.error(error.message || 'Failed to disconnect');
-                                }
-                              }}
-                            >
-                              Manage Connection
-                            </Button>
-                          )}
+                      <div className="flex items-center justify-between p-3 rounded-lg bg-muted/20 border border-border">
+                        <div className="flex items-center gap-2">
+                          <div className={cn(
+                            "w-2 h-2 rounded-full",
+                            googleDriveConnected ? "bg-voltage animate-pulse" : "bg-muted-foreground"
+                          )} />
+                          <span className={cn(
+                            "text-sm font-mono",
+                            googleDriveConnected ? "text-voltage" : "text-muted-foreground"
+                          )}>
+                            {googleDriveConnected ? 'Connected' : 'Not Connected'}
+                          </span>
                         </div>
-
-                        {googleDriveConnected ? (
-                          <p className="text-xs text-muted-foreground">
-                            ✓ Google Drive is connected. Files will be stored in your Google Drive.
-                          </p>
-                        ) : (
-                          <p className="text-xs text-warning">
-                            ⚠️ Google Drive is not connected. Please configure OAuth credentials below and connect.
-                          </p>
+                        {googleDriveConnected && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={async () => {
+                              try {
+                                toast.info('To disconnect, revoke access in your Google Account settings');
+                              } catch (error: any) {
+                                toast.error(error.message || 'Failed to disconnect');
+                              }
+                            }}
+                          >
+                            Manage
+                          </Button>
                         )}
                       </div>
 
                       {/* OAuth Credentials */}
                       {!googleDriveConnected && (
-                        <div className="space-y-4 p-4 rounded-lg bg-muted/20 border border-border">
-                          <h4 className="text-sm font-bold font-mono uppercase tracking-wider">Google Drive OAuth Credentials</h4>
-                          
+                        <div className="space-y-4">
                           <div>
                             <Label className="font-mono text-xs uppercase tracking-wider">
                               Client ID *
@@ -1687,9 +1637,6 @@ export default function Settings() {
                               placeholder="Enter Google OAuth Client ID"
                               className="mt-2 font-mono text-sm"
                             />
-                            <p className="text-xs text-muted-foreground mt-1">
-                              Get this from Google Cloud Console → APIs & Services → Credentials
-                            </p>
                           </div>
 
                           <div>
@@ -1715,17 +1662,14 @@ export default function Settings() {
                               placeholder={`${window.location.origin}/api/backups/google-drive/callback`}
                               className="mt-2 font-mono text-sm"
                             />
-                            <p className="text-xs text-muted-foreground mt-1">
-                              Must match exactly what's configured in Google Cloud Console
-                            </p>
                           </div>
                           
-                          {showGoogleDriveSaveButton && (
-                            <>
+                          <div className="flex gap-2">
+                            {showGoogleDriveSaveButton && (
                               <Button
                                 onClick={handleSaveGoogleDriveCredentials}
                                 disabled={isSavingGoogleDriveCredentials || !googleDriveCredentials.clientId || !googleDriveCredentials.clientSecret}
-                                className="w-full bg-electric text-background hover:bg-electric/90"
+                                className="flex-1 bg-electric text-background hover:bg-electric/90"
                               >
                                 {isSavingGoogleDriveCredentials ? (
                                   <>
@@ -1735,98 +1679,82 @@ export default function Settings() {
                                 ) : (
                                   <>
                                     <CheckCircle className="w-4 h-4 mr-2" />
-                                    {googleDriveCredentialsChanged ? 'Save Changes' : 'Save Credentials'}
+                                    {googleDriveCredentialsChanged ? 'Save Changes' : 'Save'}
                                   </>
                                 )}
                               </Button>
-                              
-                              {googleDriveCredentialsChanged && (
-                                <p className="text-xs text-warning text-center">
-                                  ⚠️ Credentials have been modified. Click "Save Changes" to update.
-                                </p>
-                              )}
-                            </>
-                          )}
-                          
-                          {!showGoogleDriveSaveButton && !googleDriveCredentialsChanged && (
-                            <p className="text-xs text-muted-foreground text-center">
-                              ✓ Credentials saved. Edit credentials above to make changes.
-                            </p>
-                          )}
-                          
-                          {(!googleDriveCredentials.clientId || !googleDriveCredentials.clientSecret) && (
-                            <p className="text-xs text-muted-foreground text-center">
-                              Enter your credentials above and click "Save Credentials" before connecting
-                            </p>
-                          )}
-
-                          <p className="text-xs text-muted-foreground">
-                            Get your credentials from the <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" className="text-electric hover:underline">Google Cloud Console</a>
-                          </p>
-                        </div>
-                      )}
-
-                      {/* Connect Button */}
-                      {!googleDriveConnected && (
-                        <Button 
-                          onClick={async () => {
-                            if (!googleDriveCredentials.clientId || !googleDriveCredentials.clientSecret) {
-                              toast.error('Please save your Google Drive credentials first using the "Save Credentials" button above.');
-                              return;
-                            }
-
-                            try {
-                              setIsConnectingGoogleDrive(true);
-                              const { url } = await api.getGoogleDriveAuthUrl();
-                              const popup = window.open(url, 'google-drive-auth', 'width=600,height=700');
-                              
-                              // Poll for connection status
-                              const checkInterval = setInterval(async () => {
-                                try {
-                                  const status = await api.getGoogleDriveStatus();
-                                  if (status.connected) {
-                                    clearInterval(checkInterval);
-                                    setGoogleDriveConnected(true);
-                                    toast.success('Google Drive connected successfully');
-                                    if (popup) popup.close();
-                                  }
-                                } catch (error) {
-                                  // Ignore errors during polling
+                            )}
+                            <Button 
+                              onClick={async () => {
+                                if (!googleDriveCredentials.clientId || !googleDriveCredentials.clientSecret) {
+                                  toast.error('Please save your Google Drive credentials first.');
+                                  return;
                                 }
-                              }, 2000);
 
-                              // Stop polling after 5 minutes
-                              setTimeout(() => clearInterval(checkInterval), 5 * 60 * 1000);
+                                try {
+                                  setIsConnectingGoogleDrive(true);
+                                  const { url } = await api.getGoogleDriveAuthUrl();
+                                  const popup = window.open(url, 'google-drive-auth', 'width=600,height=700');
+                                  
+                                  // Poll for connection status
+                                  const checkInterval = setInterval(async () => {
+                                    try {
+                                      const status = await api.getGoogleDriveStatus();
+                                      if (status.connected) {
+                                        clearInterval(checkInterval);
+                                        setGoogleDriveConnected(true);
+                                        toast.success('Google Drive connected successfully');
+                                        if (popup) popup.close();
+                                      }
+                                    } catch (error) {
+                                      // Ignore errors during polling
+                                    }
+                                  }, 2000);
 
-                              // Listen for popup close
-                              const checkClosed = setInterval(() => {
-                                if (popup?.closed) {
-                                  clearInterval(checkClosed);
-                                  clearInterval(checkInterval);
+                                  // Stop polling after 5 minutes
+                                  setTimeout(() => clearInterval(checkInterval), 5 * 60 * 1000);
+
+                                  // Listen for popup close
+                                  const checkClosed = setInterval(() => {
+                                    if (popup?.closed) {
+                                      clearInterval(checkClosed);
+                                      clearInterval(checkInterval);
+                                      setIsConnectingGoogleDrive(false);
+                                    }
+                                  }, 500);
+                                } catch (error: any) {
+                                  toast.error(error.message || 'Failed to get Google Drive auth URL');
+                                } finally {
                                   setIsConnectingGoogleDrive(false);
                                 }
-                              }, 500);
-                            } catch (error: any) {
-                              toast.error(error.message || 'Failed to get Google Drive auth URL');
-                            } finally {
-                              setIsConnectingGoogleDrive(false);
-                            }
-                          }}
-                          className="w-full bg-electric text-background hover:bg-electric/90"
-                          disabled={isConnectingGoogleDrive || !googleDriveCredentials.clientId || !googleDriveCredentials.clientSecret}
-                        >
-                          {isConnectingGoogleDrive ? (
-                            <>
-                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                              Connecting...
-                            </>
-                          ) : (
-                            <>
-                              <Cloud className="w-4 h-4 mr-2" />
-                              Connect Google Drive
-                            </>
+                              }}
+                              className="flex-1 bg-electric text-background hover:bg-electric/90"
+                              disabled={isConnectingGoogleDrive || !googleDriveCredentials.clientId || !googleDriveCredentials.clientSecret}
+                            >
+                              {isConnectingGoogleDrive ? (
+                                <>
+                                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                  Connecting...
+                                </>
+                              ) : (
+                                <>
+                                  <Cloud className="w-4 h-4 mr-2" />
+                                  Connect
+                                </>
+                              )}
+                            </Button>
+                          </div>
+
+                          {googleDriveCredentialsChanged && showGoogleDriveSaveButton && (
+                            <p className="text-xs text-warning text-center">
+                              ⚠️ Save credentials before connecting
+                            </p>
                           )}
-                        </Button>
+
+                          <p className="text-xs text-muted-foreground text-center">
+                            Get credentials from <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" className="text-electric hover:underline">Google Cloud Console</a>
+                          </p>
+                        </div>
                       )}
 
                       {/* Folder ID Configuration */}
