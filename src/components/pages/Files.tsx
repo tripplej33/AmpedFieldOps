@@ -10,6 +10,8 @@ import { DocumentViewer } from '@/components/ui/document-viewer';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
+import { Progress } from '@/components/ui/progress';
+import { cn } from '@/lib/utils';
 import Header from '@/components/layout/Header';
 import ImageViewer from '@/components/modals/ImageViewer';
 import { useAuth } from '@/contexts/AuthContext';
@@ -24,7 +26,9 @@ import {
   Search,
   Trash2,
   Eye,
-  Download
+  Download,
+  Cloud,
+  Loader2
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -70,10 +74,23 @@ export default function Files() {
   const [viewingImages, setViewingImages] = useState<string[]>([]);
   const [viewingImageIndex, setViewingImageIndex] = useState(0);
   const [isImageViewerOpen, setIsImageViewerOpen] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState<Record<number, number>>({});
+  const [cloudStorageProvider, setCloudStorageProvider] = useState<string>('local');
 
   useEffect(() => {
     loadData();
+    loadCloudStorageInfo();
   }, []);
+
+  const loadCloudStorageInfo = async () => {
+    try {
+      const settings = await api.getSettings();
+      setCloudStorageProvider(settings.cloud_storage_provider || 'local');
+    } catch (error) {
+      console.error('Failed to load cloud storage info:', error);
+    }
+  };
 
   const loadData = async () => {
     try {
@@ -231,18 +248,46 @@ export default function Files() {
       return;
     }
 
+    setIsUploading(true);
+    setUploadProgress({});
     try {
-      for (const file of uploadFiles) {
-        await api.uploadProjectFile(file, selectedProject.id);
+      // Upload files one by one with progress tracking
+      for (let i = 0; i < uploadFiles.length; i++) {
+        const file = uploadFiles[i];
+        setUploadProgress(prev => ({ ...prev, [i]: 0 }));
+        
+        // Simulate progress (actual implementation would track real upload progress)
+        const progressInterval = setInterval(() => {
+          setUploadProgress(prev => {
+            const current = prev[i] || 0;
+            if (current < 90) {
+              return { ...prev, [i]: current + 10 };
+            }
+            return prev;
+          });
+        }, 200);
+
+        try {
+          await api.uploadProjectFile(file, selectedProject.id);
+          setUploadProgress(prev => ({ ...prev, [i]: 100 }));
+          clearInterval(progressInterval);
+        } catch (error) {
+          clearInterval(progressInterval);
+          throw error;
+        }
       }
-      toast.success(`Uploaded ${uploadFiles.length} file(s)`);
+      toast.success(`Successfully uploaded ${uploadFiles.length} file${uploadFiles.length !== 1 ? 's' : ''}`);
       setIsUploadModalOpen(false);
       setUploadFiles([]);
       setSelectedProject(null);
+      setUploadProgress({});
       loadData();
     } catch (error: any) {
-      toast.error('Failed to upload files');
+      toast.error(error.message || 'Failed to upload files');
+      setUploadProgress({});
       console.error(error);
+    } finally {
+      setIsUploading(false);
     }
   };
 
@@ -360,10 +405,27 @@ export default function Files() {
                   </SelectContent>
                 </Select>
               </div>
-              <Button onClick={() => setIsUploadModalOpen(true)}>
-                <Upload className="w-4 h-4 mr-2" />
-                Upload Files
-              </Button>
+              <div className="flex items-center gap-2">
+                {cloudStorageProvider !== 'local' && (
+                  <Badge variant="outline" className="flex items-center gap-1">
+                    <Cloud className="w-3 h-3" />
+                    {cloudStorageProvider === 's3' ? 'AWS S3' : cloudStorageProvider === 'google-drive' ? 'Google Drive' : 'Cloud Storage'}
+                  </Badge>
+                )}
+                <Button onClick={() => setIsUploadModalOpen(true)} disabled={isUploading}>
+                  {isUploading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Uploading...
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="w-4 h-4 mr-2" />
+                      Upload Files
+                    </>
+                  )}
+                </Button>
+              </div>
             </div>
           </Card>
 
@@ -660,13 +722,47 @@ export default function Files() {
               onFileSelect={setUploadFiles}
               multiple
               accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.txt,.csv"
+              disabled={isUploading}
             />
+            
+            {/* Upload Progress */}
+            {isUploading && uploadFiles.length > 0 && (
+              <div className="space-y-2 pt-2">
+                <p className="text-sm font-medium">Upload Progress</p>
+                {uploadFiles.map((file, index) => (
+                  <div key={index} className="space-y-1">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="truncate flex-1 mr-2">{file.name}</span>
+                      <span className="text-muted-foreground">
+                        {uploadProgress[index] || 0}%
+                      </span>
+                    </div>
+                    <Progress value={uploadProgress[index] || 0} className="h-2" />
+                  </div>
+                ))}
+              </div>
+            )}
+            
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setIsUploadModalOpen(false)}>
+              <Button variant="outline" onClick={() => setIsUploadModalOpen(false)} disabled={isUploading}>
                 Cancel
               </Button>
-              <Button onClick={handleUpload} disabled={!selectedProject || uploadFiles.length === 0}>
-                Upload
+              <Button 
+                onClick={handleUpload} 
+                disabled={!selectedProject || uploadFiles.length === 0 || isUploading}
+                className="bg-electric text-background hover:bg-electric/90"
+              >
+                {isUploading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Uploading...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="w-4 h-4 mr-2" />
+                    Upload {uploadFiles.length > 0 && `(${uploadFiles.length})`}
+                  </>
+                )}
               </Button>
             </div>
           </div>

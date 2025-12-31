@@ -45,6 +45,8 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
   const [selectedFile, setSelectedFile] = useState<ProjectFile | null>(null);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [uploadFiles, setUploadFiles] = useState<File[]>([]);
+  const [uploadProgress, setUploadProgress] = useState<Record<number, number>>({});
+  const [isUploading, setIsUploading] = useState(false);
   
   // Cost Center form
   const [showCostCenterForm, setShowCostCenterForm] = useState(false);
@@ -677,79 +679,118 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
                   variant="outline"
                   size="sm"
                   onClick={() => setIsUploadModalOpen(true)}
+                  disabled={isUploading}
                 >
-                  <Upload className="w-4 h-4 mr-1" />
-                  Upload Files
+                  {isUploading ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                      Uploading...
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="w-4 h-4 mr-1" />
+                      Upload Files
+                    </>
+                  )}
                 </Button>
               </div>
 
               {projectFiles.length === 0 ? (
-                <Card className="p-6 bg-card border-border">
-                  <p className="text-center text-muted-foreground">No files uploaded</p>
+                <Card className="p-8 bg-card border-border border-dashed text-center">
+                  <File className="w-12 h-12 mx-auto text-muted-foreground mb-3" />
+                  <p className="text-sm font-medium text-muted-foreground mb-1">No files uploaded</p>
+                  <p className="text-xs text-muted-foreground mb-4">
+                    Upload project documents, images, and other files
+                  </p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsUploadModalOpen(true)}
+                  >
+                    <Upload className="w-4 h-4 mr-1" />
+                    Upload Your First File
+                  </Button>
                 </Card>
               ) : (
-                <div className="space-y-2">
-                  {projectFiles.map((file) => (
-                    <Card key={file.id} className="p-4 hover:border-electric transition-colors">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3 flex-1 min-w-0">
-                          <File className="w-5 h-5 text-electric" />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  {projectFiles.map((file) => {
+                    const isImage = file.file_name.match(/\.(jpg|jpeg|png|gif|webp)$/i);
+                    const isPDF = file.file_name.match(/\.pdf$/i);
+                    return (
+                      <Card key={file.id} className="p-4 hover:border-electric transition-colors group">
+                        <div className="flex items-start gap-3">
+                          <div className={cn(
+                            "w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0",
+                            isImage ? "bg-electric/20" : isPDF ? "bg-red-500/20" : "bg-muted"
+                          )}>
+                            {isImage ? (
+                              <Image className="w-5 h-5 text-electric" />
+                            ) : isPDF ? (
+                              <FileText className="w-5 h-5 text-red-500" />
+                            ) : (
+                              <File className="w-5 h-5 text-muted-foreground" />
+                            )}
+                          </div>
                           <div className="flex-1 min-w-0">
-                            <p className="font-medium truncate">{file.file_name}</p>
-                            <p className="text-xs text-muted-foreground">
+                            <p className="font-medium truncate text-sm">{file.file_name}</p>
+                            <p className="text-xs text-muted-foreground mt-1">
                               {formatFileSize(file.file_size)} • {new Date(file.created_at).toLocaleDateString()}
                             </p>
                           </div>
+                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => setSelectedFile(file)}
+                              className="h-8 w-8 p-0"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={async () => {
+                                try {
+                                  const blob = await api.downloadFile(file.id);
+                                  const url = URL.createObjectURL(blob);
+                                  const a = document.createElement('a');
+                                  a.href = url;
+                                  a.download = file.file_name;
+                                  document.body.appendChild(a);
+                                  a.click();
+                                  document.body.removeChild(a);
+                                  URL.revokeObjectURL(url);
+                                  toast.success('File downloaded');
+                                } catch (error: any) {
+                                  toast.error('Failed to download file');
+                                }
+                              }}
+                              className="h-8 w-8 p-0"
+                            >
+                              <DownloadIcon className="w-4 h-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={async () => {
+                                if (!confirm(`Delete ${file.file_name}?`)) return;
+                                try {
+                                  await api.deleteFile(file.id);
+                                  toast.success('File deleted');
+                                  loadProjectFiles();
+                                } catch (error: any) {
+                                  toast.error('Failed to delete file');
+                                }
+                              }}
+                              className="h-8 w-8 p-0 text-destructive hover:text-destructive"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-2">
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => setSelectedFile(file)}
-                          >
-                            <Eye className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={async () => {
-                              try {
-                                const blob = await api.downloadFile(file.id);
-                                const url = URL.createObjectURL(blob);
-                                const a = document.createElement('a');
-                                a.href = url;
-                                a.download = file.file_name;
-                                document.body.appendChild(a);
-                                a.click();
-                                document.body.removeChild(a);
-                                URL.revokeObjectURL(url);
-                              } catch (error: any) {
-                                toast.error('Failed to download file');
-                              }
-                            }}
-                          >
-                            <DownloadIcon className="w-4 h-4" />
-                          </Button>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={async () => {
-                              if (!confirm(`Delete ${file.file_name}?`)) return;
-                              try {
-                                await api.deleteFile(file.id);
-                                toast.success('File deleted');
-                                loadProjectFiles();
-                              } catch (error: any) {
-                                toast.error('Failed to delete file');
-                              }
-                            }}
-                          >
-                            <Trash2 className="w-4 h-4 text-destructive" />
-                          </Button>
-                        </div>
-                      </div>
-                    </Card>
-                  ))}
+                      </Card>
+                    );
+                  })}
                 </div>
               )}
             </TabsContent>
@@ -1018,7 +1059,27 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
               multiple={true}
               accept="image/*,application/pdf,.doc,.docx"
               maxSize={50 * 1024 * 1024}
+              disabled={isUploading}
             />
+            
+            {/* Upload Progress */}
+            {isUploading && uploadFiles.length > 0 && (
+              <div className="space-y-2 pt-2">
+                <p className="text-sm font-medium">Upload Progress</p>
+                {uploadFiles.map((file, index) => (
+                  <div key={index} className="space-y-1">
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="truncate flex-1 mr-2">{file.name}</span>
+                      <span className="text-muted-foreground">
+                        {uploadProgress[index] || 0}%
+                      </span>
+                    </div>
+                    <Progress value={uploadProgress[index] || 0} className="h-2" />
+                  </div>
+                ))}
+              </div>
+            )}
+            
             <div className="flex items-center justify-end gap-3 pt-4 border-t border-border">
               <Button variant="outline" onClick={() => setIsUploadModalOpen(false)}>
                 Cancel
@@ -1029,22 +1090,60 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
                     toast.error('Please select files to upload');
                     return;
                   }
+                  setIsUploading(true);
+                  setUploadProgress({});
                   try {
-                    // Upload files one by one
-                    for (const file of uploadFiles) {
-                      await api.uploadProjectFile(file, project.id);
+                    // Upload files one by one with progress tracking
+                    for (let i = 0; i < uploadFiles.length; i++) {
+                      const file = uploadFiles[i];
+                      setUploadProgress(prev => ({ ...prev, [i]: 0 }));
+                      
+                      // Simulate progress (actual implementation would track real upload progress)
+                      const progressInterval = setInterval(() => {
+                        setUploadProgress(prev => {
+                          const current = prev[i] || 0;
+                          if (current < 90) {
+                            return { ...prev, [i]: current + 10 };
+                          }
+                          return prev;
+                        });
+                      }, 200);
+
+                      try {
+                        await api.uploadProjectFile(file, project.id);
+                        setUploadProgress(prev => ({ ...prev, [i]: 100 }));
+                        clearInterval(progressInterval);
+                      } catch (error) {
+                        clearInterval(progressInterval);
+                        throw error;
+                      }
                     }
-                    toast.success('Files uploaded successfully');
+                    toast.success(`Successfully uploaded ${uploadFiles.length} file${uploadFiles.length !== 1 ? 's' : ''}`);
                     setIsUploadModalOpen(false);
                     setUploadFiles([]);
+                    setUploadProgress({});
                     loadProjectFiles();
                   } catch (error: any) {
                     toast.error(error.message || 'Failed to upload files');
+                    setUploadProgress({});
+                  } finally {
+                    setIsUploading(false);
                   }
                 }}
-                disabled={uploadFiles.length === 0}
+                disabled={uploadFiles.length === 0 || isUploading}
+                className="bg-electric text-background hover:bg-electric/90"
               >
-                Upload {uploadFiles.length > 0 && `(${uploadFiles.length})`}
+                {isUploading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Uploading...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="w-4 h-4 mr-2" />
+                    Upload {uploadFiles.length > 0 && `(${uploadFiles.length})`}
+                  </>
+                )}
               </Button>
             </div>
           </div>

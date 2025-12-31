@@ -38,6 +38,7 @@ export default function Settings() {
   const [testEmailAddress, setTestEmailAddress] = useState('');
   const [googleDriveConnected, setGoogleDriveConnected] = useState(false);
   const [isConnectingGoogleDrive, setIsConnectingGoogleDrive] = useState(false);
+  const [isDisconnectingXero, setIsDisconnectingXero] = useState(false);
   
   // Local state for Google Drive credentials (not auto-saving)
   const [googleDriveCredentials, setGoogleDriveCredentials] = useState({
@@ -496,12 +497,15 @@ export default function Settings() {
 
   const handleXeroDisconnect = async () => {
     if (!confirm('Are you sure you want to disconnect Xero?')) return;
+    setIsDisconnectingXero(true);
     try {
       await api.disconnectXero();
       setXeroStatus({ connected: false, configured: xeroStatus?.configured });
       toast.success('Xero disconnected');
     } catch (error: any) {
       toast.error(error.message || 'Failed to disconnect');
+    } finally {
+      setIsDisconnectingXero(false);
     }
   };
 
@@ -1180,7 +1184,20 @@ export default function Settings() {
                 <RefreshCw className={cn("w-4 h-4 mr-2", isSyncing && "animate-spin")} />
                 {isSyncing ? 'Syncing...' : 'Sync All'}
               </Button>
-              <Button variant="outline" onClick={handleXeroDisconnect}>Disconnect</Button>
+              <Button 
+                variant="outline" 
+                onClick={handleXeroDisconnect}
+                disabled={isDisconnectingXero}
+              >
+                {isDisconnectingXero ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Disconnecting...
+                  </>
+                ) : (
+                  'Disconnect'
+                )}
+              </Button>
             </div>
           </div>
           ) : (

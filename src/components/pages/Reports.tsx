@@ -32,6 +32,7 @@ export default function Reports() {
   const [dateRange, setDateRange] = useState<string>('month');
   const [dateFrom, setDateFrom] = useState<Date | undefined>(undefined);
   const [dateTo, setDateTo] = useState<Date | undefined>(undefined);
+  const [isExporting, setIsExporting] = useState(false);
 
   useEffect(() => {
     loadReportData();
@@ -92,33 +93,45 @@ export default function Reports() {
   });
 
   // Export to CSV
-  const handleExportCSV = () => {
-    const headers = ['Cost Center Code', 'Cost Center Name', 'Projects', 'Hours', 'Budget', 'Actual', 'Utilization %'];
-    const rows = filteredMetrics.map(cc => [
-      cc.code,
-      cc.name,
-      cc.projectCount,
-      cc.totalHours,
-      cc.totalBudget,
-      cc.totalActual,
-      Math.round(cc.utilization),
-    ]);
+  const handleExportCSV = async () => {
+    setIsExporting(true);
+    try {
+      // Small delay to show loading state
+      await new Promise(resolve => setTimeout(resolve, 300));
+      
+      const headers = ['Cost Center Code', 'Cost Center Name', 'Projects', 'Hours', 'Budget', 'Actual', 'Utilization %'];
+      const rows = filteredMetrics.map(cc => [
+        cc.code,
+        cc.name,
+        cc.projectCount,
+        cc.totalHours,
+        cc.totalBudget,
+        cc.totalActual,
+        Math.round(cc.utilization),
+      ]);
 
-    const csvContent = [
-      headers.join(','),
-      ...rows.map(row => row.join(','))
-    ].join('\n');
+      const csvContent = [
+        headers.join(','),
+        ...rows.map(row => row.join(','))
+      ].join('\n');
 
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', `cost-center-report-${new Date().toISOString().split('T')[0]}.csv`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    toast.success('Report exported successfully');
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement('a');
+      const url = URL.createObjectURL(blob);
+      link.setAttribute('href', url);
+      link.setAttribute('download', `cost-center-report-${new Date().toISOString().split('T')[0]}.csv`);
+      link.style.visibility = 'hidden';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+      toast.success('Report exported successfully');
+    } catch (error: any) {
+      toast.error('Failed to export report');
+      console.error(error);
+    } finally {
+      setIsExporting(false);
+    }
   };
 
   const handleDateRangeChange = (range: string) => {
@@ -199,9 +212,23 @@ export default function Reports() {
               </SelectContent>
             </Select>
           </div>
-          <Button variant="outline" size="sm" onClick={handleExportCSV}>
-            <Download className="w-4 h-4 mr-2" />
-            Export CSV
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={handleExportCSV}
+            disabled={isExporting}
+          >
+            {isExporting ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Exporting...
+              </>
+            ) : (
+              <>
+                <Download className="w-4 h-4 mr-2" />
+                Export CSV
+              </>
+            )}
           </Button>
         </div>
 
