@@ -36,9 +36,9 @@ export default function BillDetailModal({ bill, open, onOpenChange }: BillDetail
   };
 
   const lineItems = Array.isArray(bill.line_items) ? bill.line_items : [];
-  const total = bill.amount || 0;
-  const amountPaid = bill.amount_paid || 0;
-  const amountDue = bill.amount_due || total - amountPaid;
+  const total = Number(bill.amount) || 0;
+  const amountPaid = Number(bill.amount_paid) || 0;
+  const amountDue = Number(bill.amount_due) || total - amountPaid;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

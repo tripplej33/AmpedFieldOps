@@ -35,7 +35,7 @@ export default function QuoteDetailModal({ quote, open, onOpenChange }: QuoteDet
   };
 
   const lineItems = Array.isArray(quote.line_items) ? quote.line_items : [];
-  const total = quote.total || 0;
+  const total = Number(quote.total) || 0;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -97,10 +97,10 @@ export default function QuoteDetailModal({ quote, open, onOpenChange }: QuoteDet
                     <div className="col-span-6 text-sm">{item.description || item.Description || '-'}</div>
                     <div className="col-span-2 text-right text-sm font-mono">{item.quantity || item.Quantity || 0}</div>
                     <div className="col-span-2 text-right text-sm font-mono">
-                      ${(item.unit_price || item.UnitAmount || 0).toFixed(2)}
+                      ${(Number(item.unit_price || item.UnitAmount) || 0).toFixed(2)}
                     </div>
                     <div className="col-span-2 text-right text-sm font-mono font-bold">
-                      ${(item.amount || item.LineAmount || 0).toFixed(2)}
+                      ${(Number(item.amount || item.LineAmount) || 0).toFixed(2)}
                     </div>
                   </div>
                 ))}

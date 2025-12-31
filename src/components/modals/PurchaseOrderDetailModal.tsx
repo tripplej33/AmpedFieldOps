@@ -36,7 +36,7 @@ export default function PurchaseOrderDetailModal({ purchaseOrder, open, onOpenCh
   };
 
   const lineItems = Array.isArray(purchaseOrder.line_items) ? purchaseOrder.line_items : [];
-  const total = purchaseOrder.total_amount || 0;
+  const total = Number(purchaseOrder.total_amount) || 0;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

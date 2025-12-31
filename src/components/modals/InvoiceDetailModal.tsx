@@ -35,9 +35,9 @@ export default function InvoiceDetailModal({ invoice, open, onOpenChange }: Invo
   };
 
   const lineItems = Array.isArray(invoice.line_items) ? invoice.line_items : [];
-  const total = invoice.total || 0;
-  const amountPaid = invoice.amount_paid || 0;
-  const amountDue = invoice.amount_due || total - amountPaid;
+  const total = Number(invoice.total) || 0;
+  const amountPaid = Number(invoice.amount_paid) || 0;
+  const amountDue = Number(invoice.amount_due) || total - amountPaid;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -99,10 +99,10 @@ export default function InvoiceDetailModal({ invoice, open, onOpenChange }: Invo
                     <div className="col-span-6 text-sm">{item.description || item.Description || '-'}</div>
                     <div className="col-span-2 text-right text-sm font-mono">{item.quantity || item.Quantity || 0}</div>
                     <div className="col-span-2 text-right text-sm font-mono">
-                      ${(item.unit_price || item.UnitAmount || 0).toFixed(2)}
+                      ${(Number(item.unit_price || item.UnitAmount) || 0).toFixed(2)}
                     </div>
                     <div className="col-span-2 text-right text-sm font-mono font-bold">
-                      ${(item.amount || item.LineAmount || 0).toFixed(2)}
+                      ${(Number(item.amount || item.LineAmount) || 0).toFixed(2)}
                     </div>
                   </div>
                 ))}
