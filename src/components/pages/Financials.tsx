@@ -30,8 +30,10 @@ import {
 } from 'lucide-react';
 import PaymentModal from '@/components/modals/PaymentModal';
 import PurchaseOrderModal from '@/components/modals/PurchaseOrderModal';
+import PurchaseOrderDetailModal from '@/components/modals/PurchaseOrderDetailModal';
 import BillModal from '@/components/modals/BillModal';
 import ExpenseModal from '@/components/modals/ExpenseModal';
+import InvoiceDetailModal from '@/components/modals/InvoiceDetailModal';
 import FinancialReportsTab from './FinancialReportsTab';
 import { XeroPayment, PurchaseOrder, Bill, Expense } from '@/types';
 import { cn } from '@/lib/utils';
@@ -618,7 +620,14 @@ export default function Financials() {
                                   Mark as Paid
                                 </Button>
                               )}
-                              <Button variant="ghost" size="sm">
+                              <Button 
+                                variant="ghost" 
+                                size="sm"
+                                onClick={() => {
+                                  setSelectedInvoice(invoice);
+                                  setIsInvoiceDetailOpen(true);
+                                }}
+                              >
                                 View
                               </Button>
                             </div>
@@ -696,7 +705,14 @@ export default function Financials() {
                                   Convert <ArrowRight className="w-3 h-3 ml-1" />
                                 </Button>
                               )}
-                              <Button variant="ghost" size="sm">
+                              <Button 
+                                variant="ghost" 
+                                size="sm"
+                                onClick={() => {
+                                  setSelectedInvoice(invoice);
+                                  setIsInvoiceDetailOpen(true);
+                                }}
+                              >
                                 View
                               </Button>
                             </div>
@@ -813,7 +829,16 @@ export default function Financials() {
                                   Convert to Bill
                                 </Button>
                               )}
-                              <Button variant="ghost" size="sm">View</Button>
+                              <Button 
+                                variant="ghost" 
+                                size="sm"
+                                onClick={() => {
+                                  setSelectedPurchaseOrder(po);
+                                  setIsPODetailOpen(true);
+                                }}
+                              >
+                                View
+                              </Button>
                             </div>
                           </td>
                         </tr>
@@ -1395,6 +1420,20 @@ export default function Financials() {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Invoice Detail Modal */}
+      <InvoiceDetailModal
+        invoice={selectedInvoice}
+        open={isInvoiceDetailOpen}
+        onOpenChange={setIsInvoiceDetailOpen}
+      />
+
+      {/* Purchase Order Detail Modal */}
+      <PurchaseOrderDetailModal
+        purchaseOrder={selectedPurchaseOrder}
+        open={isPODetailOpen}
+        onOpenChange={setIsPODetailOpen}
+      />
     </>
   );
 }
