@@ -1486,6 +1486,15 @@ async function syncContactsBidirectional(
 }
 
 // Sync Invoices bidirectionally
+// Helper function to safely parse dates from Xero API
+function parseXeroDate(dateString: string | null | undefined): Date | null {
+  if (!dateString || dateString === '' || dateString === 'null') {
+    return null;
+  }
+  const date = new Date(dateString);
+  return isNaN(date.getTime()) ? null : date;
+}
+
 async function syncInvoicesBidirectional(
   tokenData: { accessToken: string; tenantId: string },
   userId: string
@@ -1541,8 +1550,8 @@ async function syncInvoicesBidirectional(
               invoice.Status,
               invoice.Total || 0,
               invoice.AmountDue || 0,
-              invoice.DueDate ? new Date(invoice.DueDate) : null,
-              invoice.Date ? new Date(invoice.Date) : null,
+              parseXeroDate(invoice.DueDate),
+              parseXeroDate(invoice.Date),
               clientId,
               lineItems,
               invoice.InvoiceID
@@ -1559,8 +1568,8 @@ async function syncInvoicesBidirectional(
               invoice.Status,
               invoice.Total || 0,
               invoice.AmountDue || 0,
-              invoice.DueDate ? new Date(invoice.DueDate) : null,
-              invoice.Date ? new Date(invoice.Date) : null,
+              parseXeroDate(invoice.DueDate),
+              parseXeroDate(invoice.Date),
               clientId,
               lineItems
             ]
@@ -1900,8 +1909,8 @@ async function syncPurchaseOrdersBidirectional(
               po.PurchaseOrderNumber,
               po.Status,
               po.Total || 0,
-              po.Date ? new Date(po.Date) : null,
-              po.DeliveryDate ? new Date(po.DeliveryDate) : null,
+              parseXeroDate(po.Date),
+              parseXeroDate(po.DeliveryDate),
               po.PurchaseOrderID
             ]
           );
@@ -1951,8 +1960,8 @@ async function syncPurchaseOrdersBidirectional(
               projectId,
               po.Status,
               po.Total || 0,
-              po.Date ? new Date(po.Date) : null,
-              po.DeliveryDate ? new Date(po.DeliveryDate) : null
+              parseXeroDate(po.Date),
+              parseXeroDate(po.DeliveryDate)
             ]
           );
           result.pulled.created++;
@@ -3103,15 +3112,6 @@ router.post('/sync', authenticate, requirePermission('can_sync_xero'), async (re
       if (updatedToken.rows.length > 0) {
         syncResults.last_sync = updatedToken.rows[0].updated_at.toISOString();
       }
-
-    // Log activity
-    await query(
-      `INSERT INTO activity_logs (user_id, action, entity_type, details) 
-       VALUES ($1, $2, $3, $4)`,
-      [req.user!.id, 'sync', 'xero', JSON.stringify(syncResults)]
-    );
-
-    res.json(syncResults);
 
       // Log activity
       await query(
