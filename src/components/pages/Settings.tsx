@@ -1727,10 +1727,11 @@ export default function Settings() {
             )}
           </TabsContent>
 
+          {/* Permissions Tab */}
           {user?.role === 'admin' && (
-          <TabsContent value="permissions" className="space-y-6">
-            {/* Role-Based Permissions */}
-        <Card className="p-6 bg-card border-border">
+            <TabsContent value="permissions" className="space-y-6">
+              {/* Role-Based Permissions */}
+              <Card className="p-6 bg-card border-border">
           <div className="flex items-start justify-between mb-6">
               <div>
               <h3 className="text-lg font-bold mb-1">Role Permissions</h3>
@@ -1815,8 +1816,9 @@ export default function Settings() {
                 </Button>
               </div>
             </div>
-        </Card>
-          </TabsContent>
+          )}
+              </Card>
+            </TabsContent>
           )}
 
           {/* Cloud Storage Tab */}
