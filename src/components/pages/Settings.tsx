@@ -1815,9 +1815,9 @@ export default function Settings() {
                 </Button>
               </div>
             </div>
-          )}
         </Card>
           </TabsContent>
+          )}
 
           {/* Cloud Storage Tab */}
           {user?.role === 'admin' && (
