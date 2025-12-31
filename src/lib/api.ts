@@ -101,8 +101,31 @@ class ApiClient {
       }
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Request failed' }));
-        const error = new Error(errorData.error || errorData.message || 'Request failed');
+        // Try to parse JSON error response
+        let errorData: any;
+        let errorMessage = 'Request failed';
+        
+        try {
+          const contentType = response.headers.get('content-type');
+          if (contentType && contentType.includes('application/json')) {
+            errorData = await response.json();
+            errorMessage = errorData.error || errorData.message || `Request failed (${response.status})`;
+          } else {
+            // Non-JSON response (could be HTML error page, CORS error, etc.)
+            const text = await response.text();
+            errorMessage = `Request failed (${response.status} ${response.statusText})`;
+            if (text && text.length < 500) {
+              errorMessage += `: ${text.substring(0, 200)}`;
+            }
+            errorData = { error: errorMessage, status: response.status, statusText: response.statusText };
+          }
+        } catch (e) {
+          // Failed to parse response
+          errorMessage = `Request failed (${response.status} ${response.statusText})`;
+          errorData = { error: errorMessage, status: response.status };
+        }
+        
+        const error = new Error(errorMessage);
         // Don't log "User not found" on auth/me endpoint - expected when session expires
         const isExpectedAuthError = endpoint.includes('/auth/me') && error.message.includes('not found');
         if (!isExpectedAuthError) {
@@ -113,9 +136,15 @@ class ApiClient {
 
       return response.json();
     } catch (error: any) {
-      // Network errors (fetch throws)
+      // Network errors (fetch throws) - could be CORS, connection refused, etc.
       if (error.name === 'TypeError' && error.message.includes('fetch')) {
-        const networkError = new Error('Network error - please check your connection');
+        // Check if it's a CORS error
+        if (error.message.includes('CORS') || error.message.includes('cross-origin')) {
+          const corsError = new Error('CORS error - backend may not be configured for this domain');
+          this.logApiError(endpoint, corsError, 'network');
+          throw corsError;
+        }
+        const networkError = new Error(`Network error: ${error.message}`);
         this.logApiError(endpoint, networkError, 'network');
         throw networkError;
       }
