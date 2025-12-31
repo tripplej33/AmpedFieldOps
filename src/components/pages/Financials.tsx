@@ -721,8 +721,8 @@ export default function Financials() {
                                 variant="ghost" 
                                 size="sm"
                                 onClick={() => {
-                                  setSelectedInvoice(invoice);
-                                  setIsInvoiceDetailOpen(true);
+                                  setSelectedQuote(quote);
+                                  setIsQuoteDetailOpen(true);
                                 }}
                               >
                                 View
