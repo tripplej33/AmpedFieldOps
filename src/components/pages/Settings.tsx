@@ -105,40 +105,6 @@ export default function Settings() {
   useEffect(() => {
     loadSettings();
     
-    // Listen for Xero OAuth popup callbacks via postMessage
-    const handleMessage = (event: MessageEvent) => {
-      // Verify origin matches current window
-      if (event.origin !== window.location.origin) {
-        return;
-      }
-
-      if (event.data?.type === 'XERO_OAUTH_SUCCESS') {
-        console.log('[Xero] OAuth success message received:', event.data);
-        toast.success('Xero connected successfully!');
-        // Refresh Xero status
-        if (hasPermission('can_sync_xero')) {
-          api.getXeroStatus().then((status) => {
-            setXeroStatus(status);
-            // Trigger sidebar refresh
-            window.dispatchEvent(new CustomEvent('xero-status-updated'));
-          }).catch(console.error);
-        }
-        // Clean up URL if there are any Xero params
-        const urlParams = new URLSearchParams(window.location.search);
-        if (urlParams.get('xero_connected') || urlParams.get('xero_error')) {
-          window.history.replaceState({}, '', window.location.pathname + '?tab=integrations');
-        }
-      } else if (event.data?.type === 'XERO_OAUTH_ERROR') {
-        console.error('[Xero] OAuth error message received:', event.data);
-        const errorMsg = event.data.message || 'Xero connection failed';
-        toast.error('Xero connection failed', {
-          description: errorMsg
-        });
-      }
-    };
-
-    window.addEventListener('message', handleMessage);
-    
     // Check for Google Drive OAuth callback parameters
     const params = new URLSearchParams(window.location.search);
     const googleDriveConnected = params.get('google_drive_connected');
@@ -447,40 +413,8 @@ export default function Settings() {
           });
         }
         
-        // Open Xero OAuth in a popup window
-        const width = 600;
-        const height = 700;
-        const left = (window.screen.width - width) / 2;
-        const top = (window.screen.height - height) / 2;
-        
-        const popup = window.open(
-          response.url,
-          'xero-oauth',
-          `width=${width},height=${height},left=${left},top=${top},toolbar=no,menubar=no,scrollbars=yes,resizable=yes`
-        );
-        
-        if (!popup) {
-          toast.error('Popup blocked. Please allow popups for this site and try again.');
-          return;
-        }
-        
-        // Store popup reference for cleanup
-        let popupClosed = false;
-        const checkPopupClosed = setInterval(() => {
-          if (popup.closed && !popupClosed) {
-            popupClosed = true;
-            clearInterval(checkPopupClosed);
-          }
-        }, 500);
-        
-        // Cleanup interval after 5 minutes (timeout)
-        setTimeout(() => {
-          clearInterval(checkPopupClosed);
-        }, 5 * 60 * 1000);
-        
-        // Popup will redirect back to this page with URL params after OAuth completes
-        // The useEffect hook will handle the callback and refresh the status
-        // The postMessage listener will also handle popup callbacks
+        // Redirect directly to Xero OAuth (no popup)
+        window.location.href = response.url;
         
       } else if (!response.configured) {
         toast.error('Xero credentials not configured. Please save your credentials and try again.');

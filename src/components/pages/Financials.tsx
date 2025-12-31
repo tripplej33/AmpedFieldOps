@@ -117,7 +117,7 @@ export default function Financials() {
     setIsLoading(true);
     try {
       const [invoicesData, quotesData, summaryData, paymentsData, posData, billsData, expensesData] = await Promise.all([
-        api.getXeroInvoices().catch(() => []),
+        api.getXeroInvoices({ include_deleted: showDeletedInvoices }).catch(() => []),
         api.getXeroQuotes().catch(() => []),
         api.getXeroFinancialSummary().catch(() => null),
         api.getPayments().catch(() => []),
