@@ -916,6 +916,7 @@ export default function Timesheets() {
             removeImage={removeImage}
             fileInputRef={fileInputRef}
             cameraInputRef={cameraInputRef}
+            dropZoneRef={dropZoneRef}
             handleFileSelect={handleFileSelect}
             handleClientChange={handleClientChange}
             handleProjectChange={handleProjectChange}
@@ -928,6 +929,13 @@ export default function Timesheets() {
             updateActivityEntry={updateActivityEntry}
             toggleUserForActivity={toggleUserForActivity}
             updateUserHoursForActivity={updateUserHoursForActivity}
+            isDragging={isDragging}
+            uploadProgress={uploadProgress}
+            imageFiles={imageFiles}
+            handleDragEnter={handleDragEnter}
+            handleDragLeave={handleDragLeave}
+            handleDragOver={handleDragOver}
+            handleDrop={handleDrop}
           />
         </DialogContent>
       </Dialog>
@@ -1017,6 +1025,7 @@ function TimesheetForm({
   removeImage,
   fileInputRef,
   cameraInputRef,
+  dropZoneRef,
   handleFileSelect,
   handleClientChange,
   handleProjectChange,
@@ -1029,6 +1038,13 @@ function TimesheetForm({
   updateActivityEntry,
   toggleUserForActivity,
   updateUserHoursForActivity,
+  isDragging,
+  uploadProgress,
+  imageFiles,
+  handleDragEnter,
+  handleDragLeave,
+  handleDragOver,
+  handleDrop,
 }: {
   formData: any;
   setFormData: (data: any) => void;
@@ -1041,6 +1057,7 @@ function TimesheetForm({
   removeImage: (index: number) => void;
   fileInputRef: React.RefObject<HTMLInputElement | null>;
   cameraInputRef: React.RefObject<HTMLInputElement | null>;
+  dropZoneRef: React.RefObject<HTMLDivElement | null>;
   handleFileSelect: (e: React.ChangeEvent<HTMLInputElement>) => void;
   handleClientChange: (id: string) => void;
   handleProjectChange: (id: string) => void;
@@ -1053,6 +1070,13 @@ function TimesheetForm({
   updateActivityEntry: (entryId: string, updates: any) => void;
   toggleUserForActivity: (entryId: string, userId: string) => void;
   updateUserHoursForActivity: (entryId: string, userId: string, hours: string) => void;
+  isDragging: boolean;
+  uploadProgress: Record<number, number>;
+  imageFiles: File[];
+  handleDragEnter: (e: React.DragEvent) => void;
+  handleDragLeave: (e: React.DragEvent) => void;
+  handleDragOver: (e: React.DragEvent) => void;
+  handleDrop: (e: React.DragEvent) => void;
 }) {
   return (
     <div className="space-y-4 py-4 max-h-[70vh] overflow-y-auto">

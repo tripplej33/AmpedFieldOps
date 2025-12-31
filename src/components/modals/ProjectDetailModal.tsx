@@ -17,7 +17,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card } from '@/components/ui/card';
 import { api } from '@/lib/api';
-import { DollarSign, Clock, Calendar, Send, TrendingUp, Wrench, Loader2, Pencil, Plus, FolderOpen, Trash2, ShoppingCart, Receipt, File, Shield, Upload, Eye, Download as DownloadIcon } from 'lucide-react';
+import { DollarSign, Clock, Calendar, Send, TrendingUp, Wrench, Loader2, Pencil, Plus, FolderOpen, Trash2, ShoppingCart, Receipt, File, FileText, Image, Shield, Upload, Eye, Download as DownloadIcon } from 'lucide-react';
 import { ProjectFinancials, ProjectFile, SafetyDocument } from '@/types';
 import { FileUpload } from '@/components/ui/file-upload';
 import { DocumentViewer } from '@/components/ui/document-viewer';
