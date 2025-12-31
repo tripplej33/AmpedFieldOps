@@ -1009,124 +1009,18 @@ export default function Settings() {
 
           {xeroStatus?.connected ? (
           <div className="space-y-4">
-            <div>
-              <Label className="font-mono text-xs uppercase tracking-wider">
-                Organization
-              </Label>
-              <Input
-                value={xeroStatus?.tenant_name || 'Connected Organization'}
-                readOnly
-                className="mt-2 bg-muted/50 font-mono"
-              />
-            </div>
-
-            <Separator />
-
-            {/* Xero Credentials */}
-            <div className="space-y-4 p-4 rounded-lg bg-muted/20 border border-border">
-              <h4 className="text-sm font-bold font-mono uppercase tracking-wider">Xero Credentials</h4>
-              
-              <div>
-                <Label className="font-mono text-xs uppercase tracking-wider">
-                  Client ID *
-                </Label>
-                <Input
-                  value={xeroCredentials.clientId}
-                  onChange={(e) => setXeroCredentials(prev => ({ ...prev, clientId: e.target.value }))}
-                  placeholder="Enter Xero Client ID (32 characters)"
-                  className="mt-2 font-mono text-sm"
-                />
-                {xeroCredentials.clientId && xeroCredentials.clientId.length !== 32 && (
-                  <p className="text-xs text-warning mt-1">
-                    Client ID should be exactly 32 characters (currently {xeroCredentials.clientId.length})
-                  </p>
-                )}
-              </div>
-
-              <div>
-                <Label className="font-mono text-xs uppercase tracking-wider">
-                  Client Secret *
-                </Label>
-                <Input
-                  type="password"
-                  value={xeroCredentials.clientSecret}
-                  onChange={(e) => setXeroCredentials(prev => ({ ...prev, clientSecret: e.target.value }))}
-                  placeholder="Enter Xero Client Secret"
-                  className="mt-2 font-mono text-sm"
-                />
-              </div>
-
-              <div>
-                <Label className="font-mono text-xs uppercase tracking-wider">
-                  Redirect URI
-                </Label>
-                <Input
-                  value={xeroCredentials.redirectUri}
-                  onChange={(e) => setXeroCredentials(prev => ({ ...prev, redirectUri: e.target.value }))}
-                  placeholder={`${window.location.origin}/api/xero/callback`}
-                  className="mt-2 font-mono text-sm"
-                />
-              </div>
-              
-              {showSaveButton && (
-                <>
-                  <Button
-                    onClick={handleSaveXeroCredentials}
-                    disabled={isSavingCredentials || !xeroCredentials.clientId || !xeroCredentials.clientSecret}
-                    className="w-full bg-electric text-background hover:bg-electric/90"
-                  >
-                    {isSavingCredentials ? (
-                      <>
-                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                        Saving...
-                      </>
-                    ) : (
-                      <>
-                        <CheckCircle className="w-4 h-4 mr-2" />
-                        {credentialsChanged ? 'Save Changes' : 'Save Credentials'}
-                      </>
-                    )}
-                  </Button>
-                  
-                  {credentialsChanged && (
-                    <p className="text-xs text-warning text-center">
-                      ⚠️ Credentials have been modified. Click "Save Changes" to update.
-                    </p>
-                  )}
-                </>
-              )}
-              
-              {!showSaveButton && !credentialsChanged && (
-                <p className="text-xs text-muted-foreground text-center">
-                  ✓ Credentials saved and connected. Edit credentials above to make changes.
-                </p>
-              )}
-              
-              {(!xeroCredentials.clientId || !xeroCredentials.clientSecret) && (
-                <p className="text-xs text-muted-foreground text-center">
-                  Enter your credentials above and click "Save Credentials" before connecting
-                </p>
-              )}
-
-              <p className="text-xs text-muted-foreground">
-                Get your credentials from the <a href="https://developer.xero.com/myapps" target="_blank" rel="noopener noreferrer" className="text-electric hover:underline">Xero Developer Portal</a>
-              </p>
-            </div>
-
-            <Separator />
-
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <p className="text-sm font-mono text-muted-foreground mb-1">Last Sync</p>
-                <p className="text-sm font-mono text-foreground">
+                <Label className="font-mono text-xs uppercase tracking-wider text-muted-foreground">Organization</Label>
+                <p className="text-sm font-mono text-foreground mt-1">{xeroStatus?.tenant_name || 'Connected'}</p>
+              </div>
+              <div>
+                <Label className="font-mono text-xs uppercase tracking-wider text-muted-foreground">Last Sync</Label>
+                <p className="text-sm font-mono text-foreground mt-1">
                   {xeroStatus?.last_sync 
                     ? new Date(xeroStatus.last_sync).toLocaleString() 
                     : 'Never'}
                 </p>
-              </div>
-              <div>
-                <p className="text-sm font-mono text-muted-foreground mb-1">Status</p>
-                <p className="text-sm font-mono text-voltage">Active</p>
               </div>
             </div>
 
@@ -1145,39 +1039,28 @@ export default function Settings() {
               />
             </div>
 
-            {/* Contact Sync Options */}
-            <Separator />
-            
-            <div>
-              <Label className="font-mono text-xs uppercase tracking-wider mb-3 block">Contact Sync</Label>
-              <p className="text-xs text-muted-foreground mb-3">
-                Keep your Xero contacts and local clients in sync. Xero is the source of truth.
-              </p>
-              <div className="flex flex-wrap gap-3">
-                <Button 
-                  variant="outline"
-                  onClick={handlePullContacts}
-                  disabled={isSyncing}
-                >
-                  <Download className={cn("w-4 h-4 mr-2")} />
-                  Pull from Xero
-                </Button>
-                <Button 
-                  variant="outline"
-                  onClick={handlePushAllContacts}
-                  disabled={isSyncing}
-                >
-                  <Upload className={cn("w-4 h-4 mr-2")} />
-                  Push New to Xero
-                </Button>
-              </div>
-            </div>
-
-            <Separator />
-
-            <div className="flex gap-3">
+            <div className="flex flex-wrap gap-2">
               <Button 
-                className="bg-electric text-background hover:bg-electric/90"
+                variant="outline"
+                size="sm"
+                onClick={handlePullContacts}
+                disabled={isSyncing}
+              >
+                <Download className="w-4 h-4 mr-2" />
+                Pull Contacts
+              </Button>
+              <Button 
+                variant="outline"
+                size="sm"
+                onClick={handlePushAllContacts}
+                disabled={isSyncing}
+              >
+                <Upload className="w-4 h-4 mr-2" />
+                Push Contacts
+              </Button>
+              <Button 
+                variant="outline"
+                size="sm"
                 onClick={handleXeroSync}
                 disabled={isSyncing}
               >
@@ -1185,7 +1068,8 @@ export default function Settings() {
                 {isSyncing ? 'Syncing...' : 'Sync All'}
               </Button>
               <Button 
-                variant="outline" 
+                variant="outline"
+                size="sm"
                 onClick={handleXeroDisconnect}
                 disabled={isDisconnectingXero}
               >
@@ -1329,245 +1213,6 @@ export default function Settings() {
           </Card>
           )}
 
-            {/* Google Drive Integration */}
-            {hasPermission('can_manage_users') && (
-            <Card className="p-6 bg-card border-border">
-          <div className="flex items-start justify-between mb-6">
-            <div>
-              <h3 className="text-lg font-bold mb-1">Google Drive Integration</h3>
-              <p className="text-sm text-muted-foreground">Connect Google Drive for cloud backup storage</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className={cn(
-                "w-2 h-2 rounded-full",
-                googleDriveConnected ? "bg-voltage animate-pulse" : "bg-muted-foreground"
-              )} />
-              <span className={cn(
-                "text-sm font-mono",
-                googleDriveConnected ? "text-voltage" : "text-muted-foreground"
-              )}>
-                {googleDriveConnected ? 'Connected' : 'Not Connected'}
-              </span>
-            </div>
-          </div>
-
-          {googleDriveConnected ? (
-            <div className="space-y-4">
-              <div className="bg-muted/20 border border-border rounded-lg p-4">
-                <div className="flex items-center gap-3 mb-3">
-                  <Cloud className="w-5 h-5 text-voltage" />
-                  <div>
-                    <p className="text-sm font-medium">Google Drive Connected</p>
-                    <p className="text-xs text-muted-foreground">Backups can be stored in Google Drive</p>
-                  </div>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Your backups will be automatically uploaded to Google Drive when you select "Google Drive" as the storage option.
-                </p>
-              </div>
-
-              <div className="flex gap-3">
-                <Button 
-                  variant="outline"
-                  onClick={async () => {
-                    try {
-                      // Disconnect by clearing tokens (would need a disconnect endpoint)
-                      toast.info('To disconnect, revoke access in your Google Account settings');
-                    } catch (error: any) {
-                      toast.error(error.message || 'Failed to disconnect');
-                    }
-                  }}
-                >
-                  Manage Connection
-                </Button>
-                <Button 
-                  variant="outline"
-                  onClick={() => window.open('/backups', '_blank')}
-                >
-                  <Cloud className="w-4 h-4 mr-2" />
-                  Go to Backups
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {/* Google Drive Credentials */}
-              <div className="space-y-4 p-4 rounded-lg bg-muted/20 border border-border">
-                <h4 className="text-sm font-bold font-mono uppercase tracking-wider">Google Drive OAuth Credentials</h4>
-                
-                <div>
-                  <Label className="font-mono text-xs uppercase tracking-wider">
-                    Client ID *
-                  </Label>
-                  <Input
-                    value={googleDriveCredentials.clientId}
-                    onChange={(e) => setGoogleDriveCredentials(prev => ({ ...prev, clientId: e.target.value }))}
-                    placeholder="Enter Google OAuth Client ID"
-                    className="mt-2 font-mono text-sm"
-                  />
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Get this from Google Cloud Console → APIs & Services → Credentials
-                  </p>
-                </div>
-
-                <div>
-                  <Label className="font-mono text-xs uppercase tracking-wider">
-                    Client Secret *
-                  </Label>
-                  <Input
-                    type="password"
-                    value={googleDriveCredentials.clientSecret}
-                    onChange={(e) => setGoogleDriveCredentials(prev => ({ ...prev, clientSecret: e.target.value }))}
-                    placeholder="Enter Google OAuth Client Secret"
-                    className="mt-2 font-mono text-sm"
-                  />
-                </div>
-
-                <div>
-                  <Label className="font-mono text-xs uppercase tracking-wider">
-                    Redirect URI
-                  </Label>
-                  <Input
-                    value={googleDriveCredentials.redirectUri}
-                    onChange={(e) => setGoogleDriveCredentials(prev => ({ ...prev, redirectUri: e.target.value }))}
-                    placeholder={`${window.location.origin}/api/backups/google-drive/callback`}
-                    className="mt-2 font-mono text-sm"
-                  />
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Must match exactly what's configured in Google Cloud Console
-                  </p>
-                </div>
-                
-                {showGoogleDriveSaveButton && (
-                  <>
-                    <Button
-                      onClick={handleSaveGoogleDriveCredentials}
-                      disabled={isSavingGoogleDriveCredentials || !googleDriveCredentials.clientId || !googleDriveCredentials.clientSecret}
-                      className="w-full bg-electric text-background hover:bg-electric/90"
-                    >
-                      {isSavingGoogleDriveCredentials ? (
-                        <>
-                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                          Saving...
-                        </>
-                      ) : (
-                        <>
-                          <CheckCircle className="w-4 h-4 mr-2" />
-                          {googleDriveCredentialsChanged ? 'Save Changes' : 'Save Credentials'}
-                        </>
-                      )}
-                    </Button>
-                    
-                    {googleDriveCredentialsChanged && (
-                      <p className="text-xs text-warning text-center">
-                        ⚠️ Credentials have been modified. Click "Save Changes" to update.
-                      </p>
-                    )}
-                  </>
-                )}
-                
-                {!showGoogleDriveSaveButton && !googleDriveCredentialsChanged && (
-                  <p className="text-xs text-muted-foreground text-center">
-                    ✓ Credentials saved. Edit credentials above to make changes.
-                  </p>
-                )}
-                
-                {(!googleDriveCredentials.clientId || !googleDriveCredentials.clientSecret) && (
-                  <p className="text-xs text-muted-foreground text-center">
-                    Enter your credentials above and click "Save Credentials" before connecting
-                  </p>
-                )}
-
-                <p className="text-xs text-muted-foreground">
-                  Get your credentials from the <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" className="text-electric hover:underline">Google Cloud Console</a>
-                </p>
-              </div>
-
-              <Separator />
-
-              <div className="bg-muted/20 border border-border rounded-lg p-4">
-                <p className="text-sm text-muted-foreground mb-4">
-                  Connect your Google Drive account to enable cloud backup storage. Backups stored in Google Drive are accessible from anywhere and provide an additional layer of data protection.
-                </p>
-                <div className="space-y-2 text-xs text-muted-foreground">
-                  <p>• Backups are stored in a dedicated "AmpedFieldOps Backups" folder</p>
-                  <p>• Only files created by this app will be accessible</p>
-                  <p>• You can revoke access at any time from your Google Account</p>
-                </div>
-              </div>
-
-              <Button 
-                onClick={async () => {
-                  if (!googleDriveCredentials.clientId || !googleDriveCredentials.clientSecret) {
-                    toast.error('Please save your Google Drive credentials first using the "Save Credentials" button above.');
-                    return;
-                  }
-
-                  try {
-                    setIsConnectingGoogleDrive(true);
-                    const { url } = await api.getGoogleDriveAuthUrl();
-                    const popup = window.open(url, 'google-drive-auth', 'width=600,height=700');
-                    
-                    // Poll for connection status
-                    const checkInterval = setInterval(async () => {
-                      try {
-                        const status = await api.getGoogleDriveStatus();
-                        if (status.connected) {
-                          clearInterval(checkInterval);
-                          setGoogleDriveConnected(true);
-                          toast.success('Google Drive connected successfully');
-                          if (popup) popup.close();
-                        }
-                      } catch (error) {
-                        // Ignore errors during polling
-                      }
-                    }, 2000);
-
-                    // Stop polling after 5 minutes
-                    setTimeout(() => clearInterval(checkInterval), 5 * 60 * 1000);
-
-                    // Listen for popup close
-                    const checkClosed = setInterval(() => {
-                      if (popup?.closed) {
-                        clearInterval(checkClosed);
-                        clearInterval(checkInterval);
-                        setIsConnectingGoogleDrive(false);
-                      }
-                    }, 500);
-                  } catch (error: any) {
-                    toast.error(error.message || 'Failed to get Google Drive auth URL');
-                  } finally {
-                    setIsConnectingGoogleDrive(false);
-                  }
-                }}
-                className="w-full bg-electric text-background hover:bg-electric/90"
-                disabled={isConnectingGoogleDrive || !googleDriveCredentials.clientId || !googleDriveCredentials.clientSecret}
-              >
-                {isConnectingGoogleDrive ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Connecting...
-                  </>
-                ) : (
-                  <>
-                    <Cloud className="w-4 h-4 mr-2" />
-                    Connect Google Drive
-                  </>
-                )}
-              </Button>
-              {(!googleDriveCredentials.clientId || !googleDriveCredentials.clientSecret) && (
-                <p className="text-xs text-warning text-center">
-                  Please save your credentials above first
-                </p>
-              )}
-
-              <p className="text-xs text-muted-foreground text-center">
-                You'll be redirected to Google to authorize access. This app will only access files it creates.
-              </p>
-            </div>
-          )}
-          </Card>
-          )}
 
             {/* Email Settings */}
             {user?.role === 'admin' && (
@@ -1983,30 +1628,208 @@ export default function Settings() {
 
                   {/* Google Drive Configuration */}
                   {cloudStorageProvider === 'google-drive' && (
-                    <div className="space-y-4 p-4 rounded-lg bg-muted/20 border border-border">
-                      <h4 className="text-sm font-bold font-mono uppercase tracking-wider">Google Drive Configuration</h4>
-                      
-                      <div className="flex items-center gap-2 mb-4">
-                        <div className={cn(
-                          "w-2 h-2 rounded-full",
-                          googleDriveConnected ? "bg-voltage animate-pulse" : "bg-muted-foreground"
-                        )} />
-                        <span className={cn(
-                          "text-sm font-mono",
-                          googleDriveConnected ? "text-voltage" : "text-muted-foreground"
-                        )}>
-                          {googleDriveConnected ? 'Connected' : 'Not Connected'}
-                        </span>
+                    <div className="space-y-4">
+                      {/* Connection Status */}
+                      <div className="p-4 rounded-lg bg-muted/20 border border-border">
+                        <div className="flex items-center justify-between mb-4">
+                          <div className="flex items-center gap-2">
+                            <div className={cn(
+                              "w-2 h-2 rounded-full",
+                              googleDriveConnected ? "bg-voltage animate-pulse" : "bg-muted-foreground"
+                            )} />
+                            <span className={cn(
+                              "text-sm font-mono",
+                              googleDriveConnected ? "text-voltage" : "text-muted-foreground"
+                            )}>
+                              {googleDriveConnected ? 'Connected' : 'Not Connected'}
+                            </span>
+                          </div>
+                          {googleDriveConnected && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={async () => {
+                                try {
+                                  toast.info('To disconnect, revoke access in your Google Account settings');
+                                } catch (error: any) {
+                                  toast.error(error.message || 'Failed to disconnect');
+                                }
+                              }}
+                            >
+                              Manage Connection
+                            </Button>
+                          )}
+                        </div>
+
+                        {googleDriveConnected ? (
+                          <p className="text-xs text-muted-foreground">
+                            ✓ Google Drive is connected. Files will be stored in your Google Drive.
+                          </p>
+                        ) : (
+                          <p className="text-xs text-warning">
+                            ⚠️ Google Drive is not connected. Please configure OAuth credentials below and connect.
+                          </p>
+                        )}
                       </div>
 
+                      {/* OAuth Credentials */}
                       {!googleDriveConnected && (
-                        <div className="p-3 rounded-lg bg-warning/10 border border-warning/20">
-                          <p className="text-sm text-warning">
-                            Please connect Google Drive in the Integrations tab first.
+                        <div className="space-y-4 p-4 rounded-lg bg-muted/20 border border-border">
+                          <h4 className="text-sm font-bold font-mono uppercase tracking-wider">Google Drive OAuth Credentials</h4>
+                          
+                          <div>
+                            <Label className="font-mono text-xs uppercase tracking-wider">
+                              Client ID *
+                            </Label>
+                            <Input
+                              value={googleDriveCredentials.clientId}
+                              onChange={(e) => setGoogleDriveCredentials(prev => ({ ...prev, clientId: e.target.value }))}
+                              placeholder="Enter Google OAuth Client ID"
+                              className="mt-2 font-mono text-sm"
+                            />
+                            <p className="text-xs text-muted-foreground mt-1">
+                              Get this from Google Cloud Console → APIs & Services → Credentials
+                            </p>
+                          </div>
+
+                          <div>
+                            <Label className="font-mono text-xs uppercase tracking-wider">
+                              Client Secret *
+                            </Label>
+                            <Input
+                              type="password"
+                              value={googleDriveCredentials.clientSecret}
+                              onChange={(e) => setGoogleDriveCredentials(prev => ({ ...prev, clientSecret: e.target.value }))}
+                              placeholder="Enter Google OAuth Client Secret"
+                              className="mt-2 font-mono text-sm"
+                            />
+                          </div>
+
+                          <div>
+                            <Label className="font-mono text-xs uppercase tracking-wider">
+                              Redirect URI
+                            </Label>
+                            <Input
+                              value={googleDriveCredentials.redirectUri}
+                              onChange={(e) => setGoogleDriveCredentials(prev => ({ ...prev, redirectUri: e.target.value }))}
+                              placeholder={`${window.location.origin}/api/backups/google-drive/callback`}
+                              className="mt-2 font-mono text-sm"
+                            />
+                            <p className="text-xs text-muted-foreground mt-1">
+                              Must match exactly what's configured in Google Cloud Console
+                            </p>
+                          </div>
+                          
+                          {showGoogleDriveSaveButton && (
+                            <>
+                              <Button
+                                onClick={handleSaveGoogleDriveCredentials}
+                                disabled={isSavingGoogleDriveCredentials || !googleDriveCredentials.clientId || !googleDriveCredentials.clientSecret}
+                                className="w-full bg-electric text-background hover:bg-electric/90"
+                              >
+                                {isSavingGoogleDriveCredentials ? (
+                                  <>
+                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                    Saving...
+                                  </>
+                                ) : (
+                                  <>
+                                    <CheckCircle className="w-4 h-4 mr-2" />
+                                    {googleDriveCredentialsChanged ? 'Save Changes' : 'Save Credentials'}
+                                  </>
+                                )}
+                              </Button>
+                              
+                              {googleDriveCredentialsChanged && (
+                                <p className="text-xs text-warning text-center">
+                                  ⚠️ Credentials have been modified. Click "Save Changes" to update.
+                                </p>
+                              )}
+                            </>
+                          )}
+                          
+                          {!showGoogleDriveSaveButton && !googleDriveCredentialsChanged && (
+                            <p className="text-xs text-muted-foreground text-center">
+                              ✓ Credentials saved. Edit credentials above to make changes.
+                            </p>
+                          )}
+                          
+                          {(!googleDriveCredentials.clientId || !googleDriveCredentials.clientSecret) && (
+                            <p className="text-xs text-muted-foreground text-center">
+                              Enter your credentials above and click "Save Credentials" before connecting
+                            </p>
+                          )}
+
+                          <p className="text-xs text-muted-foreground">
+                            Get your credentials from the <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" className="text-electric hover:underline">Google Cloud Console</a>
                           </p>
                         </div>
                       )}
 
+                      {/* Connect Button */}
+                      {!googleDriveConnected && (
+                        <Button 
+                          onClick={async () => {
+                            if (!googleDriveCredentials.clientId || !googleDriveCredentials.clientSecret) {
+                              toast.error('Please save your Google Drive credentials first using the "Save Credentials" button above.');
+                              return;
+                            }
+
+                            try {
+                              setIsConnectingGoogleDrive(true);
+                              const { url } = await api.getGoogleDriveAuthUrl();
+                              const popup = window.open(url, 'google-drive-auth', 'width=600,height=700');
+                              
+                              // Poll for connection status
+                              const checkInterval = setInterval(async () => {
+                                try {
+                                  const status = await api.getGoogleDriveStatus();
+                                  if (status.connected) {
+                                    clearInterval(checkInterval);
+                                    setGoogleDriveConnected(true);
+                                    toast.success('Google Drive connected successfully');
+                                    if (popup) popup.close();
+                                  }
+                                } catch (error) {
+                                  // Ignore errors during polling
+                                }
+                              }, 2000);
+
+                              // Stop polling after 5 minutes
+                              setTimeout(() => clearInterval(checkInterval), 5 * 60 * 1000);
+
+                              // Listen for popup close
+                              const checkClosed = setInterval(() => {
+                                if (popup?.closed) {
+                                  clearInterval(checkClosed);
+                                  clearInterval(checkInterval);
+                                  setIsConnectingGoogleDrive(false);
+                                }
+                              }, 500);
+                            } catch (error: any) {
+                              toast.error(error.message || 'Failed to get Google Drive auth URL');
+                            } finally {
+                              setIsConnectingGoogleDrive(false);
+                            }
+                          }}
+                          className="w-full bg-electric text-background hover:bg-electric/90"
+                          disabled={isConnectingGoogleDrive || !googleDriveCredentials.clientId || !googleDriveCredentials.clientSecret}
+                        >
+                          {isConnectingGoogleDrive ? (
+                            <>
+                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                              Connecting...
+                            </>
+                          ) : (
+                            <>
+                              <Cloud className="w-4 h-4 mr-2" />
+                              Connect Google Drive
+                            </>
+                          )}
+                        </Button>
+                      )}
+
+                      {/* Folder ID Configuration */}
                       <div>
                         <Label className="font-mono text-xs uppercase tracking-wider">
                           Folder ID (Optional)
