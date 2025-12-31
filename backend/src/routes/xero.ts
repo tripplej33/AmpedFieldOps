@@ -3368,17 +3368,42 @@ router.post('/invoices/from-timesheets', authenticate, requirePermission('can_sy
     );
 
     // Queue the Xero sync job (async, non-blocking)
+    // Use invoice ID as job ID to prevent duplicate jobs for the same invoice
     try {
-      const { addXeroSyncJob } = await import('../lib/queue');
-      await addXeroSyncJob('sync_invoice_from_timesheets', {
-        invoiceId,
-        clientId: client_id,
-        projectId: project_id || null,
-        lineItems,
-        total,
-        dueDate: due_date || null,
-        timesheetIds,
-      });
+      const { addXeroSyncJob, xeroSyncQueue } = await import('../lib/queue');
+      
+      // Check if a job for this invoice already exists
+      if (xeroSyncQueue) {
+        const existingJobs = await xeroSyncQueue.getJobs(['waiting', 'active', 'delayed'], 0, -1);
+        const duplicateJob = existingJobs.find(
+          (job) => job.data.type === 'sync_invoice_from_timesheets' && job.data.data.invoiceId === invoiceId
+        );
+
+        if (duplicateJob) {
+          console.log(`[Xero Sync] Job already exists for invoice ${invoiceId}, skipping duplicate job creation`);
+        } else {
+          await addXeroSyncJob('sync_invoice_from_timesheets', {
+            invoiceId,
+            clientId: client_id,
+            projectId: project_id || null,
+            lineItems,
+            total,
+            dueDate: due_date || null,
+            timesheetIds,
+          }, `invoice-${invoiceId}`); // Use invoiceId as jobId for idempotency
+        }
+      } else {
+        // Fallback if queue not available
+        await addXeroSyncJob('sync_invoice_from_timesheets', {
+          invoiceId,
+          clientId: client_id,
+          projectId: project_id || null,
+          lineItems,
+          total,
+          dueDate: due_date || null,
+          timesheetIds,
+        }, `invoice-${invoiceId}`);
+      }
     } catch (queueError: any) {
       console.error('Failed to queue Xero sync job:', queueError);
       // Update invoice sync status to indicate queue failure

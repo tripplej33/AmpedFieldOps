@@ -98,6 +98,24 @@ try {
         case 'sync_invoice_from_timesheets': {
           const { invoiceId, clientId, projectId, lineItems, total, dueDate, timesheetIds } = data;
 
+          // Check if invoice is already synced to prevent duplicates
+          const invoiceCheck = await query(
+            'SELECT xero_invoice_id, sync_status FROM xero_invoices WHERE id = $1',
+            [invoiceId]
+          );
+
+          if (invoiceCheck.rows.length === 0) {
+            throw new Error('Invoice not found');
+          }
+
+          const invoice = invoiceCheck.rows[0];
+
+          // If invoice already has a Xero ID and is synced, skip processing
+          if (invoice.xero_invoice_id && invoice.sync_status === 'synced') {
+            console.log(`[Xero Sync Worker] Invoice ${invoiceId} already synced with Xero ID ${invoice.xero_invoice_id}. Skipping.`);
+            return { success: true, xeroInvoiceId: invoice.xero_invoice_id, invoiceId, skipped: true };
+          }
+
           // Get Xero token
           const tokenData = await getValidAccessToken();
           if (!tokenData) {
@@ -162,10 +180,11 @@ try {
             }
 
             // Update local invoice with Xero ID and sync status
+            // Only update if not already synced (prevent race conditions)
             await query(
               `UPDATE xero_invoices 
                SET xero_invoice_id = $1, sync_status = 'synced', xero_sync_id = $2, synced_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
-               WHERE id = $3`,
+               WHERE id = $3 AND (xero_invoice_id IS NULL OR sync_status != 'synced')`,
               [xeroInvoiceId, job.id, invoiceId]
             );
 
@@ -326,9 +345,13 @@ try {
 export { xeroSyncWorker };
 
 // Export helper function to add jobs to queue
-export async function addXeroSyncJob(type: string, data: any) {
+export async function addXeroSyncJob(type: string, data: any, jobId?: string) {
   if (!xeroSyncQueue) {
     throw new Error('Queue not initialized. Please ensure Redis is running and configured.');
   }
-  return await xeroSyncQueue.add(type, { type, data });
+  const jobOptions: any = {};
+  if (jobId) {
+    jobOptions.jobId = jobId; // Use provided jobId for idempotency
+  }
+  return await xeroSyncQueue.add(type, { type, data }, jobOptions);
 }
