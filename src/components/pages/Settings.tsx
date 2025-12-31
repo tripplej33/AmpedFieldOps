@@ -105,6 +105,40 @@ export default function Settings() {
   useEffect(() => {
     loadSettings();
     
+    // Listen for Xero OAuth popup callbacks via postMessage
+    const handleMessage = (event: MessageEvent) => {
+      // Verify origin matches current window
+      if (event.origin !== window.location.origin) {
+        return;
+      }
+
+      if (event.data?.type === 'XERO_OAUTH_SUCCESS') {
+        console.log('[Xero] OAuth success message received:', event.data);
+        toast.success('Xero connected successfully!');
+        // Refresh Xero status
+        if (hasPermission('can_sync_xero')) {
+          api.getXeroStatus().then((status) => {
+            setXeroStatus(status);
+            // Trigger sidebar refresh
+            window.dispatchEvent(new CustomEvent('xero-status-updated'));
+          }).catch(console.error);
+        }
+        // Clean up URL if there are any Xero params
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('xero_connected') || urlParams.get('xero_error')) {
+          window.history.replaceState({}, '', window.location.pathname + '?tab=integrations');
+        }
+      } else if (event.data?.type === 'XERO_OAUTH_ERROR') {
+        console.error('[Xero] OAuth error message received:', event.data);
+        const errorMsg = event.data.message || 'Xero connection failed';
+        toast.error('Xero connection failed', {
+          description: errorMsg
+        });
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    
     // Check for Google Drive OAuth callback parameters
     const params = new URLSearchParams(window.location.search);
     const googleDriveConnected = params.get('google_drive_connected');
@@ -401,16 +435,9 @@ export default function Settings() {
             clientIdFromSettings: settings.xero_client_id
           });
           
-          toast.info(`Opening Xero connection in popup...`, {
-            duration: 5000,
-            description: (
-              <div className="space-y-1 text-xs">
-                <div><strong>Client ID:</strong> {fullClientId}</div>
-                <div><strong>Redirect URI:</strong> {response.redirectUri}</div>
-                <div className="text-warning mt-1">⚠️ These must match your Xero app settings exactly</div>
-              </div>
-            )
-          });
+        toast.info(`Redirecting to Xero...`, {
+          duration: 3000
+        });
         }
         
         // Redirect directly to Xero OAuth (no popup)
