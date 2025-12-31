@@ -4,6 +4,7 @@ import helmet from 'helmet';
 import path from 'path';
 import rateLimit from 'express-rate-limit';
 import { env } from './config/env';
+import { createDynamicCorsOrigin, initializeCorsCache } from './config/cors';
 
 // Import routes
 import authRoutes from './routes/auth';
@@ -31,7 +32,7 @@ const app = express();
 // Middleware
 app.use(helmet());
 app.use(cors({
-  origin: env.FRONTEND_URL,
+  origin: createDynamicCorsOrigin(),
   credentials: true
 }));
 app.use(express.json());
@@ -85,6 +86,15 @@ app.listen(env.PORT, async () => {
   console.log(`🚀 AmpedFieldOps API server running on port ${env.PORT}`);
   console.log(`📡 Environment: ${env.NODE_ENV}`);
   console.log(`🌐 Frontend URL: ${env.FRONTEND_URL}`);
+  
+  // Initialize CORS cache (extracts frontend URL from Xero redirect URI)
+  try {
+    await initializeCorsCache();
+    console.log('🔒 CORS configuration initialized');
+  } catch (error) {
+    console.error('❌ Failed to initialize CORS cache:', error);
+    // Don't fail startup - CORS will use fallback values
+  }
   
   // Verify email configuration on startup
   try {
