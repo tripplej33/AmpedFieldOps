@@ -731,8 +731,15 @@ class ApiClient {
     }>('/api/xero/contacts/push-all', { method: 'POST' });
   }
 
-  async getXeroInvoices(params?: { status?: string; client_id?: string; date_from?: string; date_to?: string }) {
-    const searchParams = new URLSearchParams(params as Record<string, string>);
+  async getXeroInvoices(params?: { status?: string; client_id?: string; date_from?: string; date_to?: string; include_deleted?: boolean }) {
+    const searchParams = new URLSearchParams();
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null) {
+          searchParams.append(key, String(value));
+        }
+      });
+    }
     return this.request<any[]>(`/api/xero/invoices?${searchParams}`);
   }
 

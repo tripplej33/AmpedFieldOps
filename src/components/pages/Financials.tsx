@@ -54,6 +54,7 @@ export default function Financials() {
   const [summary, setSummary] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [showDeletedInvoices, setShowDeletedInvoices] = useState(false);
   const [selectedInvoiceForPayment, setSelectedInvoiceForPayment] = useState<XeroInvoice | null>(null);
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
   const [isPOModalOpen, setIsPOModalOpen] = useState(false);
@@ -91,7 +92,7 @@ export default function Financials() {
   useEffect(() => {
     loadData();
     loadClients();
-  }, []);
+  }, [showDeletedInvoices]);
 
   const loadData = async () => {
     setIsLoading(true);
@@ -499,6 +500,19 @@ export default function Financials() {
           {/* Invoices Tab */}
           <TabsContent value="invoices" className="mt-6">
             <Card className="bg-card border-border overflow-hidden">
+              <div className="p-4 border-b border-border flex items-center justify-between">
+                <h3 className="font-bold">Invoices</h3>
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="show-deleted"
+                    checked={showDeletedInvoices}
+                    onCheckedChange={(checked) => setShowDeletedInvoices(checked === true)}
+                  />
+                  <Label htmlFor="show-deleted" className="text-sm cursor-pointer">
+                    Show deleted invoices
+                  </Label>
+                </div>
+              </div>
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead className="bg-muted/50 border-b border-border">
@@ -536,11 +550,15 @@ export default function Financials() {
                         const isSyncing = syncingInvoices.has(invoiceId);
                         const hasError = syncErrors[`invoice-${invoiceId}`];
                         const syncStatus = (invoice as any).sync_status;
-                        
-                        return (
-                        <tr key={invoice.id} className="hover:bg-muted/30 transition-colors">
+                        const isDeleted = !!(invoice as any).deleted_at;
+                          
+                          return (
+                        <tr key={invoice.id} className={cn("hover:bg-muted/30 transition-colors", isDeleted && "opacity-50")}>
                           <td className="px-6 py-4 font-mono font-medium">
                             {invoice.invoice_number}
+                            {isDeleted && (
+                              <Badge className="ml-2 bg-muted text-muted-foreground text-xs">Deleted</Badge>
+                            )}
                           </td>
                           <td className="px-6 py-4">
                             {invoice.client_name}

@@ -3157,7 +3157,7 @@ router.get('/invoices', authenticate, requirePermission('can_view_financials'), 
       // Continue anyway - tables might already exist
     }
     
-    const { status, client_id, date_from, date_to } = req.query;
+    const { status, client_id, date_from, date_to, include_deleted } = req.query;
 
     let sql = `
       SELECT xi.*, c.name as client_name
@@ -3167,6 +3167,11 @@ router.get('/invoices', authenticate, requirePermission('can_view_financials'), 
     `;
     const params: any[] = [];
     let paramCount = 1;
+
+    // Filter deleted invoices unless explicitly requested
+    if (include_deleted !== 'true') {
+      sql += ` AND xi.deleted_at IS NULL`;
+    }
 
     if (status) {
       sql += ` AND xi.status = $${paramCount++}`;
