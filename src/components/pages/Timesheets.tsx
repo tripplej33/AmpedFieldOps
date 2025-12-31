@@ -48,9 +48,12 @@ export default function Timesheets() {
   const [users, setUsers] = useState<User[]>([]);
   const [imageFiles, setImageFiles] = useState<File[]>([]);
   const [imagePreviews, setImagePreviews] = useState<string[]>([]);
+  const [uploadProgress, setUploadProgress] = useState<Record<number, number>>({});
+  const [isDragging, setIsDragging] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
+  const dropZoneRef = useRef<HTMLDivElement | null>(null);
 
   // New form structure: multiple activity types with users and hours
   interface ActivityTypeEntry {
@@ -174,32 +177,92 @@ export default function Timesheets() {
     setEditingEntry(null);
     setImageFiles([]);
     setImagePreviews([]);
+    setUploadProgress({});
+    setIsDragging(false);
     setCostCenters([]); // Reset cost centers
   };
 
-  // Image handling
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
-    if (files.length + imageFiles.length > 5) {
-      toast.error('Maximum 5 images allowed');
-      return;
-    }
-    
-    files.forEach(file => {
-      if (file.size > 10 * 1024 * 1024) {
-        toast.error('Image must be less than 10MB');
+  // Image handling with validation
+  const validateAndAddFiles = (files: File[]) => {
+    const validFiles: File[] = [];
+    const errors: string[] = [];
+
+    files.forEach((file, index) => {
+      // Check file count
+      if (imageFiles.length + validFiles.length >= 5) {
+        errors.push(`Maximum 5 images allowed. Skipping remaining files.`);
         return;
       }
-      
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setImagePreviews(prev => [...prev, reader.result as string]);
-      };
-      reader.readAsDataURL(file);
+
+      // Check file size (10MB limit)
+      if (file.size > 10 * 1024 * 1024) {
+        errors.push(`${file.name} is too large (max 10MB)`);
+        return;
+      }
+
+      // Check file type
+      if (!file.type.startsWith('image/')) {
+        errors.push(`${file.name} is not an image file`);
+        return;
+      }
+
+      validFiles.push(file);
     });
-    
-    setImageFiles(prev => [...prev, ...files]);
+
+    // Show errors if any
+    if (errors.length > 0) {
+      errors.forEach(error => toast.error(error));
+    }
+
+    // Add valid files
+    if (validFiles.length > 0) {
+      validFiles.forEach(file => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setImagePreviews(prev => [...prev, reader.result as string]);
+        };
+        reader.readAsDataURL(file);
+      });
+      
+      setImageFiles(prev => [...prev, ...validFiles]);
+    }
+
+    return validFiles.length;
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    validateAndAddFiles(files);
     if (e.target) e.target.value = '';
+  };
+
+  // Drag and drop handlers
+  const handleDragEnter = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.currentTarget === dropZoneRef.current) {
+      setIsDragging(false);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    const files = Array.from(e.dataTransfer.files);
+    validateAndAddFiles(files);
   };
 
   const removeImage = (index: number) => {
@@ -1202,18 +1265,59 @@ function TimesheetForm({
       {/* Photo/Image Upload Section */}
       <div>
         <Label className="font-mono text-xs uppercase tracking-wider">Photos / Media</Label>
+        
+        {/* Drag and Drop Zone */}
+        {imagePreviews.length < 5 && (
+          <div
+            ref={dropZoneRef}
+            onDragEnter={handleDragEnter}
+            onDragLeave={handleDragLeave}
+            onDragOver={handleDragOver}
+            onDrop={handleDrop}
+            className={cn(
+              "mt-2 border-2 border-dashed rounded-lg p-6 transition-colors",
+              isDragging 
+                ? "border-electric bg-electric/10" 
+                : "border-muted hover:border-electric/50"
+            )}
+          >
+            <div className="flex flex-col items-center justify-center gap-2 text-center">
+              <Image className="w-8 h-8 text-muted-foreground" />
+              <div>
+                <p className="text-sm font-medium">
+                  {isDragging ? "Drop images here" : "Drag & drop images here"}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  or click buttons below to select
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="mt-2 flex flex-wrap gap-3">
           {/* Image Previews */}
           {imagePreviews.map((preview, index) => (
-            <div key={index} className="relative w-20 h-20 rounded-lg overflow-hidden border border-border">
+            <div key={index} className="relative w-20 h-20 rounded-lg overflow-hidden border border-border group">
               <img src={preview} alt={`Preview ${index + 1}`} className="w-full h-full object-cover" />
+              {/* Upload Progress */}
+              {uploadProgress[index] !== undefined && uploadProgress[index] < 100 && (
+                <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                  <div className="w-12 h-12 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                </div>
+              )}
+              {/* Remove Button */}
               <button
                 type="button"
                 onClick={() => removeImage(index)}
-                className="absolute top-1 right-1 w-5 h-5 bg-destructive rounded-full flex items-center justify-center"
+                className="absolute top-1 right-1 w-5 h-5 bg-destructive rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
               >
                 <X className="w-3 h-3 text-white" />
               </button>
+              {/* File Info */}
+              <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-xs p-1 truncate opacity-0 group-hover:opacity-100 transition-opacity">
+                {imageFiles[index]?.name || `Image ${index + 1}`}
+              </div>
             </div>
           ))}
 
@@ -1262,7 +1366,7 @@ function TimesheetForm({
         />
         
         <p className="text-xs text-muted-foreground mt-2">
-          Add up to 5 photos (max 10MB each)
+          Add up to 5 photos (max 10MB each). Drag & drop or click to select.
         </p>
       </div>
 

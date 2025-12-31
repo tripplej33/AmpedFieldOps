@@ -53,6 +53,55 @@ router.get('/status', async (req, res) => {
   }
 });
 
+// Check if default admin exists
+router.get('/default-admin-status', async (req, res) => {
+  try {
+    const defaultAdmin = await query(
+      `SELECT id, email FROM users WHERE email = 'admin@ampedfieldops.com' AND role = 'admin' LIMIT 1`
+    );
+    
+    res.json({ hasDefaultAdmin: defaultAdmin.rows.length > 0 });
+  } catch (error) {
+    console.error('Failed to check default admin status:', error);
+    res.status(500).json({ error: 'Failed to check default admin status' });
+  }
+});
+
+// Delete default admin user (only if another admin exists)
+router.delete('/default-admin', async (req, res) => {
+  try {
+    // Check if default admin exists
+    const defaultAdmin = await query(
+      `SELECT id FROM users WHERE email = 'admin@ampedfieldops.com' AND role = 'admin' LIMIT 1`
+    );
+
+    if (defaultAdmin.rows.length === 0) {
+      return res.json({ message: 'Default admin does not exist' });
+    }
+
+    // Check if there's at least one other admin
+    const otherAdmins = await query(
+      `SELECT id FROM users WHERE role = 'admin' AND email != 'admin@ampedfieldops.com' LIMIT 1`
+    );
+
+    if (otherAdmins.rows.length === 0) {
+      return res.status(400).json({ 
+        error: 'Cannot delete default admin: No other admin exists. Please create a new admin first.' 
+      });
+    }
+
+    // Delete default admin
+    await query(
+      `DELETE FROM users WHERE email = 'admin@ampedfieldops.com' AND role = 'admin'`
+    );
+
+    res.json({ message: 'Default admin deleted successfully' });
+  } catch (error) {
+    console.error('Failed to delete default admin:', error);
+    res.status(500).json({ error: 'Failed to delete default admin' });
+  }
+});
+
 // Step 1: Create admin account
 router.post('/admin',
   body('email').isEmail().normalizeEmail(),
@@ -69,11 +118,15 @@ router.post('/admin',
     const { email, password, name, company_name, timezone } = req.body;
 
     try {
-      // Check if admin already exists
-      const existingAdmin = await query(`SELECT id FROM users WHERE role = 'admin' LIMIT 1`);
+      // Check if a non-default admin already exists
+      const existingAdmin = await query(
+        `SELECT id FROM users WHERE role = 'admin' AND email != 'admin@ampedfieldops.com' LIMIT 1`
+      );
       if (existingAdmin.rows.length > 0) {
         return res.status(400).json({ error: 'Admin account already exists' });
       }
+
+      // Allow creating admin if only default admin exists
 
       // Create admin user
       const passwordHash = await bcrypt.hash(password, 12);

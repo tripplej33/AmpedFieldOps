@@ -248,6 +248,21 @@ class ApiClient {
     return result;
   }
 
+  async deleteDefaultAdmin() {
+    return this.request<{ message: string }>('/api/setup/default-admin', {
+      method: 'DELETE'
+    });
+  }
+
+  async checkDefaultAdminExists(): Promise<boolean> {
+    try {
+      const status = await this.request<{ hasDefaultAdmin: boolean }>('/api/setup/default-admin-status');
+      return status.hasDefaultAdmin || false;
+    } catch {
+      return false;
+    }
+  }
+
   async uploadLogo(file: File) {
     return this.uploadFile('/api/setup/logo', file, 'logo');
   }
@@ -1214,6 +1229,13 @@ class ApiClient {
     return this.request<{ message: string }>('/api/backups/cleanup', {
       method: 'POST',
       body: { retention_days }
+    });
+  }
+
+  async testS3Connection(config: { accessKeyId: string; secretAccessKey: string; region: string; bucket: string }) {
+    return this.request<{ message: string }>('/api/settings/test-s3', {
+      method: 'POST',
+      body: config
     });
   }
 }

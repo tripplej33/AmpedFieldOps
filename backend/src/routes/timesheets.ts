@@ -1,6 +1,7 @@
 import { Router, Response } from 'express';
 import { body, validationResult } from 'express-validator';
 import rateLimit from 'express-rate-limit';
+import multer from 'multer';
 import { query } from '../db';
 import { authenticate, requirePermission, AuthRequest } from '../middleware/auth';
 import { upload, projectUpload } from '../middleware/upload';
@@ -144,10 +145,32 @@ router.get('/:id', authenticate, async (req: AuthRequest, res: Response) => {
 });
 
 // Create timesheet (handles both JSON and FormData with images)
-router.post('/', authenticate, uploadLimiter, projectUpload.array('images', 5), async (req: AuthRequest, res: Response) => {
-  // Check if this is FormData (has files) or JSON
-  const files = req.files as Express.Multer.File[];
-  const isFormData = files && files.length > 0;
+router.post('/', authenticate, uploadLimiter, 
+  (req, res, next) => {
+    // Handle multer errors with better messages
+    projectUpload.array('images', 5)(req, res, (err) => {
+      if (err) {
+        if (err instanceof multer.MulterError) {
+          if (err.code === 'LIMIT_FILE_COUNT') {
+            return res.status(400).json({ error: 'Maximum 5 images allowed per timesheet' });
+          }
+          if (err.code === 'LIMIT_FILE_SIZE') {
+            return res.status(400).json({ error: 'File size exceeds 10MB limit. Please compress your images.' });
+          }
+          if (err.code === 'LIMIT_UNEXPECTED_FILE') {
+            return res.status(400).json({ error: 'Unexpected file field. Use "images" field for file uploads.' });
+          }
+        }
+        // Other multer errors (file type validation, etc.)
+        return res.status(400).json({ error: err.message || 'File upload validation failed' });
+      }
+      next();
+    });
+  },
+  async (req: AuthRequest, res: Response) => {
+    // Check if this is FormData (has files) or JSON
+    const files = req.files as Express.Multer.File[];
+    const isFormData = files && files.length > 0;
   
   // Extract and validate required fields from body (works for both JSON and FormData)
   const project_id = req.body.project_id;
@@ -260,7 +283,30 @@ router.post('/', authenticate, uploadLimiter, projectUpload.array('images', 5), 
 );
 
 // Update timesheet (handles both JSON and FormData with images)
-router.put('/:id', authenticate, projectUpload.array('images', 5),
+router.put('/:id', authenticate, 
+  (req, res, next) => {
+    // Validate file count before multer processes
+    if (req.headers['content-type']?.includes('multipart/form-data')) {
+      // Let multer handle validation, but catch errors
+      projectUpload.array('images', 5)(req, res, (err) => {
+        if (err) {
+          if (err instanceof multer.MulterError) {
+            if (err.code === 'LIMIT_FILE_COUNT') {
+              return res.status(400).json({ error: 'Maximum 5 images allowed' });
+            }
+            if (err.code === 'LIMIT_FILE_SIZE') {
+              return res.status(400).json({ error: 'File size exceeds 10MB limit' });
+            }
+          }
+          // Other multer errors (file type, etc.)
+          return res.status(400).json({ error: err.message || 'File upload error' });
+        }
+        next();
+      });
+    } else {
+      next();
+    }
+  },
   async (req: AuthRequest, res: Response) => {
     // Check if this is FormData (has files) or JSON
     const files = req.files as Express.Multer.File[];
@@ -509,13 +555,31 @@ router.delete('/:id', authenticate, async (req: AuthRequest, res: Response) => {
 });
 
 // Upload images for existing timesheet
-router.post('/:id/images', authenticate, projectUpload.array('images', 5), async (req: AuthRequest, res: Response) => {
-  try {
-    const files = req.files as Express.Multer.File[];
-    
-    if (!files || files.length === 0) {
-      return res.status(400).json({ error: 'No files uploaded' });
-    }
+router.post('/:id/images', authenticate,
+  (req, res, next) => {
+    // Handle multer errors with better messages
+    projectUpload.array('images', 5)(req, res, (err) => {
+      if (err) {
+        if (err instanceof multer.MulterError) {
+          if (err.code === 'LIMIT_FILE_COUNT') {
+            return res.status(400).json({ error: 'Maximum 5 images allowed per timesheet' });
+          }
+          if (err.code === 'LIMIT_FILE_SIZE') {
+            return res.status(400).json({ error: 'File size exceeds 10MB limit. Please compress your images.' });
+          }
+        }
+        return res.status(400).json({ error: err.message || 'File upload validation failed' });
+      }
+      next();
+    });
+  },
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const files = req.files as Express.Multer.File[];
+
+      if (!files || files.length === 0) {
+        return res.status(400).json({ error: 'No files uploaded' });
+      }
 
     // Get project_id from timesheet
     const timesheet = await query('SELECT project_id FROM timesheets WHERE id = $1', [req.params.id]);

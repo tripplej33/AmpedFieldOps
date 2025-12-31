@@ -45,6 +45,18 @@ export default function Settings() {
     clientSecret: '',
     redirectUri: ''
   });
+  
+  // Cloud Storage state
+  const [cloudStorageProvider, setCloudStorageProvider] = useState<'local' | 's3' | 'google-drive'>('local');
+  const [s3Config, setS3Config] = useState({
+    accessKeyId: '',
+    secretAccessKey: '',
+    region: 'us-east-1',
+    bucket: ''
+  });
+  const [googleDriveFolderId, setGoogleDriveFolderId] = useState('');
+  const [isSavingCloudStorage, setIsSavingCloudStorage] = useState(false);
+  const [isTestingConnection, setIsTestingConnection] = useState(false);
   const [savedGoogleDriveCredentials, setSavedGoogleDriveCredentials] = useState({
     clientId: '',
     clientSecret: '',
@@ -91,6 +103,40 @@ export default function Settings() {
 
   useEffect(() => {
     loadSettings();
+    
+    // Listen for Xero OAuth popup callbacks via postMessage
+    const handleMessage = (event: MessageEvent) => {
+      // Verify origin matches current window
+      if (event.origin !== window.location.origin) {
+        return;
+      }
+
+      if (event.data?.type === 'XERO_OAUTH_SUCCESS') {
+        console.log('[Xero] OAuth success message received:', event.data);
+        toast.success('Xero connected successfully!');
+        // Refresh Xero status
+        if (hasPermission('can_sync_xero')) {
+          api.getXeroStatus().then((status) => {
+            setXeroStatus(status);
+            // Trigger sidebar refresh
+            window.dispatchEvent(new CustomEvent('xero-status-updated'));
+          }).catch(console.error);
+        }
+        // Clean up URL if there are any Xero params
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('xero_connected') || urlParams.get('xero_error')) {
+          window.history.replaceState({}, '', window.location.pathname + '?tab=integrations');
+        }
+      } else if (event.data?.type === 'XERO_OAUTH_ERROR') {
+        console.error('[Xero] OAuth error message received:', event.data);
+        const errorMsg = event.data.message || 'Xero connection failed';
+        toast.error('Xero connection failed', {
+          description: errorMsg
+        });
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
     
     // Check for Google Drive OAuth callback parameters
     const params = new URLSearchParams(window.location.search);
@@ -195,7 +241,12 @@ export default function Settings() {
       // Clean up URL
       window.history.replaceState({}, '', window.location.pathname + '?tab=integrations');
     }
-  }, []);
+
+    // Cleanup message listener on unmount
+    return () => {
+      window.removeEventListener('message', handleMessage);
+    };
+  }, [hasPermission]);
   
   // Reload settings when Xero status changes (e.g., after disconnect)
   useEffect(() => {
@@ -302,6 +353,18 @@ export default function Settings() {
           redirectUri: googleDriveRedirectUri
         });
       }
+
+      // Load cloud storage settings
+      if (user?.role === 'admin') {
+        setCloudStorageProvider((settingsData.cloud_storage_provider || 'local') as 'local' | 's3' | 'google-drive');
+        setS3Config({
+          accessKeyId: settingsData.aws_access_key_id || '',
+          secretAccessKey: settingsData.aws_secret_access_key || '',
+          region: settingsData.aws_region || 'us-east-1',
+          bucket: settingsData.aws_s3_bucket || ''
+        });
+        setGoogleDriveFolderId(settingsData.google_drive_folder_id || '');
+      }
     } catch (error) {
       toast.error('Failed to load settings');
     } finally {
@@ -400,8 +463,23 @@ export default function Settings() {
           return;
         }
         
+        // Store popup reference for cleanup
+        let popupClosed = false;
+        const checkPopupClosed = setInterval(() => {
+          if (popup.closed && !popupClosed) {
+            popupClosed = true;
+            clearInterval(checkPopupClosed);
+          }
+        }, 500);
+        
+        // Cleanup interval after 5 minutes (timeout)
+        setTimeout(() => {
+          clearInterval(checkPopupClosed);
+        }, 5 * 60 * 1000);
+        
         // Popup will redirect back to this page with URL params after OAuth completes
         // The useEffect hook will handle the callback and refresh the status
+        // The postMessage listener will also handle popup callbacks
         
       } else if (!response.configured) {
         toast.error('Xero credentials not configured. Please save your credentials and try again.');
@@ -705,7 +783,7 @@ export default function Settings() {
         <Tabs defaultValue="general" className="w-full">
           <TabsList className={cn(
             "grid w-full mb-6",
-            user?.role === 'admin' ? "grid-cols-3" : "grid-cols-2"
+            user?.role === 'admin' ? "grid-cols-4" : "grid-cols-2"
           )}>
             <TabsTrigger value="general" className="flex items-center gap-2">
               <SettingsIcon className="w-4 h-4" />
@@ -716,10 +794,16 @@ export default function Settings() {
               Integrations
             </TabsTrigger>
             {user?.role === 'admin' && (
-              <TabsTrigger value="permissions" className="flex items-center gap-2">
-                <Lock className="w-4 h-4" />
-                Permissions
-              </TabsTrigger>
+              <>
+                <TabsTrigger value="cloud-storage" className="flex items-center gap-2">
+                  <Cloud className="w-4 h-4" />
+                  Cloud Storage
+                </TabsTrigger>
+                <TabsTrigger value="permissions" className="flex items-center gap-2">
+                  <Lock className="w-4 h-4" />
+                  Permissions
+                </TabsTrigger>
+              </>
             )}
           </TabsList>
 
@@ -1717,6 +1801,262 @@ export default function Settings() {
           )}
         </Card>
           </TabsContent>
+
+          {/* Cloud Storage Tab */}
+          {user?.role === 'admin' && (
+            <TabsContent value="cloud-storage" className="space-y-6">
+              <Card className="p-6 bg-card border-border">
+                <div className="flex items-start justify-between mb-6">
+                  <div>
+                    <h3 className="text-lg font-bold mb-1">Cloud Storage Configuration</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Configure where files and images are stored. Choose between local storage, AWS S3, or Google Drive.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="space-y-6">
+                  {/* Provider Selection */}
+                  <div>
+                    <Label className="font-mono text-xs uppercase tracking-wider mb-3 block">
+                      Storage Provider
+                    </Label>
+                    <div className="grid grid-cols-3 gap-4">
+                      <button
+                        type="button"
+                        onClick={() => setCloudStorageProvider('local')}
+                        className={cn(
+                          "p-4 rounded-lg border-2 transition-all text-left",
+                          cloudStorageProvider === 'local'
+                            ? "border-electric bg-electric/10"
+                            : "border-border hover:border-electric/50"
+                        )}
+                      >
+                        <div className="font-semibold mb-1">Local Storage</div>
+                        <div className="text-xs text-muted-foreground">
+                          Files stored on server disk
+                        </div>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCloudStorageProvider('s3')}
+                        className={cn(
+                          "p-4 rounded-lg border-2 transition-all text-left",
+                          cloudStorageProvider === 's3'
+                            ? "border-electric bg-electric/10"
+                            : "border-border hover:border-electric/50"
+                        )}
+                      >
+                        <div className="font-semibold mb-1">AWS S3</div>
+                        <div className="text-xs text-muted-foreground">
+                          Scalable cloud storage
+                        </div>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setCloudStorageProvider('google-drive')}
+                        className={cn(
+                          "p-4 rounded-lg border-2 transition-all text-left",
+                          cloudStorageProvider === 'google-drive'
+                            ? "border-electric bg-electric/10"
+                            : "border-border hover:border-electric/50"
+                        )}
+                      >
+                        <div className="font-semibold mb-1">Google Drive</div>
+                        <div className="text-xs text-muted-foreground">
+                          Google cloud storage
+                        </div>
+                      </button>
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  {/* S3 Configuration */}
+                  {cloudStorageProvider === 's3' && (
+                    <div className="space-y-4 p-4 rounded-lg bg-muted/20 border border-border">
+                      <h4 className="text-sm font-bold font-mono uppercase tracking-wider">AWS S3 Configuration</h4>
+                      
+                      <div>
+                        <Label className="font-mono text-xs uppercase tracking-wider">
+                          Access Key ID *
+                        </Label>
+                        <Input
+                          type="text"
+                          value={s3Config.accessKeyId}
+                          onChange={(e) => setS3Config(prev => ({ ...prev, accessKeyId: e.target.value }))}
+                          placeholder="AKIAIOSFODNN7EXAMPLE"
+                          className="mt-2 font-mono text-sm"
+                        />
+                      </div>
+
+                      <div>
+                        <Label className="font-mono text-xs uppercase tracking-wider">
+                          Secret Access Key *
+                        </Label>
+                        <Input
+                          type="password"
+                          value={s3Config.secretAccessKey}
+                          onChange={(e) => setS3Config(prev => ({ ...prev, secretAccessKey: e.target.value }))}
+                          placeholder="wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
+                          className="mt-2 font-mono text-sm"
+                        />
+                      </div>
+
+                      <div>
+                        <Label className="font-mono text-xs uppercase tracking-wider">
+                          Region *
+                        </Label>
+                        <Input
+                          type="text"
+                          value={s3Config.region}
+                          onChange={(e) => setS3Config(prev => ({ ...prev, region: e.target.value }))}
+                          placeholder="us-east-1"
+                          className="mt-2 font-mono text-sm"
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">
+                          AWS region where your bucket is located (e.g., us-east-1, eu-west-1)
+                        </p>
+                      </div>
+
+                      <div>
+                        <Label className="font-mono text-xs uppercase tracking-wider">
+                          Bucket Name *
+                        </Label>
+                        <Input
+                          type="text"
+                          value={s3Config.bucket}
+                          onChange={(e) => setS3Config(prev => ({ ...prev, bucket: e.target.value }))}
+                          placeholder="my-bucket-name"
+                          className="mt-2 font-mono text-sm"
+                        />
+                      </div>
+
+                      <div className="flex gap-2">
+                        <Button
+                          onClick={async () => {
+                            setIsTestingConnection(true);
+                            try {
+                              // Test S3 connection
+                              await api.testS3Connection(s3Config);
+                              toast.success('S3 connection successful!');
+                            } catch (error: any) {
+                              toast.error(error.message || 'S3 connection test failed');
+                            } finally {
+                              setIsTestingConnection(false);
+                            }
+                          }}
+                          disabled={isTestingConnection || !s3Config.accessKeyId || !s3Config.secretAccessKey || !s3Config.bucket}
+                          variant="outline"
+                        >
+                          {isTestingConnection ? (
+                            <>
+                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                              Testing...
+                            </>
+                          ) : (
+                            'Test Connection'
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Google Drive Configuration */}
+                  {cloudStorageProvider === 'google-drive' && (
+                    <div className="space-y-4 p-4 rounded-lg bg-muted/20 border border-border">
+                      <h4 className="text-sm font-bold font-mono uppercase tracking-wider">Google Drive Configuration</h4>
+                      
+                      <div className="flex items-center gap-2 mb-4">
+                        <div className={cn(
+                          "w-2 h-2 rounded-full",
+                          googleDriveConnected ? "bg-voltage animate-pulse" : "bg-muted-foreground"
+                        )} />
+                        <span className={cn(
+                          "text-sm font-mono",
+                          googleDriveConnected ? "text-voltage" : "text-muted-foreground"
+                        )}>
+                          {googleDriveConnected ? 'Connected' : 'Not Connected'}
+                        </span>
+                      </div>
+
+                      {!googleDriveConnected && (
+                        <div className="p-3 rounded-lg bg-warning/10 border border-warning/20">
+                          <p className="text-sm text-warning">
+                            Please connect Google Drive in the Integrations tab first.
+                          </p>
+                        </div>
+                      )}
+
+                      <div>
+                        <Label className="font-mono text-xs uppercase tracking-wider">
+                          Folder ID (Optional)
+                        </Label>
+                        <Input
+                          type="text"
+                          value={googleDriveFolderId}
+                          onChange={(e) => setGoogleDriveFolderId(e.target.value)}
+                          placeholder="Leave empty to use default folder"
+                          className="mt-2 font-mono text-sm"
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Specific Google Drive folder ID. If empty, files will be stored in AmpedFieldOps/Timesheets folder.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Local Storage Info */}
+                  {cloudStorageProvider === 'local' && (
+                    <div className="p-4 rounded-lg bg-muted/20 border border-border">
+                      <p className="text-sm text-muted-foreground">
+                        Files will be stored on the server's local filesystem at <code className="bg-muted px-1 py-0.5 rounded text-xs">/uploads</code>.
+                        This is suitable for small deployments but may not scale well.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Save Button */}
+                  <div className="flex justify-end gap-2 pt-4 border-t border-border">
+                    <Button
+                      onClick={async () => {
+                        setIsSavingCloudStorage(true);
+                        try {
+                          await api.updateSetting('cloud_storage_provider', cloudStorageProvider, true);
+                          if (cloudStorageProvider === 's3') {
+                            await api.updateSetting('aws_access_key_id', s3Config.accessKeyId, true);
+                            await api.updateSetting('aws_secret_access_key', s3Config.secretAccessKey, true);
+                            await api.updateSetting('aws_region', s3Config.region, true);
+                            await api.updateSetting('aws_s3_bucket', s3Config.bucket, true);
+                          } else if (cloudStorageProvider === 'google-drive') {
+                            await api.updateSetting('google_drive_folder_id', googleDriveFolderId, true);
+                          }
+                          toast.success('Cloud storage configuration saved!');
+                        } catch (error: any) {
+                          toast.error(error.message || 'Failed to save configuration');
+                        } finally {
+                          setIsSavingCloudStorage(false);
+                        }
+                      }}
+                      disabled={isSavingCloudStorage || (cloudStorageProvider === 's3' && (!s3Config.accessKeyId || !s3Config.secretAccessKey || !s3Config.bucket))}
+                      className="bg-electric text-background hover:bg-electric/90"
+                    >
+                      {isSavingCloudStorage ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                          Saving...
+                        </>
+                      ) : (
+                        <>
+                          <CheckCircle className="w-4 h-4 mr-2" />
+                          Save Configuration
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </div>
+              </Card>
+            </TabsContent>
           )}
         </Tabs>
       </div>

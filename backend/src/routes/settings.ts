@@ -330,4 +330,46 @@ router.get('/logs/activity', authenticate, requireRole('admin'), async (req: Aut
   }
 });
 
+// Test S3 connection
+router.post('/test-s3', authenticate, requireRole('admin'), async (req: AuthRequest, res: Response) => {
+  try {
+    const { accessKeyId, secretAccessKey, region, bucket } = req.body;
+
+    if (!accessKeyId || !secretAccessKey || !region || !bucket) {
+      return res.status(400).json({ error: 'Missing required S3 configuration fields' });
+    }
+
+    // Dynamic import to avoid requiring AWS SDK if not using S3
+    const { S3Client, ListBucketsCommand, HeadBucketCommand } = await import('@aws-sdk/client-s3');
+
+    const s3Client = new S3Client({
+      region: region,
+      credentials: {
+        accessKeyId: accessKeyId,
+        secretAccessKey: secretAccessKey,
+      },
+    });
+
+    // Test connection by checking if bucket exists and is accessible
+    try {
+      await s3Client.send(new HeadBucketCommand({ Bucket: bucket }));
+      res.json({ message: 'S3 connection successful! Bucket is accessible.' });
+    } catch (error: any) {
+      if (error.name === 'NotFound' || error.$metadata?.httpStatusCode === 404) {
+        res.status(404).json({ error: 'Bucket not found. Please verify the bucket name.' });
+      } else if (error.name === 'Forbidden' || error.$metadata?.httpStatusCode === 403) {
+        res.status(403).json({ error: 'Access denied. Please verify your credentials and bucket permissions.' });
+      } else {
+        throw error;
+      }
+    }
+  } catch (error: any) {
+    console.error('S3 connection test error:', error);
+    res.status(500).json({ 
+      error: 'Failed to test S3 connection',
+      message: error.message || 'Unknown error'
+    });
+  }
+});
+
 export default router;

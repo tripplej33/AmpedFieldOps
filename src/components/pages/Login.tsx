@@ -9,10 +9,11 @@ import { Label } from '@/components/ui/label';
 import { Zap, Eye, EyeOff, Loader2, Database, Link2, CheckCircle2, XCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { updateFavicon } from '@/lib/favicon';
+import AdminSetupModal from '@/components/modals/AdminSetupModal';
 
 export default function Login() {
   const navigate = useNavigate();
-  const { login, isAuthenticated } = useAuth();
+  const { login, isAuthenticated, updateUser } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -27,6 +28,8 @@ export default function Login() {
     database: { healthy: boolean; status: string };
     xero: { configured: boolean; connected: boolean; status: string };
   } | null>(null);
+  const [showAdminSetup, setShowAdminSetup] = useState(false);
+  const [isCheckingSetup, setIsCheckingSetup] = useState(true);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -51,6 +54,21 @@ export default function Login() {
   }, []);
 
   useEffect(() => {
+    const checkSetupStatus = async () => {
+      try {
+        // Check if default admin exists
+        const hasDefaultAdmin = await api.checkDefaultAdminExists();
+        if (hasDefaultAdmin) {
+          setShowAdminSetup(true);
+        }
+      } catch (error) {
+        // If check fails, allow normal login
+        console.warn('Failed to check for default admin:', error);
+      } finally {
+        setIsCheckingSetup(false);
+      }
+    };
+
     const loadHealthStatus = async () => {
       try {
         const status = await api.getHealthStatus() as any;
@@ -73,6 +91,8 @@ export default function Login() {
         });
       }
     };
+
+    checkSetupStatus();
     loadHealthStatus();
   }, []);
 
@@ -91,8 +111,37 @@ export default function Login() {
     }
   };
 
+  const handleAdminSetupSuccess = async (user: any, token: string) => {
+    // Set token
+    api.setToken(token);
+    // Update auth context with user data
+    updateUser(user);
+    // Small delay to ensure state is updated
+    setTimeout(() => {
+      navigate('/');
+    }, 100);
+  };
+
+  // Show loading while checking setup status
+  if (isCheckingSetup) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <Card className="w-full max-w-md p-8 bg-card border-border">
+          <div className="flex flex-col items-center">
+            <Loader2 className="w-8 h-8 animate-spin text-electric mb-4" />
+            <p className="text-sm text-muted-foreground">Checking setup status...</p>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
+      <AdminSetupModal 
+        open={showAdminSetup} 
+        onSuccess={handleAdminSetupSuccess}
+      />
       <Card className="w-full max-w-md p-8 bg-card border-border">
         {/* Logo */}
         <div className="flex flex-col items-center mb-8">
