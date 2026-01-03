@@ -52,9 +52,9 @@ export default function Timesheets() {
   const [uploadProgress, setUploadProgress] = useState<Record<number, number>>({});
   const [isDragging, setIsDragging] = useState(false);
 
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const cameraInputRef = useRef<HTMLInputElement>(null);
-  const dropZoneRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const cameraInputRef = useRef<HTMLInputElement | null>(null);
+  const dropZoneRef = useRef<HTMLDivElement | null>(null);
 
   // New form structure: multiple activity types with users and hours
   interface ActivityTypeEntry {
@@ -1176,7 +1176,7 @@ function TimesheetForm({
             No activities added. Click "Add Activity" to get started.
           </div>
         ) : (
-          formData.activity_entries.map((entry, index) => (
+          formData.activity_entries.map((entry: ActivityTypeEntry, index: number) => (
             <div key={entry.id} className="p-4 border border-border rounded-lg bg-muted/20 space-y-4">
               <div className="flex items-center justify-between">
                 <Label className="font-mono text-xs uppercase tracking-wider">

@@ -42,12 +42,13 @@ export default function SafetyDocuments() {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [docsData, projectsData] = await Promise.all([
+      const [docsData, projectsResponse] = await Promise.all([
         api.getSafetyDocuments(),
-        api.getProjects()
+        api.getProjects({ limit: 100 })
       ]);
       setDocuments(docsData);
-      setProjects(projectsData);
+      const projectsData = projectsResponse.data || (Array.isArray(projectsResponse) ? projectsResponse : []);
+      setProjects(Array.isArray(projectsData) ? projectsData : []);
     } catch (error: any) {
       toast.error('Failed to load safety documents');
       console.error(error);

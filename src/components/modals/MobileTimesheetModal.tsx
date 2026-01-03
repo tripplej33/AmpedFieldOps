@@ -88,8 +88,9 @@ export default function MobileTimesheetModal({ open, onOpenChange }: MobileTimes
     
     if (clientId) {
       try {
-        const projectsData = await api.getProjects({ client_id: clientId });
-        setProjects(projectsData);
+        const projectsResponse = await api.getProjects({ client_id: clientId, limit: 100 });
+        const projectsData = projectsResponse.data || (Array.isArray(projectsResponse) ? projectsResponse : []);
+        setProjects(Array.isArray(projectsData) ? projectsData : []);
       } catch (error) {
         setProjects([]);
       }

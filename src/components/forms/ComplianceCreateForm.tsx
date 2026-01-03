@@ -47,8 +47,9 @@ export function ComplianceCreateForm({
 
   const loadData = async () => {
     try {
-      const projectsData = await api.getProjects();
-      setProjects(projectsData);
+      const projectsResponse = await api.getProjects({ limit: 100 });
+      const projectsData = projectsResponse.data || (Array.isArray(projectsResponse) ? projectsResponse : []);
+      setProjects(Array.isArray(projectsData) ? projectsData : []);
     } catch (error: any) {
       toast.error('Failed to load form data');
       console.error(error);

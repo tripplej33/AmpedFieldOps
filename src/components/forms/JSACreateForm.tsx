@@ -39,11 +39,12 @@ export function JSACreateForm({ projectId, costCenterId, onSubmit, onCancel, isS
 
   const loadData = async () => {
     try {
-      const [projectsData, usersData] = await Promise.all([
-        api.getProjects(),
+      const [projectsResponse, usersData] = await Promise.all([
+        api.getProjects({ limit: 100 }),
         api.getUsers(),
       ]);
-      setProjects(projectsData);
+      const projectsData = projectsResponse.data || (Array.isArray(projectsResponse) ? projectsResponse : []);
+      setProjects(Array.isArray(projectsData) ? projectsData : []);
       setUsers(usersData);
 
       if (projectId) {
