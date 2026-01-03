@@ -52,9 +52,9 @@ export default function Timesheets() {
   const [uploadProgress, setUploadProgress] = useState<Record<number, number>>({});
   const [isDragging, setIsDragging] = useState(false);
 
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const cameraInputRef = useRef<HTMLInputElement | null>(null);
-  const dropZoneRef = useRef<HTMLDivElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  const dropZoneRef = useRef<HTMLDivElement>(null);
 
   // New form structure: multiple activity types with users and hours
   interface ActivityTypeEntry {
@@ -75,11 +75,26 @@ export default function Timesheets() {
     activity_entries: [] as ActivityTypeEntry[],
   });
 
+  // Pagination state
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(20);
+  const [pagination, setPagination] = useState<{
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+    hasNext: boolean;
+    hasPrev: boolean;
+  } | null>(null);
+
   useEffect(() => {
     loadTimesheets();
+  }, [page, limit, selectedUserId]);
+
+  useEffect(() => {
     loadFormData();
     loadUsers();
-  }, [page, limit]);
+  }, []);
 
   // Handle URL parameters for opening specific timesheet
   useEffect(() => {
@@ -623,7 +638,7 @@ export default function Timesheets() {
   const weekEnd = new Date(weekStart);
   weekEnd.setDate(weekEnd.getDate() + 6);
   
-  const weekDates = [];
+  const weekDates: string[] = [];
   for (let i = 0; i < 7; i++) {
     const d = new Date(weekStart);
     d.setDate(d.getDate() + i);

@@ -66,11 +66,11 @@ export default function MobileTimesheetModal({ open, onOpenChange }: MobileTimes
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const [clientsData, activityData] = await Promise.all([
+      const [clientsResponse, activityData] = await Promise.all([
         api.getClients({ status: 'active' }),
         api.getActivityTypes(true),
       ]);
-      setClients(clientsData);
+      setClients(clientsResponse.data || []);
       setActivityTypes(activityData);
       setCostCenters([]); // Cost centers are now loaded per-project
     } catch (error) {

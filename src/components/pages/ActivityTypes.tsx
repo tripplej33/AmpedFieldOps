@@ -223,7 +223,7 @@ export default function ActivityTypes() {
                     size="sm"
                     className="text-destructive hover:text-destructive"
                     onClick={() => handleDelete(type)}
-                    disabled={type.usage_count && type.usage_count > 0}
+                    disabled={!!(type.usage_count && type.usage_count > 0)}
                   >
                     <Trash2 className="w-4 h-4" />
                   </Button>

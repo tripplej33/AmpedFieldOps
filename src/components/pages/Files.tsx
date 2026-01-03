@@ -95,11 +95,15 @@ export default function Files() {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [clientsData, projectsData, filesData] = await Promise.all([
-        api.getClients(),
-        api.getProjects(),
+      const [clientsResponse, projectsResponse, filesData] = await Promise.all([
+        api.getClients({ limit: 100 }),
+        api.getProjects({ limit: 100 }),
         api.getFiles()
       ]);
+      
+      // Handle paginated responses
+      const clientsData = clientsResponse.data || (Array.isArray(clientsResponse) ? clientsResponse : []);
+      const projectsData = projectsResponse.data || (Array.isArray(projectsResponse) ? projectsResponse : []);
 
       // Load logos if user has permission
       let logosData: LogoFile[] = [];

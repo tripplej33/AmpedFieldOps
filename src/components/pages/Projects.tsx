@@ -177,14 +177,9 @@ export default function Projects() {
       // For Kanban board, load more items (100 per page)
       const response = await api.getProjects({ limit: 100 });
       
-      // Handle both paginated and non-paginated responses (backward compatibility)
-      if (response.data && Array.isArray(response.data)) {
-        setProjects(response.data);
-      } else if (Array.isArray(response)) {
-        setProjects(response);
-      } else {
-        setProjects([]);
-      }
+      // Handle paginated response
+      const projectsData = response.data || (Array.isArray(response) ? response : []);
+      setProjects(Array.isArray(projectsData) ? projectsData : []);
     } catch (error: any) {
       console.error('Failed to load projects:', error);
       if (error?.message !== 'Failed to fetch') {

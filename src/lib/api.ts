@@ -343,9 +343,34 @@ class ApiClient {
   }
 
   // Projects
-  async getProjects(params?: { status?: string; client_id?: string; search?: string }) {
-    const searchParams = new URLSearchParams(params as Record<string, string>);
-    return this.request<any[]>(`/api/projects?${searchParams}`);
+  async getProjects(params?: { 
+    status?: string; 
+    client_id?: string; 
+    search?: string;
+    page?: number;
+    limit?: number;
+    sort?: string;
+    order?: 'asc' | 'desc';
+  }) {
+    const searchParams = new URLSearchParams();
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== '') {
+          searchParams.append(key, String(value));
+        }
+      });
+    }
+    return this.request<{
+      data: any[];
+      pagination: {
+        page: number;
+        limit: number;
+        total: number;
+        totalPages: number;
+        hasNext: boolean;
+        hasPrev: boolean;
+      };
+    }>(`/api/projects?${searchParams}`);
   }
 
   async getProject(id: string) {

@@ -50,11 +50,15 @@ export default function Reports() {
 
   const loadReportData = async () => {
     try {
-      const [costCenters, projects, timesheets] = await Promise.all([
+      const [costCenters, projectsResponse, timesheetsResponse] = await Promise.all([
         api.getCostCenters(),
-        api.getProjects(),
-        api.getTimesheets(),
+        api.getProjects({ limit: 100 }),
+        api.getTimesheets({ limit: 1000 }),
       ]);
+
+      // Handle paginated responses
+      const projects = projectsResponse.data || (Array.isArray(projectsResponse) ? projectsResponse : []);
+      const timesheets = timesheetsResponse.data || (Array.isArray(timesheetsResponse) ? timesheetsResponse : []);
 
       setAllCostCenters(costCenters);
 
