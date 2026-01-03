@@ -42,16 +42,35 @@ app.use(express.urlencoded({ extended: true }));
 
 // Global API rate limiting - applies to all API endpoints
 // More lenient than auth endpoints to allow normal usage
+// Note: React apps make multiple simultaneous requests on page load
 const globalApiRateLimit = rateLimit({
   windowMs: RATE_LIMIT_CONSTANTS.GLOBAL_API_WINDOW_MS,
   max: RATE_LIMIT_CONSTANTS.GLOBAL_API_MAX_REQUESTS,
   message: 'Too many requests, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
-  skipSuccessfulRequests: false, // Count all requests
+  skipSuccessfulRequests: true, // Don't count successful requests to be more lenient
   skip: (req) => {
     // Skip rate limiting for health check endpoint
     return req.path === '/api/health';
+  },
+  // Use a more lenient key generator that considers authenticated users
+  keyGenerator: (req) => {
+    // If user is authenticated, use user ID + IP for better rate limiting per user
+    // Otherwise, use IP only
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith('Bearer ')) {
+      try {
+        // Try to extract user ID from token (without full verification to avoid overhead)
+        const token = authHeader.split(' ')[1];
+        const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64').toString());
+        return `${payload.id || req.ip}:${req.ip}`;
+      } catch {
+        // If token parsing fails, fall back to IP
+        return req.ip || 'unknown';
+      }
+    }
+    return req.ip || 'unknown';
   },
 });
 

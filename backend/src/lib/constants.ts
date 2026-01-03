@@ -21,7 +21,7 @@ export const RATE_LIMIT_CONSTANTS = {
   UPLOAD_WINDOW_MS: 15 * 60 * 1000, // 15 minutes
   UPLOAD_MAX_REQUESTS: 50, // Max upload requests per window
   GLOBAL_API_WINDOW_MS: 15 * 60 * 1000, // 15 minutes
-  GLOBAL_API_MAX_REQUESTS: 100, // Max API requests per window
+  GLOBAL_API_MAX_REQUESTS: 1000, // Max API requests per window (increased for normal app usage)
 } as const;
 
 // Pagination
