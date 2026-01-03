@@ -4,6 +4,7 @@ import { query, getClient } from '../db';
 import { authenticate, requirePermission, AuthRequest } from '../middleware/auth';
 import { parsePaginationParams, createPaginatedResponse } from '../lib/pagination';
 import { log } from '../lib/logger';
+import { PROJECT_CODE_CONSTANTS } from '../lib/constants';
 
 const router = Router();
 
@@ -269,7 +270,7 @@ router.post('/', authenticate, requirePermission('can_edit_projects'),
       res.status(201).json(project);
     } catch (error) {
       await client.query('ROLLBACK');
-      console.error('Create project error:', error);
+      log.error('Create project error', error, { userId: req.user?.id, projectName: name });
       res.status(500).json({ error: 'Failed to create project' });
     } finally {
       client.release();

@@ -6,6 +6,7 @@ import { query } from '../db';
 import { authenticate, requirePermission, AuthRequest } from '../middleware/auth';
 import { upload, projectUpload } from '../middleware/upload';
 import { parsePaginationParams, createPaginatedResponse } from '../lib/pagination';
+import { log } from '../lib/logger';
 
 const router = Router();
 

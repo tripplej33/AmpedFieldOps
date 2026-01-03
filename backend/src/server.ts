@@ -6,6 +6,7 @@ import rateLimit from 'express-rate-limit';
 import { env } from './config/env';
 import { createDynamicCorsOrigin, initializeCorsCache } from './config/cors';
 import { logger, log } from './lib/logger';
+import { RATE_LIMIT_CONSTANTS } from './lib/constants';
 
 // Import routes
 import authRoutes from './routes/auth';

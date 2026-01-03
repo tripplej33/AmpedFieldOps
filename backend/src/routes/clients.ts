@@ -4,6 +4,7 @@ import { query } from '../db';
 import { authenticate, requirePermission, AuthRequest } from '../middleware/auth';
 import { env } from '../config/env';
 import { parsePaginationParams, createPaginatedResponse } from '../lib/pagination';
+import { log } from '../lib/logger';
 
 const router = Router();
 
