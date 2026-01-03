@@ -2,16 +2,40 @@ import { Router, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { body, validationResult } from 'express-validator';
+import rateLimit from 'express-rate-limit';
 import { query } from '../db';
 import { authenticate, AuthRequest } from '../middleware/auth';
 import { env } from '../config/env';
+import { getDefaultPermissions } from '../lib/permissions';
+import { log } from '../lib/logger';
+import { AUTH_CONSTANTS, RATE_LIMIT_CONSTANTS } from '../lib/constants';
 
 const router = Router();
+
+// Rate limiting for authentication endpoints
+// Stricter limits to prevent brute force attacks
+const authRateLimit = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 5, // Limit each IP to 5 requests per windowMs
+  message: 'Too many authentication attempts, please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true, // Don't count successful requests
+});
+
+// Rate limiting for password reset (more lenient)
+const passwordResetRateLimit = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 3, // Limit each IP to 3 password reset requests per hour
+  message: 'Too many password reset requests, please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
 // Register
 router.post('/register',
   body('email').isEmail().normalizeEmail(),
-  body('password').isLength({ min: 8 }),
+  body('password').isLength({ min: AUTH_CONSTANTS.MIN_PASSWORD_LENGTH }),
   body('name').trim().notEmpty(),
   async (req, res) => {
     const errors = validationResult(req);
@@ -29,7 +53,7 @@ router.post('/register',
       }
 
       // Hash password
-      const passwordHash = await bcrypt.hash(password, 12);
+      const passwordHash = await bcrypt.hash(password, AUTH_CONSTANTS.BCRYPT_ROUNDS);
 
       // Create user
       const result = await query(
@@ -75,7 +99,7 @@ router.post('/register',
         token
       });
     } catch (error) {
-      console.error('Registration error:', error);
+      log.error('Registration error', error, { email: req.body.email });
       res.status(500).json({ error: 'Registration failed' });
     }
   }
@@ -83,6 +107,7 @@ router.post('/register',
 
 // Login
 router.post('/login',
+  authRateLimit,
   body('email').isEmail().normalizeEmail(),
   body('password').notEmpty(),
   async (req, res) => {
@@ -160,7 +185,7 @@ router.post('/refresh', authenticate, async (req: AuthRequest, res: Response) =>
     const token = jwt.sign(
       { id: req.user!.id, email: req.user!.email, name: req.user!.name, role: req.user!.role },
       env.JWT_SECRET,
-      { expiresIn: '7d' }
+      { expiresIn: AUTH_CONSTANTS.JWT_EXPIRATION }
     );
 
     res.json({ token });
@@ -205,8 +230,9 @@ router.post('/forgot-password',
 
 // Reset password
 router.post('/reset-password',
+  passwordResetRateLimit,
   body('token').notEmpty(),
-  body('password').isLength({ min: 8 }),
+  body('password').isLength({ min: AUTH_CONSTANTS.MIN_PASSWORD_LENGTH }),
   async (req, res) => {
     const { token, password } = req.body;
 
@@ -217,7 +243,7 @@ router.post('/reset-password',
         return res.status(400).json({ error: 'Invalid reset token' });
       }
 
-      const passwordHash = await bcrypt.hash(password, 12);
+      const passwordHash = await bcrypt.hash(password, AUTH_CONSTANTS.BCRYPT_ROUNDS);
       
       await query(
         'UPDATE users SET password_hash = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
@@ -258,7 +284,7 @@ router.get('/me', authenticate, async (req: AuthRequest, res: Response) => {
       permissions
     });
   } catch (error) {
-    console.error('Get current user error:', error);
+    log.error('Get current user error', error, { userId: req.user?.id });
     res.status(500).json({ error: 'Failed to fetch user' });
   }
 });
@@ -316,7 +342,7 @@ router.put('/profile', authenticate,
 // Change password
 router.put('/change-password', authenticate,
   body('currentPassword').notEmpty(),
-  body('newPassword').isLength({ min: 8 }),
+  body('newPassword').isLength({ min: AUTH_CONSTANTS.MIN_PASSWORD_LENGTH }),
   async (req: AuthRequest, res: Response) => {
     const { currentPassword, newPassword } = req.body;
 
@@ -347,39 +373,5 @@ router.put('/change-password', authenticate,
     }
   }
 );
-
-function getDefaultPermissions(role: string): string[] {
-  const basePermissions = ['can_create_timesheets', 'can_view_own_timesheets'];
-  
-  if (role === 'admin') {
-    return [
-      ...basePermissions,
-      'can_view_financials',
-      'can_edit_projects',
-      'can_manage_users',
-      'can_sync_xero',
-      'can_view_all_timesheets',
-      'can_edit_activity_types',
-      'can_manage_clients',
-      'can_manage_cost_centers',
-      'can_view_reports',
-      'can_export_data'
-    ];
-  }
-  
-  if (role === 'manager') {
-    return [
-      ...basePermissions,
-      'can_view_financials',
-      'can_edit_projects',
-      'can_view_all_timesheets',
-      'can_manage_clients',
-      'can_view_reports',
-      'can_export_data'
-    ];
-  }
-  
-  return basePermissions;
-}
 
 export default router;

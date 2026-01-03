@@ -1,4 +1,5 @@
 import dotenv from 'dotenv';
+import { AUTH_CONSTANTS } from '../lib/constants';
 
 // Load .env file, suppressing parsing warnings (non-critical)
 // Warnings about unparseable lines are usually from comments or optional config
@@ -51,8 +52,8 @@ function getEnvVar(key: string, required = true, defaultValue?: string): string 
 function validateEnv(): EnvConfig {
   // Validate required variables
   const jwtSecret = getEnvVar('JWT_SECRET');
-  if (jwtSecret.length < 32) {
-    throw new Error('JWT_SECRET must be at least 32 characters long');
+  if (jwtSecret.length < AUTH_CONSTANTS.MIN_JWT_SECRET_LENGTH) {
+    throw new Error(`JWT_SECRET must be at least ${AUTH_CONSTANTS.MIN_JWT_SECRET_LENGTH} characters long`);
   }
 
   return {

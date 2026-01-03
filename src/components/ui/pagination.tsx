@@ -1,117 +1,123 @@
-import * as React from "react"
-import { ChevronLeft, ChevronRight, MoreHorizontal } from "lucide-react"
+import { Button } from './button';
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from 'lucide-react';
 
-import { cn } from "@/lib/utils"
-import { ButtonProps, buttonVariants } from "@/components/ui/button"
+interface PaginationProps {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+  hasNext: boolean;
+  hasPrev: boolean;
+  onPageChange: (page: number) => void;
+  onLimitChange?: (limit: number) => void;
+  showLimitSelector?: boolean;
+}
 
-const Pagination = ({ className, ...props }: React.ComponentProps<"nav">) => (
-  <nav
-    role="navigation"
-    aria-label="pagination"
-    className={cn("mx-auto flex w-full justify-center", className)}
-    {...props}
-  />
-)
-Pagination.displayName = "Pagination"
+export function Pagination({
+  page,
+  limit,
+  total,
+  totalPages,
+  hasNext,
+  hasPrev,
+  onPageChange,
+  onLimitChange,
+  showLimitSelector = false,
+}: PaginationProps) {
+  const startItem = total === 0 ? 0 : (page - 1) * limit + 1;
+  const endItem = Math.min(page * limit, total);
 
-const PaginationContent = React.forwardRef<
-  HTMLUListElement,
-  React.ComponentProps<"ul">
->(({ className, ...props }, ref) => (
-  <ul
-    ref={ref}
-    className={cn("flex flex-row items-center gap-1", className)}
-    {...props}
-  />
-))
-PaginationContent.displayName = "PaginationContent"
+  return (
+    <div className="flex items-center justify-between px-2 py-4">
+      <div className="flex items-center gap-2">
+        {showLimitSelector && onLimitChange && (
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-muted-foreground">Items per page:</span>
+            <select
+              value={limit}
+              onChange={(e) => onLimitChange(Number(e.target.value))}
+              className="h-8 rounded-md border border-input bg-background px-2 text-sm"
+            >
+              <option value={10}>10</option>
+              <option value={20}>20</option>
+              <option value={50}>50</option>
+              <option value={100}>100</option>
+            </select>
+          </div>
+        )}
+        <p className="text-sm text-muted-foreground">
+          Showing <span className="font-medium text-foreground">{startItem}</span> to{' '}
+          <span className="font-medium text-foreground">{endItem}</span> of{' '}
+          <span className="font-medium text-foreground">{total}</span> results
+        </p>
+      </div>
 
-const PaginationItem = React.forwardRef<
-  HTMLLIElement,
-  React.ComponentProps<"li">
->(({ className, ...props }, ref) => (
-  <li ref={ref} className={cn("", className)} {...props} />
-))
-PaginationItem.displayName = "PaginationItem"
+      <div className="flex items-center gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => onPageChange(1)}
+          disabled={!hasPrev}
+          className="h-8 w-8 p-0"
+        >
+          <ChevronsLeft className="h-4 w-4" />
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => onPageChange(page - 1)}
+          disabled={!hasPrev}
+          className="h-8 w-8 p-0"
+        >
+          <ChevronLeft className="h-4 w-4" />
+        </Button>
+        
+        <div className="flex items-center gap-1">
+          {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+            let pageNum: number;
+            if (totalPages <= 5) {
+              pageNum = i + 1;
+            } else if (page <= 3) {
+              pageNum = i + 1;
+            } else if (page >= totalPages - 2) {
+              pageNum = totalPages - 4 + i;
+            } else {
+              pageNum = page - 2 + i;
+            }
 
-type PaginationLinkProps = {
-  isActive?: boolean
-} & Pick<ButtonProps, "size"> &
-  React.ComponentProps<"a">
+            return (
+              <Button
+                key={pageNum}
+                variant={pageNum === page ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => onPageChange(pageNum)}
+                className="h-8 w-8 p-0"
+              >
+                {pageNum}
+              </Button>
+            );
+          })}
+        </div>
 
-const PaginationLink = ({
-  className,
-  isActive,
-  size = "icon",
-  ...props
-}: PaginationLinkProps) => (
-  <a
-    aria-current={isActive ? "page" : undefined}
-    className={cn(
-      buttonVariants({
-        variant: isActive ? "outline" : "ghost",
-        size,
-      }),
-      className
-    )}
-    {...props}
-  />
-)
-PaginationLink.displayName = "PaginationLink"
-
-const PaginationPrevious = ({
-  className,
-  ...props
-}: React.ComponentProps<typeof PaginationLink>) => (
-  <PaginationLink
-    aria-label="Go to previous page"
-    size="default"
-    className={cn("gap-1 pl-2.5", className)}
-    {...props}
-  >
-    <ChevronLeft className="h-4 w-4" />
-    <span>Previous</span>
-  </PaginationLink>
-)
-PaginationPrevious.displayName = "PaginationPrevious"
-
-const PaginationNext = ({
-  className,
-  ...props
-}: React.ComponentProps<typeof PaginationLink>) => (
-  <PaginationLink
-    aria-label="Go to next page"
-    size="default"
-    className={cn("gap-1 pr-2.5", className)}
-    {...props}
-  >
-    <span>Next</span>
-    <ChevronRight className="h-4 w-4" />
-  </PaginationLink>
-)
-PaginationNext.displayName = "PaginationNext"
-
-const PaginationEllipsis = ({
-  className,
-  ...props
-}: React.ComponentProps<"span">) => (
-  <span
-    aria-hidden
-    className={cn("flex h-9 w-9 items-center justify-center", className)}
-    {...props}
-  >
-    <MoreHorizontal className="h-4 w-4" />
-    <span className="sr-only">More pages</span>
-  </span>
-)
-PaginationEllipsis.displayName = "PaginationEllipsis"
-
-export {
-  Pagination,
-  PaginationContent,
-  PaginationLink,
-  PaginationItem,
-  PaginationPrevious,
-  PaginationNext,
-  PaginationEllipsis,
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => onPageChange(page + 1)}
+          disabled={!hasNext}
+          className="h-8 w-8 p-0"
+        >
+          <ChevronRight className="h-4 w-4" />
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => onPageChange(totalPages)}
+          disabled={!hasNext}
+          className="h-8 w-8 p-0"
+        >
+          <ChevronsRight className="h-4 w-4" />
+        </Button>
+      </div>
+    </div>
+  );
 }

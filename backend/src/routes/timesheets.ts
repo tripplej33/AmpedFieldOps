@@ -5,6 +5,7 @@ import multer from 'multer';
 import { query } from '../db';
 import { authenticate, requirePermission, AuthRequest } from '../middleware/auth';
 import { upload, projectUpload } from '../middleware/upload';
+import { parsePaginationParams, createPaginatedResponse } from '../lib/pagination';
 
 const router = Router();
 
@@ -20,11 +21,72 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
   try {
     const { user_id, project_id, client_id, date_from, date_to, cost_center_id } = req.query;
     
+    // Parse pagination parameters
+    const { page, limit, offset } = parsePaginationParams(req.query);
+    
     // Check if user can view all timesheets
     const canViewAll = req.user!.role === 'admin' || 
                        req.user!.role === 'manager' || 
                        req.user!.permissions.includes('can_view_all_timesheets');
     
+    // Build WHERE clause for both count and data queries
+    let whereClause = 'WHERE t.deleted_at IS NULL';
+    const params: any[] = [];
+    let paramCount = 1;
+
+    // If user can't view all, only show their own
+    if (!canViewAll) {
+      whereClause += ` AND t.user_id = $${paramCount++}`;
+      params.push(req.user!.id);
+    } else if (user_id) {
+      whereClause += ` AND t.user_id = $${paramCount++}`;
+      params.push(user_id);
+    }
+
+    if (project_id) {
+      whereClause += ` AND t.project_id = $${paramCount++}`;
+      params.push(project_id);
+    }
+
+    if (client_id) {
+      whereClause += ` AND t.client_id = $${paramCount++}`;
+      params.push(client_id);
+    }
+
+    if (cost_center_id) {
+      whereClause += ` AND t.cost_center_id = $${paramCount++}`;
+      params.push(cost_center_id);
+    }
+
+    if (date_from) {
+      whereClause += ` AND t.date >= $${paramCount++}`;
+      params.push(date_from);
+    }
+
+    if (date_to) {
+      whereClause += ` AND t.date <= $${paramCount++}`;
+      params.push(date_to);
+    }
+
+    // Filter by billing status if provided
+    const billing_status = req.query.billing_status;
+    if (billing_status) {
+      whereClause += ` AND COALESCE(t.billing_status, 'unbilled') = $${paramCount++}`;
+      params.push(billing_status);
+    }
+
+    // Get total count
+    const countSql = `
+      SELECT COUNT(*) as total 
+      FROM timesheets t
+      LEFT JOIN projects p ON t.project_id = p.id AND p.deleted_at IS NULL
+      LEFT JOIN clients c ON t.client_id = c.id AND c.deleted_at IS NULL
+      ${whereClause}
+    `;
+    const countResult = await query(countSql, params);
+    const total = parseInt(countResult.rows[0].total);
+
+    // Build data query
     let sql = `
       SELECT t.*, 
         u.name as user_name,
@@ -44,58 +106,21 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
       LEFT JOIN clients c ON t.client_id = c.id AND c.deleted_at IS NULL
       LEFT JOIN activity_types at ON t.activity_type_id = at.id
       LEFT JOIN cost_centers cc ON t.cost_center_id = cc.id
-      WHERE t.deleted_at IS NULL
+      ${whereClause}
+      ORDER BY t.date DESC, t.created_at DESC
     `;
-    const params: any[] = [];
-    let paramCount = 1;
-
-    // If user can't view all, only show their own
-    if (!canViewAll) {
-      sql += ` AND t.user_id = $${paramCount++}`;
-      params.push(req.user!.id);
-    } else if (user_id) {
-      sql += ` AND t.user_id = $${paramCount++}`;
-      params.push(user_id);
-    }
-
-    if (project_id) {
-      sql += ` AND t.project_id = $${paramCount++}`;
-      params.push(project_id);
-    }
-
-    if (client_id) {
-      sql += ` AND t.client_id = $${paramCount++}`;
-      params.push(client_id);
-    }
-
-    if (cost_center_id) {
-      sql += ` AND t.cost_center_id = $${paramCount++}`;
-      params.push(cost_center_id);
-    }
-
-    if (date_from) {
-      sql += ` AND t.date >= $${paramCount++}`;
-      params.push(date_from);
-    }
-
-    if (date_to) {
-      sql += ` AND t.date <= $${paramCount++}`;
-      params.push(date_to);
-    }
-
-    // Filter by billing status if provided
-    const billing_status = req.query.billing_status;
-    if (billing_status) {
-      sql += ` AND COALESCE(t.billing_status, 'unbilled') = $${paramCount++}`;
-      params.push(billing_status);
-    }
-
-    sql += ' ORDER BY t.date DESC, t.created_at DESC';
+    
+    // Add pagination
+    sql += ` LIMIT $${paramCount++} OFFSET $${paramCount++}`;
+    params.push(limit, offset);
 
     const result = await query(sql, params);
-    res.json(result.rows);
+    
+    // Return paginated response
+    const paginatedResponse = createPaginatedResponse(result.rows, total, page, limit);
+    res.json(paginatedResponse);
   } catch (error: any) {
-    console.error('Get timesheets error:', error);
+    log.error('Get timesheets error', error, { userId: req.user?.id });
     res.status(500).json({ 
       error: 'Failed to fetch timesheets',
       details: process.env.NODE_ENV === 'development' ? error.message : undefined

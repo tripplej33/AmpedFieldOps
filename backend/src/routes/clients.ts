@@ -3,6 +3,7 @@ import { body, validationResult } from 'express-validator';
 import { query } from '../db';
 import { authenticate, requirePermission, AuthRequest } from '../middleware/auth';
 import { env } from '../config/env';
+import { parsePaginationParams, createPaginatedResponse } from '../lib/pagination';
 
 const router = Router();
 
@@ -11,24 +12,21 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
   try {
     const { status, search, sort = 'name', order = 'asc' } = req.query;
     
-    let sql = `
-      SELECT c.*, 
-        (SELECT COUNT(*) FROM projects p WHERE p.client_id = c.id AND p.status IN ('quoted', 'in-progress')) as active_projects,
-        (SELECT COALESCE(SUM(t.hours), 0) FROM timesheets t WHERE t.client_id = c.id) as total_hours,
-        (SELECT MAX(t.date) FROM timesheets t WHERE t.client_id = c.id) as last_contact
-      FROM clients c
-      WHERE 1=1
-    `;
+    // Parse pagination parameters
+    const { page, limit, offset } = parsePaginationParams(req.query);
+    
+    // Build WHERE clause for both count and data queries
+    let whereClause = 'WHERE 1=1';
     const params: any[] = [];
     let paramCount = 1;
 
     if (status) {
-      sql += ` AND c.status = $${paramCount++}`;
+      whereClause += ` AND c.status = $${paramCount++}`;
       params.push(status);
     }
 
     if (search) {
-      sql += ` AND (
+      whereClause += ` AND (
         c.name ILIKE $${paramCount} OR 
         c.contact_name ILIKE $${paramCount} OR 
         c.address ILIKE $${paramCount}
@@ -37,15 +35,37 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
       paramCount++;
     }
 
+    // Get total count
+    const countSql = `SELECT COUNT(*) as total FROM clients c ${whereClause}`;
+    const countResult = await query(countSql, params);
+    const total = parseInt(countResult.rows[0].total);
+
+    // Build data query
+    let sql = `
+      SELECT c.*, 
+        (SELECT COUNT(*) FROM projects p WHERE p.client_id = c.id AND p.status IN ('quoted', 'in-progress')) as active_projects,
+        (SELECT COALESCE(SUM(t.hours), 0) FROM timesheets t WHERE t.client_id = c.id) as total_hours,
+        (SELECT MAX(t.date) FROM timesheets t WHERE t.client_id = c.id) as last_contact
+      FROM clients c
+      ${whereClause}
+    `;
+
     const validSorts = ['name', 'created_at', 'total_hours'];
     const sortColumn = validSorts.includes(sort as string) ? sort : 'name';
     const sortOrder = order === 'desc' ? 'DESC' : 'ASC';
     sql += ` ORDER BY ${sortColumn} ${sortOrder}`;
+    
+    // Add pagination
+    sql += ` LIMIT $${paramCount++} OFFSET $${paramCount++}`;
+    params.push(limit, offset);
 
     const result = await query(sql, params);
-    res.json(result.rows);
+    
+    // Return paginated response
+    const paginatedResponse = createPaginatedResponse(result.rows, total, page, limit);
+    res.json(paginatedResponse);
   } catch (error: any) {
-    console.error('Get clients error:', error);
+    log.error('Get clients error', error, { userId: req.user?.id });
     const errorMessage = error.message || 'Failed to fetch clients';
     const isTableError = errorMessage.includes('does not exist') || errorMessage.includes('relation') || error.code === '42P01';
     res.status(500).json({ 

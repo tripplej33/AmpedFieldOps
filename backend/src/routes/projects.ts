@@ -2,6 +2,8 @@ import { Router, Response } from 'express';
 import { body, validationResult } from 'express-validator';
 import { query, getClient } from '../db';
 import { authenticate, requirePermission, AuthRequest } from '../middleware/auth';
+import { parsePaginationParams, createPaginatedResponse } from '../lib/pagination';
+import { log } from '../lib/logger';
 
 const router = Router();
 
@@ -10,10 +12,10 @@ const generateProjectCode = async (): Promise<string> => {
   const year = new Date().getFullYear();
   const result = await query(
     `SELECT COUNT(*) FROM projects WHERE code LIKE $1`,
-    [`PRJ-${year}-%`]
+    [`${PROJECT_CODE_CONSTANTS.PREFIX}-${year}-%`]
   );
   const count = parseInt(result.rows[0].count) + 1;
-  return `PRJ-${year}-${String(count).padStart(3, '0')}`;
+  return `${PROJECT_CODE_CONSTANTS.PREFIX}-${year}-${String(count).padStart(PROJECT_CODE_CONSTANTS.PADDING_LENGTH, '0')}`;
 };
 
 // Get all projects
@@ -21,6 +23,41 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
   try {
     const { status, client_id, search, sort = 'created_at', order = 'desc' } = req.query;
     
+    // Parse pagination parameters
+    const { page, limit, offset } = parsePaginationParams(req.query);
+    
+    // Build WHERE clause for both count and data queries
+    let whereClause = 'WHERE 1=1';
+    const params: any[] = [];
+    let paramCount = 1;
+
+    if (status) {
+      whereClause += ` AND p.status = $${paramCount++}`;
+      params.push(status);
+    }
+
+    if (client_id) {
+      whereClause += ` AND p.client_id = $${paramCount++}`;
+      params.push(client_id);
+    }
+
+    if (search) {
+      whereClause += ` AND (p.name ILIKE $${paramCount} OR p.code ILIKE $${paramCount} OR p.description ILIKE $${paramCount})`;
+      params.push(`%${search}%`);
+      paramCount++;
+    }
+
+    // Get total count (without GROUP BY for accurate count)
+    const countSql = `
+      SELECT COUNT(DISTINCT p.id) as total 
+      FROM projects p
+      LEFT JOIN clients c ON p.client_id = c.id
+      ${whereClause}
+    `;
+    const countResult = await query(countSql, params);
+    const total = parseInt(countResult.rows[0].total);
+
+    // Build data query
     let sql = `
       SELECT p.*, 
         c.name as client_name,
@@ -31,38 +68,26 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
       LEFT JOIN clients c ON p.client_id = c.id
       LEFT JOIN project_cost_centers pcc ON p.id = pcc.project_id
       LEFT JOIN cost_centers cc ON pcc.cost_center_id = cc.id
-      WHERE 1=1
+      ${whereClause}
+      GROUP BY p.id, c.name
     `;
-    const params: any[] = [];
-    let paramCount = 1;
-
-    if (status) {
-      sql += ` AND p.status = $${paramCount++}`;
-      params.push(status);
-    }
-
-    if (client_id) {
-      sql += ` AND p.client_id = $${paramCount++}`;
-      params.push(client_id);
-    }
-
-    if (search) {
-      sql += ` AND (p.name ILIKE $${paramCount} OR p.code ILIKE $${paramCount} OR p.description ILIKE $${paramCount})`;
-      params.push(`%${search}%`);
-      paramCount++;
-    }
-
-    sql += ` GROUP BY p.id, c.name`;
 
     const validSorts = ['name', 'created_at', 'budget', 'status'];
     const sortColumn = validSorts.includes(sort as string) ? `p.${sort}` : 'p.created_at';
     const sortOrder = order === 'asc' ? 'ASC' : 'DESC';
     sql += ` ORDER BY ${sortColumn} ${sortOrder}`;
+    
+    // Add pagination
+    sql += ` LIMIT $${paramCount++} OFFSET $${paramCount++}`;
+    params.push(limit, offset);
 
     const result = await query(sql, params);
-    res.json(result.rows);
+    
+    // Return paginated response
+    const paginatedResponse = createPaginatedResponse(result.rows, total, page, limit);
+    res.json(paginatedResponse);
   } catch (error) {
-    console.error('Get projects error:', error);
+    log.error('Get projects error', error, { userId: req.user?.id });
     res.status(500).json({ error: 'Failed to fetch projects' });
   }
 });

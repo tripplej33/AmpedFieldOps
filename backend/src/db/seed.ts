@@ -108,17 +108,17 @@ async function seed() {
     const existingAdmin = await client.query(`SELECT id FROM users WHERE role = 'admin' LIMIT 1`);
     
     if (existingAdmin.rows.length === 0) {
-      const hashedPassword = await bcrypt.hash('admin123', 10);
-      
-      try {
-        await client.query(
-          `INSERT INTO users (email, password_hash, name, role, is_active) 
-           VALUES ($1, $2, $3, $4, $5)
-           ON CONFLICT (email) DO NOTHING`,
-          ['admin@ampedfieldops.com', hashedPassword, 'Admin User', 'admin', true]
-        );
-        console.log('  ✓ Default admin user created (email: admin@ampedfieldops.com, password: admin123)');
-      } catch (error) {
+    const hashedPassword = await bcrypt.hash('admin123', 10);
+    
+    try {
+      await client.query(
+        `INSERT INTO users (email, password_hash, name, role, is_active) 
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (email) DO NOTHING`,
+        ['admin@ampedfieldops.com', hashedPassword, 'Admin User', 'admin', true]
+      );
+      console.log('  ✓ Default admin user created (email: admin@ampedfieldops.com, password: admin123)');
+    } catch (error) {
         console.log('  ⚠️  Failed to create default admin user:', error);
       }
     } else {

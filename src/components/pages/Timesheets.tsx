@@ -15,6 +15,7 @@ import { api } from '@/lib/api';
 import { TimesheetEntry, Client, Project, ActivityType, CostCenter, User } from '@/types';
 import { Plus, Calendar, Clock, Wrench, Pencil, Trash2, Loader2, Camera, Image, X, ChevronLeft, ChevronRight, Users } from 'lucide-react';
 import ImageViewer from '@/components/modals/ImageViewer';
+import { Pagination } from '@/components/ui/pagination';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useNotifications } from '@/contexts/NotificationContext';
@@ -78,7 +79,7 @@ export default function Timesheets() {
     loadTimesheets();
     loadFormData();
     loadUsers();
-  }, []);
+  }, [page, limit]);
 
   // Handle URL parameters for opening specific timesheet
   useEffect(() => {
@@ -122,10 +123,13 @@ export default function Timesheets() {
 
   const loadFormData = async () => {
     try {
-      const [clientsData, activityData] = await Promise.all([
-        api.getClients().catch(() => []),
+      const [clientsResponse, activityData] = await Promise.all([
+        api.getClients({ limit: 100 }).catch(() => ({ data: [] })),
         api.getActivityTypes(true).catch(() => []),
       ]);
+      
+      // Handle paginated clients response
+      const clientsData = clientsResponse.data || (Array.isArray(clientsResponse) ? clientsResponse : []);
       setClients(Array.isArray(clientsData) ? clientsData : []);
       setActivityTypes(Array.isArray(activityData) ? activityData : []);
       setCostCenters([]); // Cost centers are now loaded per-project
@@ -142,7 +146,8 @@ export default function Timesheets() {
     setCostCenters([]); // Reset cost centers when client changes
     if (clientId) {
       try {
-        const projectsData = await api.getProjects({ client_id: clientId });
+        const projectsResponse = await api.getProjects({ client_id: clientId, limit: 100 });
+        const projectsData = projectsResponse.data || (Array.isArray(projectsResponse) ? projectsResponse : []);
         setProjects(Array.isArray(projectsData) ? projectsData : []);
       } catch (error) {
         setProjects([]);

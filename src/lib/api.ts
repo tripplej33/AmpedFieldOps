@@ -297,9 +297,33 @@ class ApiClient {
   }
 
   // Clients
-  async getClients(params?: { status?: string; search?: string }) {
-    const searchParams = new URLSearchParams(params as Record<string, string>);
-    return this.request<any[]>(`/api/clients?${searchParams}`);
+  async getClients(params?: { 
+    status?: string; 
+    search?: string;
+    page?: number;
+    limit?: number;
+    sort?: string;
+    order?: 'asc' | 'desc';
+  }) {
+    const searchParams = new URLSearchParams();
+    if (params) {
+      Object.entries(params).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && value !== '') {
+          searchParams.append(key, String(value));
+        }
+      });
+    }
+    return this.request<{
+      data: any[];
+      pagination: {
+        page: number;
+        limit: number;
+        total: number;
+        totalPages: number;
+        hasNext: boolean;
+        hasPrev: boolean;
+      };
+    }>(`/api/clients?${searchParams}`);
   }
 
   async getClient(id: string) {
@@ -348,16 +372,29 @@ class ApiClient {
     date_from?: string; 
     date_to?: string;
     cost_center_id?: string;
+    billing_status?: string;
+    page?: number;
+    limit?: number;
   }) {
     const searchParams = new URLSearchParams();
     if (params) {
       Object.entries(params).forEach(([key, value]) => {
-        if (value !== undefined && value !== '') {
-          searchParams.append(key, value);
+        if (value !== undefined && value !== null && value !== '') {
+          searchParams.append(key, String(value));
         }
       });
     }
-    return this.request<any[]>(`/api/timesheets?${searchParams}`);
+    return this.request<{
+      data: any[];
+      pagination: {
+        page: number;
+        limit: number;
+        total: number;
+        totalPages: number;
+        hasNext: boolean;
+        hasPrev: boolean;
+      };
+    }>(`/api/timesheets?${searchParams}`);
   }
 
   async getTimesheet(id: string) {

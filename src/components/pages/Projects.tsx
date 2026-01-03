@@ -174,8 +174,17 @@ export default function Projects() {
   const loadProjects = async () => {
     setIsLoading(true);
     try {
-      const data = await api.getProjects();
-      setProjects(Array.isArray(data) ? data : []);
+      // For Kanban board, load more items (100 per page)
+      const response = await api.getProjects({ limit: 100 });
+      
+      // Handle both paginated and non-paginated responses (backward compatibility)
+      if (response.data && Array.isArray(response.data)) {
+        setProjects(response.data);
+      } else if (Array.isArray(response)) {
+        setProjects(response);
+      } else {
+        setProjects([]);
+      }
     } catch (error: any) {
       console.error('Failed to load projects:', error);
       if (error?.message !== 'Failed to fetch') {
@@ -189,8 +198,16 @@ export default function Projects() {
 
   const loadClients = async () => {
     try {
-      const data = await api.getClients();
-      setClients(Array.isArray(data) ? data : []);
+      const response = await api.getClients({ limit: 100 });
+      
+      // Handle both paginated and non-paginated responses
+      if (response.data && Array.isArray(response.data)) {
+        setClients(response.data);
+      } else if (Array.isArray(response)) {
+        setClients(response);
+      } else {
+        setClients([]);
+      }
     } catch (error) {
       console.error('Failed to load clients:', error);
       setClients([]);

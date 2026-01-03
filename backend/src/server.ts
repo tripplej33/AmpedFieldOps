@@ -5,6 +5,7 @@ import path from 'path';
 import rateLimit from 'express-rate-limit';
 import { env } from './config/env';
 import { createDynamicCorsOrigin, initializeCorsCache } from './config/cors';
+import { logger, log } from './lib/logger';
 
 // Import routes
 import authRoutes from './routes/auth';
@@ -38,10 +39,25 @@ app.use(cors({
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+// Global API rate limiting - applies to all API endpoints
+// More lenient than auth endpoints to allow normal usage
+const globalApiRateLimit = rateLimit({
+  windowMs: RATE_LIMIT_CONSTANTS.GLOBAL_API_WINDOW_MS,
+  max: RATE_LIMIT_CONSTANTS.GLOBAL_API_MAX_REQUESTS,
+  message: 'Too many requests, please try again later.',
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: false, // Count all requests
+  skip: (req) => {
+    // Skip rate limiting for health check endpoint
+    return req.path === '/api/health';
+  },
+});
+
 // Rate limiting for uploads
 const uploadRateLimit = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 50, // Limit each IP to 50 upload requests per windowMs
+  windowMs: RATE_LIMIT_CONSTANTS.UPLOAD_WINDOW_MS,
+  max: RATE_LIMIT_CONSTANTS.UPLOAD_MAX_REQUESTS,
   message: 'Too many upload requests, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
@@ -51,6 +67,9 @@ const uploadRateLimit = rateLimit({
 // Note: In production, you may want to add authentication middleware here
 // For now, we allow public access to uploaded files (they're served via Nginx proxy)
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+
+// Apply global rate limiting to all API routes
+app.use('/api', globalApiRateLimit);
 
 // API Routes
 app.use('/api/auth', authRoutes);
@@ -75,7 +94,11 @@ app.use('/api/backups', backupsRoutes);
 
 // Error handling middleware
 app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  console.error(err.stack);
+  log.error('Unhandled error', err, {
+    method: req.method,
+    url: req.url,
+    ip: req.ip,
+  });
   res.status(500).json({ 
     error: 'Internal server error', 
     message: env.NODE_ENV === 'development' ? err.message : 'An error occurred'
@@ -83,16 +106,18 @@ app.use((err: Error, req: express.Request, res: express.Response, next: express.
 });
 
 app.listen(env.PORT, async () => {
-  console.log(`🚀 AmpedFieldOps API server running on port ${env.PORT}`);
-  console.log(`📡 Environment: ${env.NODE_ENV}`);
-  console.log(`🌐 Frontend URL: ${env.FRONTEND_URL}`);
+  logger.info('🚀 AmpedFieldOps API server starting', {
+    port: env.PORT,
+    environment: env.NODE_ENV,
+    frontendUrl: env.FRONTEND_URL,
+  });
   
   // Initialize CORS cache (extracts frontend URL from Xero redirect URI)
   try {
     await initializeCorsCache();
-    console.log('🔒 CORS configuration initialized');
+    logger.info('🔒 CORS configuration initialized');
   } catch (error) {
-    console.error('❌ Failed to initialize CORS cache:', error);
+    log.error('❌ Failed to initialize CORS cache', error);
     // Don't fail startup - CORS will use fallback values
   }
   
@@ -102,24 +127,24 @@ app.listen(env.PORT, async () => {
     await verifyEmailConfig();
   } catch (error) {
     // Email verification is optional, don't fail startup
-    console.log('📧 Email configuration check skipped');
+    logger.debug('📧 Email configuration check skipped');
   }
 
   // Start backup scheduler
   try {
     const { startBackupScheduler } = await import('./jobs/backupScheduler');
     startBackupScheduler();
-    console.log('💾 Backup scheduler initialized');
+    logger.info('💾 Backup scheduler initialized');
   } catch (error) {
-    console.error('❌ Failed to start backup scheduler:', error);
+    log.error('❌ Failed to start backup scheduler', error);
   }
 
   // Initialize Xero sync queue worker
   try {
     const { xeroSyncWorker } = await import('./lib/queue');
-    console.log('🔄 Xero sync queue worker initialized');
+    logger.info('🔄 Xero sync queue worker initialized');
   } catch (error) {
-    console.error('❌ Failed to initialize Xero sync queue worker:', error);
+    log.error('❌ Failed to initialize Xero sync queue worker', error);
     // Don't fail startup if Redis is not available - queue will retry
   }
 });

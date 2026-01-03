@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
+import { Pagination } from '@/components/ui/pagination';
 import { api } from '@/lib/api';
 import { Client } from '@/types';
 import { Search, Plus, Phone, Mail, MapPin, Clock, Briefcase, Loader2, Users } from 'lucide-react';
@@ -26,6 +27,18 @@ export default function Clients() {
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  
+  // Pagination state
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(20);
+  const [pagination, setPagination] = useState({
+    page: 1,
+    limit: 20,
+    total: 0,
+    totalPages: 0,
+    hasNext: false,
+    hasPrev: false,
+  });
 
   // Form state
   const [formData, setFormData] = useState({
@@ -39,7 +52,7 @@ export default function Clients() {
 
   useEffect(() => {
     loadClients();
-  }, []);
+  }, [page, limit, searchQuery]);
 
   // Handle URL parameters for opening specific client
   useEffect(() => {
@@ -59,15 +72,56 @@ export default function Clients() {
   const loadClients = async () => {
     setIsLoading(true);
     try {
-      const data = await api.getClients(searchQuery ? { search: searchQuery } : undefined);
-      console.log('Clients loaded:', data);
-      setClients(Array.isArray(data) ? data : []);
+      const params: any = {
+        page,
+        limit,
+      };
+      if (searchQuery) {
+        params.search = searchQuery;
+      }
+      
+      const response = await api.getClients(params);
+      
+      // Handle both paginated and non-paginated responses (backward compatibility)
+      if (response.data && response.pagination) {
+        setClients(response.data);
+        setPagination(response.pagination);
+      } else if (Array.isArray(response)) {
+        // Fallback for non-paginated response
+        setClients(response);
+        setPagination({
+          page: 1,
+          limit: response.length,
+          total: response.length,
+          totalPages: 1,
+          hasNext: false,
+          hasPrev: false,
+        });
+      } else {
+        setClients([]);
+        setPagination({
+          page: 1,
+          limit: 20,
+          total: 0,
+          totalPages: 0,
+          hasNext: false,
+          hasPrev: false,
+        });
+      }
     } catch (error: any) {
       console.error('Failed to load clients:', error);
       if (error?.message !== 'Failed to fetch') {
         toast.error('Failed to load clients');
       }
       setClients([]);
+      setPagination({
+        page: 1,
+        limit: 20,
+        total: 0,
+        totalPages: 0,
+        hasNext: false,
+        hasPrev: false,
+      });
     } finally {
       setIsLoading(false);
     }
@@ -184,7 +238,15 @@ export default function Clients() {
             <Input
               placeholder="Search clients by name, contact, or location..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setPage(1); // Reset to first page on search
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  loadClients();
+                }
+              }}
               className="pl-9 bg-muted/50 border-border focus:border-electric focus:glow-primary"
             />
           </div>
@@ -199,7 +261,7 @@ export default function Clients() {
 
         {/* Clients Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {filteredClients.map((client) => (
+          {clients.map((client) => (
             <Card
               key={client.id}
               className="p-6 bg-card border-border hover:border-electric transition-all cursor-pointer group"
