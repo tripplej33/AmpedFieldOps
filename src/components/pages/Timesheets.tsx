@@ -20,6 +20,17 @@ import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useNotifications } from '@/contexts/NotificationContext';
 
+// Activity type entry interface (moved outside component for type accessibility)
+interface ActivityTypeEntry {
+  id: string; // temporary ID for the entry
+  activity_type_id: string;
+  cost_center_id: string;
+  hours: string;
+  user_ids: string[]; // Multiple users can be assigned to one activity type
+  user_hours: Record<string, string>; // Hours per user for this activity type
+  notes: string;
+}
+
 export default function Timesheets() {
   const location = useLocation();
   const navigate = useNavigate();
@@ -55,17 +66,6 @@ export default function Timesheets() {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
   const dropZoneRef = useRef<HTMLDivElement | null>(null);
-
-  // New form structure: multiple activity types with users and hours
-  interface ActivityTypeEntry {
-    id: string; // temporary ID for the entry
-    activity_type_id: string;
-    cost_center_id: string;
-    hours: string;
-    user_ids: string[]; // Multiple users can be assigned to one activity type
-    user_hours: Record<string, string>; // Hours per user for this activity type
-    notes: string;
-  }
 
   const [formData, setFormData] = useState({
     client_id: '',
@@ -1321,7 +1321,7 @@ function TimesheetForm({
         {/* Drag and Drop Zone */}
         {imagePreviews.length < 5 && (
           <div
-            ref={dropZoneRef}
+            ref={dropZoneRef as React.LegacyRef<HTMLDivElement>}
             onDragEnter={handleDragEnter}
             onDragLeave={handleDragLeave}
             onDragOver={handleDragOver}
