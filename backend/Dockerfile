@@ -42,9 +42,10 @@ COPY --chown=node:node --from=builder /app/src ./src
 COPY --chown=node:node docker-entrypoint.sh /app/docker-entrypoint.sh
 RUN chmod +x /app/docker-entrypoint.sh
 
-# Create uploads directory with correct ownership
-RUN mkdir -p uploads/logos uploads/projects && \
-    chown -R node:node /app/uploads
+# Create uploads and logs directories with correct ownership
+RUN mkdir -p uploads/logos uploads/projects logs && \
+    chown -R node:node /app/uploads && \
+    chown -R node:node /app/logs
 
 # Use non-root user
 USER node

@@ -37,26 +37,38 @@ const transports: winston.transport[] = [
 
 // File transports for production
 if (env.NODE_ENV === 'production') {
-  // Error log file
-  transports.push(
-    new winston.transports.File({
-      filename: 'logs/error.log',
-      level: 'error',
-      format: logFormat,
-      maxsize: 5242880, // 5MB
-      maxFiles: 5,
-    })
-  );
+  try {
+    // Ensure logs directory exists
+    const logsDir = path.resolve(process.cwd(), LOG_CONSTANTS.LOG_DIR);
+    if (!fs.existsSync(logsDir)) {
+      fs.mkdirSync(logsDir, { recursive: true });
+    }
 
-  // Combined log file
-  transports.push(
-    new winston.transports.File({
-      filename: 'logs/combined.log',
-      format: logFormat,
-      maxsize: 5242880, // 5MB
-      maxFiles: 5,
-    })
-  );
+    // Error log file
+    transports.push(
+      new winston.transports.File({
+        filename: path.join(LOG_CONSTANTS.LOG_DIR, 'error.log'),
+        level: 'error',
+        format: logFormat,
+        maxsize: LOG_CONSTANTS.MAX_FILE_SIZE,
+        maxFiles: LOG_CONSTANTS.MAX_FILES,
+      })
+    );
+
+    // Combined log file
+    transports.push(
+      new winston.transports.File({
+        filename: path.join(LOG_CONSTANTS.LOG_DIR, 'combined.log'),
+        format: logFormat,
+        maxsize: LOG_CONSTANTS.MAX_FILE_SIZE,
+        maxFiles: LOG_CONSTANTS.MAX_FILES,
+      })
+    );
+  } catch (error) {
+    // If file transport creation fails (e.g., permission issues), 
+    // fall back to console-only logging
+    console.warn('Failed to create file transports, using console only:', error);
+  }
 }
 
 // Create logger instance
