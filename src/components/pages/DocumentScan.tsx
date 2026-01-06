@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import Header from '@/components/layout/Header';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -71,19 +72,29 @@ export default function DocumentScan() {
     try {
       const params: any = {};
       if (clientId) params.client_id = clientId;
-      const data = await api.getProjects(params);
-      setProjects(Array.isArray(data) ? data.items || data : []);
-    } catch (error) {
+      const response = await api.getProjects(params);
+      // Handle paginated response: { data: [...], pagination: {...} }
+      const projectsList = Array.isArray(response) 
+        ? response 
+        : (response?.data || response?.items || []);
+      setProjects(projectsList);
+    } catch (error: any) {
       console.error('Failed to load projects:', error);
+      toast.error(error.message || 'Failed to load projects');
     }
   };
 
   const loadClients = async () => {
     try {
-      const data = await api.getClients();
-      setClients(Array.isArray(data) ? data.items || data : []);
-    } catch (error) {
+      const response = await api.getClients();
+      // Handle paginated response: { data: [...], pagination: {...} }
+      const clientsList = Array.isArray(response) 
+        ? response 
+        : (response?.data || response?.items || []);
+      setClients(clientsList);
+    } catch (error: any) {
       console.error('Failed to load clients:', error);
+      toast.error(error.message || 'Failed to load clients');
     }
   };
 
@@ -173,15 +184,12 @@ export default function DocumentScan() {
   };
 
   return (
-    <div className="space-y-6 p-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Document Scanning</h1>
-          <p className="text-muted-foreground mt-1">
-            Upload photos of receipts, invoices, and documents for automatic processing
-          </p>
-        </div>
-      </div>
+    <>
+      <Header 
+        title="Document Scanning" 
+        subtitle="Upload photos of receipts, invoices, and documents for automatic processing"
+      />
+      <div className="space-y-6 p-6">
 
       {/* Upload Section */}
       <Card className="p-6">
@@ -401,6 +409,7 @@ export default function DocumentScan() {
           }}
         />
       )}
-    </div>
+      </div>
+    </>
   );
 }
