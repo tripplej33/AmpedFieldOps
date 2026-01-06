@@ -2,6 +2,8 @@
 // Nginx will proxy /api requests to backend
 const API_URL = '';
 
+import type { DocumentScan, DocumentMatch } from '@/types';
+
 interface ApiOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
   body?: any;
@@ -1306,6 +1308,58 @@ class ApiClient {
       method: 'POST',
       body: config
     });
+  }
+
+  // Document Scanning API methods
+  async uploadDocumentForScan(file: File, projectId: string, costCenterId?: string, processOCR: boolean = true) {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('project_id', projectId);
+    if (costCenterId) {
+      formData.append('cost_center_id', costCenterId);
+    }
+    formData.append('process_ocr', String(processOCR));
+
+    return this.uploadFile('/api/document-scan/upload', file, 'file');
+  }
+
+  async getDocumentScan(scanId: string) {
+    return this.request<DocumentScan>(`/api/document-scan/${scanId}`);
+  }
+
+  async getDocumentScans(params?: { project_id?: string; status?: string; document_type?: string }) {
+    const queryParams = new URLSearchParams();
+    if (params?.project_id) queryParams.append('project_id', params.project_id);
+    if (params?.status) queryParams.append('status', params.status);
+    if (params?.document_type) queryParams.append('document_type', params.document_type);
+    
+    const query = queryParams.toString();
+    return this.request<DocumentScan[]>(`/api/document-scan${query ? `?${query}` : ''}`);
+  }
+
+  async getDocumentMatches(scanId: string) {
+    return this.request<DocumentMatch[]>(`/api/document-scan/${scanId}/matches`);
+  }
+
+  async confirmDocumentMatch(scanId: string, matchId: string) {
+    return this.request<{ success: boolean; message: string; match: DocumentMatch }>(
+      `/api/document-scan/${scanId}/match/${matchId}/confirm`,
+      { method: 'POST' }
+    );
+  }
+
+  async rejectDocumentMatches(scanId: string) {
+    return this.request<{ success: boolean; message: string }>(
+      `/api/document-scan/${scanId}/match/reject`,
+      { method: 'POST' }
+    );
+  }
+
+  async retryDocumentScan(scanId: string) {
+    return this.request<{ success: boolean; message: string; scan: { id: string; status: string } }>(
+      `/api/document-scan/${scanId}/retry`,
+      { method: 'POST' }
+    );
   }
 }
 

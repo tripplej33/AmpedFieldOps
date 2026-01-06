@@ -420,6 +420,58 @@ CREATE INDEX IF NOT EXISTS idx_xero_credit_notes_xero_credit_note_id ON xero_cre
 CREATE INDEX IF NOT EXISTS idx_clients_search ON clients USING gin(to_tsvector('english', name || ' ' || COALESCE(contact_name, '') || ' ' || COALESCE(address, '')));
 CREATE INDEX IF NOT EXISTS idx_projects_search ON projects USING gin(to_tsvector('english', name || ' ' || COALESCE(description, '')));
 CREATE INDEX IF NOT EXISTS idx_timesheets_search ON timesheets USING gin(to_tsvector('english', COALESCE(notes, '')));
+
+-- Document Scans table (for OCR processing)
+CREATE TABLE IF NOT EXISTS document_scans (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  file_id UUID REFERENCES project_files(id) ON DELETE CASCADE,
+  user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  status VARCHAR(20) DEFAULT 'pending' CHECK (status IN ('pending', 'processing', 'completed', 'failed')),
+  document_type VARCHAR(50) CHECK (document_type IN ('receipt', 'invoice', 'purchase_order', 'bill', 'expense', 'unknown')),
+  extracted_data JSONB,
+  confidence DECIMAL(3,2),
+  error_message TEXT,
+  xero_attachment_id VARCHAR(100),
+  processed_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Document Matches table (suggested matches between scans and records)
+CREATE TABLE IF NOT EXISTS document_matches (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  scan_id UUID REFERENCES document_scans(id) ON DELETE CASCADE,
+  entity_type VARCHAR(50) CHECK (entity_type IN ('purchase_order', 'invoice', 'bill', 'expense')),
+  entity_id UUID,
+  confidence_score DECIMAL(3,2),
+  match_reasons JSONB,
+  confirmed BOOLEAN DEFAULT false,
+  confirmed_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  confirmed_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Add scanned_document_id columns to Xero tables (optional reverse lookup)
+ALTER TABLE xero_purchase_orders 
+  ADD COLUMN IF NOT EXISTS scanned_document_id UUID REFERENCES document_scans(id) ON DELETE SET NULL;
+ALTER TABLE xero_invoices 
+  ADD COLUMN IF NOT EXISTS scanned_document_id UUID REFERENCES document_scans(id) ON DELETE SET NULL;
+ALTER TABLE xero_bills 
+  ADD COLUMN IF NOT EXISTS scanned_document_id UUID REFERENCES document_scans(id) ON DELETE SET NULL;
+ALTER TABLE xero_expenses 
+  ADD COLUMN IF NOT EXISTS scanned_document_id UUID REFERENCES document_scans(id) ON DELETE SET NULL;
+
+-- Indexes for document scans
+CREATE INDEX IF NOT EXISTS idx_document_scans_file_id ON document_scans(file_id);
+CREATE INDEX IF NOT EXISTS idx_document_scans_user_id ON document_scans(user_id);
+CREATE INDEX IF NOT EXISTS idx_document_scans_status ON document_scans(status);
+CREATE INDEX IF NOT EXISTS idx_document_scans_document_type ON document_scans(document_type);
+CREATE INDEX IF NOT EXISTS idx_document_scans_created_at ON document_scans(created_at);
+
+-- Indexes for document matches
+CREATE INDEX IF NOT EXISTS idx_document_matches_scan_id ON document_matches(scan_id);
+CREATE INDEX IF NOT EXISTS idx_document_matches_entity ON document_matches(entity_type, entity_id);
+CREATE INDEX IF NOT EXISTS idx_document_matches_confirmed ON document_matches(confirmed);
 `;
 
 async function runMigration() {

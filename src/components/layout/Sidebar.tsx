@@ -17,7 +17,8 @@ import {
   Wrench,
   FolderOpen,
   Shield,
-  HardDrive
+  HardDrive,
+  Camera
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState, useEffect } from 'react';
@@ -41,6 +42,7 @@ const mainNavigation: NavItem[] = [
   { name: 'Files', href: '/files', icon: FolderOpen, permission: 'can_view_financials' },
   { name: 'Reports', href: '/reports', icon: FileText },
   { name: 'Financials', href: '/financials', icon: DollarSign, permission: 'can_view_financials' },
+  { name: 'Document Scan', href: '/document-scan', icon: Camera, permission: 'can_edit_projects' },
 ];
 
 const adminNavigation: NavItem[] = [

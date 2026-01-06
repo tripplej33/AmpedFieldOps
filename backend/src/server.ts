@@ -30,6 +30,7 @@ import troubleshooterRoutes from './routes/troubleshooter';
 import filesRoutes from './routes/files';
 import safetyDocumentsRoutes from './routes/safetyDocuments';
 import backupsRoutes from './routes/backups';
+import documentScanRoutes from './routes/documentScan';
 
 const app = express();
 
@@ -127,6 +128,7 @@ app.use('/api/troubleshooter', troubleshooterRoutes);
 app.use('/api/files', filesRoutes);
 app.use('/api/safety-documents', safetyDocumentsRoutes);
 app.use('/api/backups', backupsRoutes);
+app.use('/api/document-scan', documentScanRoutes);
 
 // Error handling middleware (must be last)
 app.use(errorHandler);

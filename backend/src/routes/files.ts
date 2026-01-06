@@ -7,6 +7,8 @@ import { asyncHandler } from '../middleware/asyncHandler';
 import { NotFoundError, ValidationError, FileError, ForbiddenError } from '../lib/errors';
 import { log } from '../lib/logger';
 import { validateFileContent, validateFileExtension } from '../lib/fileValidator';
+import { ocrService } from '../lib/ocrService';
+import { findMatches } from '../lib/documentMatcher';
 import path from 'path';
 import fs from 'fs';
 
@@ -225,6 +227,29 @@ router.post(
        VALUES ($1, $2, $3, $4, $5)`,
       [req.user!.id, 'upload', 'file', result.rows[0].id, JSON.stringify({ file_name: req.file.originalname })]
     );
+
+    // Check if user wants OCR processing (optional parameter)
+    const processOCR = req.body.process_ocr === 'true' || req.body.process_ocr === true;
+    
+    if (processOCR && req.file.mimetype.startsWith('image/')) {
+      // Create document_scan record and process in background
+      try {
+        const scanResult = await query(
+          `INSERT INTO document_scans (file_id, user_id, status)
+           VALUES ($1, $2, 'pending')
+           RETURNING id`,
+          [result.rows[0].id, req.user!.id]
+        );
+
+        // Process OCR in background
+        processDocumentOCR(scanResult.rows[0].id, req.file.path).catch(error => {
+          log.error('Background OCR processing failed', error, { fileId: result.rows[0].id });
+        });
+      } catch (ocrError) {
+        // Don't fail file upload if OCR setup fails
+        log.error('Failed to initiate OCR processing', ocrError);
+      }
+    }
 
     res.status(201).json(result.rows[0]);
   })
@@ -526,5 +551,92 @@ router.delete('/logos/:filename', authenticate, requirePermission('can_manage_se
 
   res.json({ message: 'Logo deleted successfully' });
 }));
+
+/**
+ * Process document OCR in background
+ */
+async function processDocumentOCR(scanId: string, filePath: string) {
+  try {
+    // Update status to processing
+    await query(
+      'UPDATE document_scans SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+      ['processing', scanId]
+    );
+
+    // Check OCR service availability
+    const isAvailable = await ocrService.healthCheck();
+    if (!isAvailable) {
+      throw new Error('OCR service is not available');
+    }
+
+    // Process image through OCR
+    const ocrResult = await ocrService.processImage(filePath);
+
+    if (!ocrResult.success) {
+      await query(
+        `UPDATE document_scans 
+         SET status = 'failed', 
+             error_message = $1, 
+             updated_at = CURRENT_TIMESTAMP 
+         WHERE id = $2`,
+        [ocrResult.error || 'OCR processing failed', scanId]
+      );
+      return;
+    }
+
+    // Store extracted data
+    await query(
+      `UPDATE document_scans 
+       SET status = 'completed',
+           document_type = $1,
+           extracted_data = $2,
+           confidence = $3,
+           processed_at = CURRENT_TIMESTAMP,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $4`,
+      [
+        ocrResult.document_type,
+        JSON.stringify(ocrResult.extracted_data),
+        ocrResult.confidence,
+        scanId
+      ]
+    );
+
+    // Find matches
+    const matches = await findMatches(
+      scanId,
+      ocrResult.extracted_data,
+      ocrResult.document_type
+    );
+
+    // Store matches
+    for (const match of matches) {
+      await query(
+        `INSERT INTO document_matches (
+          scan_id, entity_type, entity_id, confidence_score, match_reasons
+        ) VALUES ($1, $2, $3, $4, $5)`,
+        [
+          scanId,
+          match.entity_type,
+          match.entity_id,
+          match.confidence_score,
+          JSON.stringify(match.match_reasons)
+        ]
+      );
+    }
+
+    log.info('Document OCR completed', { scanId, matchesFound: matches.length });
+  } catch (error: any) {
+    log.error('Document OCR processing error', error, { scanId });
+    await query(
+      `UPDATE document_scans 
+       SET status = 'failed', 
+           error_message = $1, 
+           updated_at = CURRENT_TIMESTAMP 
+       WHERE id = $2`,
+      [error.message || 'Processing failed', scanId]
+    );
+  }
+}
 
 export default router;

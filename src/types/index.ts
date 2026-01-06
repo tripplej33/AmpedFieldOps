@@ -146,6 +146,52 @@ export interface QuickStats {
   overdueProjects: number;
 }
 
+export interface DocumentScan {
+  id: string;
+  file_id: string;
+  user_id: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  document_type?: 'receipt' | 'invoice' | 'purchase_order' | 'bill' | 'expense' | 'unknown';
+  extracted_data?: {
+    document_number?: string;
+    date?: string;
+    amount?: number;
+    total_amount?: number;
+    tax_amount?: number;
+    vendor_name?: string;
+    vendor_address?: string;
+    line_items?: any[];
+    raw_text?: string;
+  };
+  confidence?: number;
+  error_message?: string;
+  xero_attachment_id?: string;
+  processed_at?: string;
+  created_at: string;
+  updated_at: string;
+  file_name?: string;
+  file_path?: string;
+  mime_type?: string;
+  user_name?: string;
+  project_code?: string;
+  project_name?: string;
+}
+
+export interface DocumentMatch {
+  id: string;
+  scan_id: string;
+  entity_type: 'purchase_order' | 'invoice' | 'bill' | 'expense';
+  entity_id: string;
+  confidence_score: number;
+  match_reasons: string[];
+  confirmed: boolean;
+  confirmed_by?: string;
+  confirmed_at?: string;
+  created_at: string;
+  entity_name?: string;
+  entity_amount?: number;
+}
+
 export interface XeroInvoice {
   id: string;
   xero_invoice_id: string;

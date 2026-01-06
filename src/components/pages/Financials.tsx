@@ -27,8 +27,10 @@ import {
   Loader2,
   ShoppingCart,
   Receipt,
-  CreditCard
+  CreditCard,
+  Camera
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import PaymentModal from '@/components/modals/PaymentModal';
 import PurchaseOrderModal from '@/components/modals/PurchaseOrderModal';
 import PurchaseOrderDetailModal from '@/components/modals/PurchaseOrderDetailModal';
@@ -52,6 +54,7 @@ interface LineItem {
 }
 
 export default function Financials() {
+  const navigate = useNavigate();
   const [invoices, setInvoices] = useState<XeroInvoice[]>([]);
   const [quotes, setQuotes] = useState<XeroQuote[]>([]);
   const [payments, setPayments] = useState<XeroPayment[]>([]);
@@ -483,6 +486,13 @@ export default function Financials() {
             </Button>
           </div>
           <div className="flex items-center gap-3">
+            <Button 
+              variant="outline"
+              onClick={() => navigate('/document-scan')}
+            >
+              <Camera className="w-4 h-4 mr-2" />
+              Scan Documents
+            </Button>
             <Button variant="outline">
               <Download className="w-4 h-4 mr-2" />
               Export
