@@ -7,5 +7,3 @@ pytesseract==0.3.10
 numpy==1.24.3
 pydantic==2.5.0
 python-dateutil==2.8.2
-fuzzywuzzy==0.18.0
-python-Levenshtein==0.21.1

@@ -13,7 +13,7 @@ from services.image_processor import preprocess_image
 from services.ocr_engine import OCREngine
 from services.document_classifier import DocumentClassifier
 from services.document_parser import DocumentParser
-from utils.image_utils import correct_orientation, resize_image, convert_to_opencv
+from utils.image_utils import correct_orientation, resize_image
 
 # Configure logging
 logging.basicConfig(

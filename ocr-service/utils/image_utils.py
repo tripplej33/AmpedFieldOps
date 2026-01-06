@@ -1,8 +1,6 @@
 """
 Image utility functions for preprocessing
 """
-import cv2
-import numpy as np
 from PIL import Image, ExifTags
 import io
 
@@ -55,8 +53,3 @@ def resize_image(image: Image.Image, max_dimension: int = 2000) -> Image.Image:
     
     return image.resize((new_width, new_height), Image.Resampling.LANCZOS)
 
-def convert_to_opencv(image: Image.Image) -> np.ndarray:
-    """
-    Convert PIL Image to OpenCV format
-    """
-    return cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
