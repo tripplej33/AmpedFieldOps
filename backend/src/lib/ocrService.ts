@@ -26,6 +26,12 @@ export interface OCRResult {
   error?: string;
 }
 
+export interface HealthResponse {
+  status: string;
+  version: string;
+  tesseract_available: boolean;
+}
+
 class OCRServiceClient {
   private baseUrl: string;
 
@@ -80,7 +86,7 @@ class OCRServiceClient {
       });
 
       if (response.ok) {
-        const health = await response.json();
+        const health = await response.json() as HealthResponse;
         return health.status === 'healthy' && health.tesseract_available === true;
       }
       return false;
