@@ -53,11 +53,6 @@ app.use(helmet({
   },
   crossOriginEmbedderPolicy: false, // Disable for API server
   referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
-  permissionsPolicy: {
-    camera: [],
-    microphone: [],
-    geolocation: [],
-  },
 }));
 
 // CORS configuration

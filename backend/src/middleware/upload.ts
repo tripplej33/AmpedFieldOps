@@ -20,7 +20,7 @@ const projectStorage = multer.diskStorage({
       const rawProjectId = req.body?.project_id || req.params?.project_id;
       
       if (!rawProjectId) {
-        return cb(new Error('project_id is required'));
+        return cb(new Error('project_id is required'), '');
       }
 
       // Sanitize and validate project_id to prevent path traversal
@@ -33,7 +33,7 @@ const projectStorage = multer.diskStorage({
       // Ensure the resolved path is still within the base directory
       const resolvedPath = path.resolve(projectDir);
       if (!resolvedPath.startsWith(path.resolve(baseDir))) {
-        return cb(new Error('Invalid project_id: path traversal detected'));
+        return cb(new Error('Invalid project_id: path traversal detected'), '');
       }
       
       // Ensure directory exists
@@ -43,7 +43,7 @@ const projectStorage = multer.diskStorage({
       
       cb(null, projectDir);
     } catch (error: any) {
-      cb(new Error(`Invalid project_id: ${error.message}`));
+      cb(new Error(`Invalid project_id: ${error.message}`), '');
     }
   },
   filename: (req, file, cb) => {
@@ -160,7 +160,7 @@ const fileUploadStorage = multer.diskStorage({
       const rawProjectId = req.body?.project_id;
       
       if (!rawProjectId) {
-        return cb(new Error('project_id is required'));
+        return cb(new Error('project_id is required'), '');
       }
 
       // Sanitize and validate project_id
@@ -171,7 +171,7 @@ const fileUploadStorage = multer.diskStorage({
       if (costCenterId && typeof costCenterId === 'string') {
         // Validate UUID format for cost center
         if (!isValidUUID(costCenterId)) {
-          return cb(new Error('Invalid cost_center_id: must be a valid UUID'));
+          return cb(new Error('Invalid cost_center_id: must be a valid UUID'), '');
         }
         // Remove path traversal attempts
         costCenterId = costCenterId.replace(/\.\./g, '').replace(/\//g, '').replace(/\\/g, '');
@@ -189,7 +189,7 @@ const fileUploadStorage = multer.diskStorage({
       // Ensure the resolved path is still within the base directory
       const resolvedPath = path.resolve(uploadDir);
       if (!resolvedPath.startsWith(path.resolve(baseDir))) {
-        return cb(new Error('Invalid path: path traversal detected'));
+        return cb(new Error('Invalid path: path traversal detected'), '');
       }
       
       // Ensure directory exists
@@ -199,7 +199,7 @@ const fileUploadStorage = multer.diskStorage({
       
       cb(null, uploadDir);
     } catch (error: any) {
-      cb(new Error(`Invalid upload path: ${error.message}`));
+      cb(new Error(`Invalid upload path: ${error.message}`), '');
     }
   },
   filename: (req, file, cb) => {
