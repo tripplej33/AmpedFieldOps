@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import { query } from '../db';
 import { authenticate, requirePermission, AuthRequest } from '../middleware/auth';
 import { env } from '../config/env';
+import { log } from '../lib/logger';
 import { ensureXeroTables } from '../db/ensureXeroTables';
 import { fetchWithRateLimit } from '../lib/xero/rateLimiter';
 import { parseXeroError, getErrorMessage } from '../lib/xero/errorHandler';
@@ -100,9 +101,9 @@ async function getXeroCredentials() {
   if (clientId) {
     const clientIdStr = String(clientId);
     if (clientIdStr.includes('@')) {
-      console.error('[Xero] ERROR: Client ID appears to be an email address:', clientId);
-      console.error('[Xero] Client ID should be a 32-character hexadecimal string, not an email!');
-      console.error('[Xero] Please update the Client ID in Settings to your actual Xero Client ID from https://developer.xero.com/myapps');
+      log.error('[Xero] ERROR: Client ID appears to be an email address', null, { clientId: clientId?.substring(0, 8) + '...' });
+      log.error('[Xero] Client ID should be a 32-character hexadecimal string, not an email!');
+      log.error('[Xero] Please update the Client ID in Settings to your actual Xero Client ID from https://developer.xero.com/myapps');
     } else if (clientIdStr.length !== 32) {
       console.warn('[Xero] Client ID length unusual:', clientIdStr.length, 'Expected 32 characters');
     } else if (!/^[0-9A-Fa-f]{32}$/.test(clientIdStr)) {
@@ -244,10 +245,10 @@ router.get('/auth/url', authenticate, requirePermission('can_sync_xero'), async 
       }
     });
   } catch (error: any) {
-    console.error('[Xero] Failed to generate auth URL:', {
-      error: error.message,
-      stack: error.stack
-    });
+      log.error('[Xero] Failed to generate auth URL', error, {
+        error: error.message,
+        stack: error.stack
+      });
     res.status(500).json({ 
       error: 'Failed to generate auth URL',
       details: process.env.NODE_ENV === 'development' ? error.message : undefined

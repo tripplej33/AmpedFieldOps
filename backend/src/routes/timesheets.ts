@@ -232,7 +232,7 @@ router.post('/', authenticate, uploadLimiter,
           // Keep local path for backward compatibility
           imageUrls.push(`/uploads/projects/${project_id}/${file.filename}`);
         } catch (uploadError: any) {
-          console.error(`Failed to upload ${file.filename} to cloud storage:`, uploadError);
+          log.error(`Failed to upload ${file.filename} to cloud storage`, uploadError, { filename: file.filename, project_id });
           // Fallback to local path if cloud upload fails
           imageUrls.push(`/uploads/projects/${project_id}/${file.filename}`);
           // Optionally clean up local file if cloud upload fails and we don't want local storage
@@ -240,7 +240,7 @@ router.post('/', authenticate, uploadLimiter,
         }
       }
     } catch (error: any) {
-      console.error('Cloud storage upload error:', error);
+      log.error('Cloud storage upload error', error, { project_id });
       // Fallback to local paths if cloud storage is not configured
       imageUrls = files.map(f => `/uploads/projects/${project_id}/${f.filename}`);
     }
@@ -302,7 +302,7 @@ router.post('/', authenticate, uploadLimiter,
 
       res.status(201).json(result.rows[0]);
     } catch (error) {
-      console.error('Create timesheet error:', error);
+      log.error('Create timesheet error', error, { userId: req.user!.id, project_id });
       res.status(500).json({ error: 'Failed to create timesheet' });
     }
   }
@@ -367,7 +367,7 @@ router.put('/:id', authenticate,
             // Keep local path for backward compatibility
             imageUrls.push(`/uploads/projects/${project_id}/${file.filename}`);
           } catch (uploadError: any) {
-            console.error(`Failed to upload ${file.filename} to cloud storage:`, uploadError);
+            log.error(`Failed to upload ${file.filename} to cloud storage`, uploadError, { filename: file.filename, project_id });
             // Fallback to local path
             imageUrls.push(`/uploads/projects/${project_id}/${file.filename}`);
           }
@@ -397,7 +397,7 @@ router.put('/:id', authenticate,
           }
         }
       } catch (error: any) {
-        console.error('Cloud storage upload error:', error);
+        log.error('Cloud storage upload error', error, { project_id });
         // Fallback to local paths
         imageUrls = files.map(f => `/uploads/projects/${project_id}/${f.filename}`);
       }
@@ -552,7 +552,7 @@ router.delete('/:id', authenticate, async (req: AuthRequest, res: Response) => {
           }
         });
       } catch (fileError) {
-        console.error('Failed to delete timesheet image files:', fileError);
+        log.error('Failed to delete timesheet image files', fileError, { timesheetId: req.params.id });
         // Continue even if file deletion fails
       }
     }
@@ -628,11 +628,11 @@ router.post('/:id/images', authenticate,
           const cloudUrl = await uploadFileToCloud(file.path, file.filename, folderPath);
           cloudImageUrls.push(cloudUrl);
         } catch (uploadError: any) {
-          console.error(`Failed to upload ${file.filename} to cloud storage:`, uploadError);
+          log.error(`Failed to upload ${file.filename} to cloud storage`, uploadError, { filename: file.filename, timesheetId: req.params.id });
         }
       }
     } catch (error: any) {
-      console.error('Cloud storage upload error:', error);
+      log.error('Cloud storage upload error', error, { timesheetId: req.params.id });
     }
 
     // Update both local and cloud URLs
@@ -651,7 +651,7 @@ router.post('/:id/images', authenticate,
       cloud_image_urls: result.rows[0].cloud_image_urls || []
     });
   } catch (error) {
-    console.error('Upload images error:', error);
+    log.error('Upload images error', error, { timesheetId: req.params.id, userId: req.user!.id });
     res.status(500).json({ error: 'Failed to upload images' });
   }
 });
@@ -706,13 +706,13 @@ router.delete('/:id/images/:index', authenticate, async (req: AuthRequest, res: 
         }
       }
     } catch (fileError) {
-      console.error('Failed to delete image file:', fileError);
+      log.error('Failed to delete image file', fileError, { timesheetId: req.params.id, imageUrl });
       // Continue even if file deletion fails
     }
 
     res.json({ image_urls: updatedUrls, message: 'Image deleted' });
   } catch (error) {
-    console.error('Delete image error:', error);
+    log.error('Delete image error', error, { timesheetId: req.params.id, userId: req.user!.id });
     res.status(500).json({ error: 'Failed to delete image' });
   }
 });

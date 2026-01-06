@@ -9,6 +9,8 @@ import { env } from '../config/env';
 import { getDefaultPermissions } from '../lib/permissions';
 import { log } from '../lib/logger';
 import { AUTH_CONSTANTS, RATE_LIMIT_CONSTANTS } from '../lib/constants';
+import { asyncHandler } from '../middleware/asyncHandler';
+import { UnauthorizedError, ValidationError as AppValidationError } from '../lib/errors';
 
 const router = Router();
 
@@ -173,7 +175,7 @@ router.post('/login',
         token
       });
     } catch (error) {
-      console.error('Login error:', error);
+      log.error('Login error', error, { email: req.body.email });
       res.status(500).json({ error: 'Login failed' });
     }
   }

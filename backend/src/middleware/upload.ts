@@ -2,26 +2,56 @@ import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
+import { sanitizeProjectId } from './validateProject';
+
+/**
+ * Validates UUID format
+ */
+function isValidUUID(uuid: string): boolean {
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(uuid);
+}
 
 // Create project-specific storage
 const projectStorage = multer.diskStorage({
   destination: (req, file, cb) => {
-    // Get project_id from request body or params
-    const projectId = req.body?.project_id || req.params?.project_id || 'general';
-    
-    // Create project-specific directory
-    const projectDir = path.join(__dirname, '../../uploads/projects', projectId);
-    
-    // Ensure directory exists
-    if (!fs.existsSync(projectDir)) {
-      fs.mkdirSync(projectDir, { recursive: true });
+    try {
+      // Get project_id from request body or params
+      const rawProjectId = req.body?.project_id || req.params?.project_id;
+      
+      if (!rawProjectId) {
+        return cb(new Error('project_id is required'));
+      }
+
+      // Sanitize and validate project_id to prevent path traversal
+      const projectId = sanitizeProjectId(rawProjectId);
+      
+      // Use path.resolve and path.join to prevent directory traversal
+      const baseDir = path.resolve(__dirname, '../../uploads/projects');
+      const projectDir = path.join(baseDir, projectId);
+      
+      // Ensure the resolved path is still within the base directory
+      const resolvedPath = path.resolve(projectDir);
+      if (!resolvedPath.startsWith(path.resolve(baseDir))) {
+        return cb(new Error('Invalid project_id: path traversal detected'));
+      }
+      
+      // Ensure directory exists
+      if (!fs.existsSync(projectDir)) {
+        fs.mkdirSync(projectDir, { recursive: true });
+      }
+      
+      cb(null, projectDir);
+    } catch (error: any) {
+      cb(new Error(`Invalid project_id: ${error.message}`));
     }
-    
-    cb(null, projectDir);
   },
   filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    cb(null, `${uuidv4()}${ext}`);
+    // Sanitize file extension
+    const ext = path.extname(file.originalname).toLowerCase();
+    // Only allow safe extensions
+    const safeExt = /^\.(jpg|jpeg|png|gif|webp|pdf)$/i.test(ext) ? ext : '.bin';
+    cb(null, `${uuidv4()}${safeExt}`);
   }
 });
 
@@ -126,27 +156,58 @@ export const faviconUpload = multer({
 // File upload storage for project files with organized directory structure
 const fileUploadStorage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const projectId = req.body?.project_id || 'general';
-    const costCenterId = req.body?.cost_center_id;
-    
-    // Create directory: uploads/projects/{project_id}/files/
-    let uploadDir = path.join(__dirname, '../../uploads/projects', projectId, 'files');
-    
-    // If cost center is specified, add it to the path
-    if (costCenterId) {
-      uploadDir = path.join(uploadDir, costCenterId);
+    try {
+      const rawProjectId = req.body?.project_id;
+      
+      if (!rawProjectId) {
+        return cb(new Error('project_id is required'));
+      }
+
+      // Sanitize and validate project_id
+      const projectId = sanitizeProjectId(rawProjectId);
+      
+      // Sanitize cost_center_id if provided
+      let costCenterId = req.body?.cost_center_id;
+      if (costCenterId && typeof costCenterId === 'string') {
+        // Validate UUID format for cost center
+        if (!isValidUUID(costCenterId)) {
+          return cb(new Error('Invalid cost_center_id: must be a valid UUID'));
+        }
+        // Remove path traversal attempts
+        costCenterId = costCenterId.replace(/\.\./g, '').replace(/\//g, '').replace(/\\/g, '');
+      }
+      
+      // Use path.resolve to prevent directory traversal
+      const baseDir = path.resolve(__dirname, '../../uploads/projects');
+      let uploadDir = path.join(baseDir, projectId, 'files');
+      
+      // If cost center is specified, add it to the path
+      if (costCenterId) {
+        uploadDir = path.join(uploadDir, costCenterId);
+      }
+      
+      // Ensure the resolved path is still within the base directory
+      const resolvedPath = path.resolve(uploadDir);
+      if (!resolvedPath.startsWith(path.resolve(baseDir))) {
+        return cb(new Error('Invalid path: path traversal detected'));
+      }
+      
+      // Ensure directory exists
+      if (!fs.existsSync(uploadDir)) {
+        fs.mkdirSync(uploadDir, { recursive: true });
+      }
+      
+      cb(null, uploadDir);
+    } catch (error: any) {
+      cb(new Error(`Invalid upload path: ${error.message}`));
     }
-    
-    // Ensure directory exists
-    if (!fs.existsSync(uploadDir)) {
-      fs.mkdirSync(uploadDir, { recursive: true });
-    }
-    
-    cb(null, uploadDir);
   },
   filename: (req, file, cb) => {
-    const ext = path.extname(file.originalname);
-    cb(null, `${uuidv4()}${ext}`);
+    // Sanitize file extension
+    const ext = path.extname(file.originalname).toLowerCase();
+    // Allow safe extensions for documents
+    const safeExt = /^\.(jpg|jpeg|png|gif|webp|pdf|doc|docx|xls|xlsx|txt|csv)$/i.test(ext) ? ext : '.bin';
+    cb(null, `${uuidv4()}${safeExt}`);
   }
 });
 

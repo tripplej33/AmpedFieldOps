@@ -216,7 +216,7 @@ router.get('/:id/financials', authenticate, async (req: AuthRequest, res: Respon
       expenses: expensesSummary.rows[0] || { total_count: 0, total_amount: 0 }
     });
   } catch (error) {
-    console.error('Failed to fetch project financials:', error);
+    log.error('Failed to fetch project financials', error, { projectId: req.params.id });
     res.status(500).json({ error: 'Failed to fetch project financials' });
   }
 });

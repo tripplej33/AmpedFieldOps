@@ -7,6 +7,8 @@ import { env } from './config/env';
 import { createDynamicCorsOrigin, initializeCorsCache } from './config/cors';
 import { logger, log } from './lib/logger';
 import { RATE_LIMIT_CONSTANTS } from './lib/constants';
+import { requestIdMiddleware, requestLogger } from './middleware/requestLogger';
+import { errorHandler } from './middleware/errorHandler';
 
 // Import routes
 import authRoutes from './routes/auth';
@@ -31,14 +33,45 @@ import backupsRoutes from './routes/backups';
 
 const app = express();
 
-// Middleware
-app.use(helmet());
+// Request ID middleware (must be first)
+app.use(requestIdMiddleware);
+
+// Security headers with enhanced configuration
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      styleSrc: ["'self'", "'unsafe-inline'"], // Allow inline styles for React
+      scriptSrc: ["'self'"],
+      imgSrc: ["'self'", "data:", "https:"], // Allow data URIs and external images
+      connectSrc: ["'self'"],
+      fontSrc: ["'self'"],
+      objectSrc: ["'none'"],
+      mediaSrc: ["'self'"],
+      frameSrc: ["'none'"],
+    },
+  },
+  crossOriginEmbedderPolicy: false, // Disable for API server
+  referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
+  permissionsPolicy: {
+    camera: [],
+    microphone: [],
+    geolocation: [],
+  },
+}));
+
+// CORS configuration
 app.use(cors({
   origin: createDynamicCorsOrigin(),
   credentials: true
 }));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+
+// Request size limits to prevent DoS attacks
+app.use(express.json({ limit: '1mb' }));
+app.use(express.urlencoded({ extended: true, limit: '1mb' }));
+
+// Request logging middleware
+app.use(requestLogger);
 
 // Global API rate limiting - applies to all API endpoints
 // More lenient than auth endpoints to allow normal usage
@@ -54,22 +87,10 @@ const globalApiRateLimit = rateLimit({
     // Skip rate limiting for health check endpoint
     return req.path === '/api/health';
   },
-  // Use a more lenient key generator that considers authenticated users
+  // Use IP-based rate limiting only
+  // Note: We removed unsafe JWT parsing here for security
+  // If user-specific rate limiting is needed, it should be done after authentication
   keyGenerator: (req) => {
-    // If user is authenticated, use user ID + IP for better rate limiting per user
-    // Otherwise, use IP only
-    const authHeader = req.headers.authorization;
-    if (authHeader && authHeader.startsWith('Bearer ')) {
-      try {
-        // Try to extract user ID from token (without full verification to avoid overhead)
-        const token = authHeader.split(' ')[1];
-        const payload = JSON.parse(Buffer.from(token.split('.')[1], 'base64').toString());
-        return `${payload.id || req.ip}:${req.ip}`;
-      } catch {
-        // If token parsing fails, fall back to IP
-        return req.ip || 'unknown';
-      }
-    }
     return req.ip || 'unknown';
   },
 });
@@ -112,18 +133,8 @@ app.use('/api/files', filesRoutes);
 app.use('/api/safety-documents', safetyDocumentsRoutes);
 app.use('/api/backups', backupsRoutes);
 
-// Error handling middleware
-app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
-  log.error('Unhandled error', err, {
-    method: req.method,
-    url: req.url,
-    ip: req.ip,
-  });
-  res.status(500).json({ 
-    error: 'Internal server error', 
-    message: env.NODE_ENV === 'development' ? err.message : 'An error occurred'
-  });
-});
+// Error handling middleware (must be last)
+app.use(errorHandler);
 
 app.listen(env.PORT, async () => {
   logger.info('🚀 AmpedFieldOps API server starting', {
