@@ -1401,7 +1401,7 @@ function TimesheetForm({
 
         {/* Hidden file inputs */}
         <input
-          ref={fileInputRef}
+          ref={fileInputRef as React.LegacyRef<HTMLInputElement>}
           type="file"
           accept="image/*"
           multiple
@@ -1409,7 +1409,7 @@ function TimesheetForm({
           className="hidden"
         />
         <input
-          ref={cameraInputRef}
+          ref={cameraInputRef as React.LegacyRef<HTMLInputElement>}
           type="file"
           accept="image/*"
           capture="environment"
