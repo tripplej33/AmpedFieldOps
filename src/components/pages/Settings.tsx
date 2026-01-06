@@ -744,7 +744,7 @@ export default function Settings() {
     <>
       <Header title="Settings" subtitle="Configure system preferences and integrations" />
 
-      <div className="p-8 max-w-[1000px] mx-auto">
+      <div className="p-4 sm:p-6 lg:p-8 max-w-[1000px] mx-auto">
         <Tabs defaultValue="general" className="w-full">
           <TabsList className={cn(
             "grid w-full mb-6",

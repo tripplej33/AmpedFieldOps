@@ -145,7 +145,7 @@ export default function ExpenseModal({ projectId: initialProjectId, open, onOpen
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-[95vw] sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle className="text-xl font-bold">Create Expense Claim</DialogTitle>
         </DialogHeader>
@@ -200,7 +200,7 @@ export default function ExpenseModal({ projectId: initialProjectId, open, onOpen
           )}
 
           {/* Amount & Date */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <Label className="font-mono text-xs uppercase tracking-wider">Amount *</Label>
               <Input

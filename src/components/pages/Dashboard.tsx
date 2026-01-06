@@ -122,25 +122,25 @@ export default function Dashboard() {
           <div className="flex-1">
             <p className="text-sm font-mono text-muted-foreground uppercase tracking-wider">{title}</p>
             <div className="mt-3 flex items-baseline gap-2">
-              <h3 className="text-4xl font-bold text-foreground font-mono">{value}</h3>
-              <span className="text-lg text-muted-foreground font-mono">{suffix}</span>
+              <h3 className="text-3xl sm:text-4xl font-bold text-foreground font-mono truncate">{value}</h3>
+              <span className="text-base sm:text-lg text-muted-foreground font-mono flex-shrink-0">{suffix}</span>
             </div>
-            <div className="mt-3 flex items-center gap-1">
+            <div className="mt-3 flex items-center gap-1 flex-wrap">
               {isPositive ? (
-                <TrendingUp className="w-4 h-4 text-voltage" />
+                <TrendingUp className="w-4 h-4 text-voltage flex-shrink-0" />
               ) : (
-                <TrendingDown className="w-4 h-4 text-destructive" />
+                <TrendingDown className="w-4 h-4 text-destructive flex-shrink-0" />
               )}
               <span
                 className={cn(
-                  'text-sm font-mono font-medium',
+                  'text-xs sm:text-sm font-mono font-medium',
                   isPositive ? 'text-voltage' : 'text-destructive'
                 )}
               >
                 {isPositive ? '+' : ''}
                 {trend}%
               </span>
-              <span className="text-sm text-muted-foreground font-mono ml-1">vs last month</span>
+              <span className="text-xs sm:text-sm text-muted-foreground font-mono ml-1">vs last month</span>
             </div>
           </div>
           <div className="w-12 h-12 rounded-lg bg-electric/10 flex items-center justify-center">
@@ -155,7 +155,7 @@ export default function Dashboard() {
     <>
       <Header title="Command Center" subtitle="Real-time project and resource overview" />
       
-      <div className="p-8 space-y-8 max-w-[1400px] mx-auto">
+      <div className="p-4 sm:p-6 lg:p-8 space-y-6 sm:space-y-8 max-w-[1400px] mx-auto">
         {/* Metrics Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           <MetricCard

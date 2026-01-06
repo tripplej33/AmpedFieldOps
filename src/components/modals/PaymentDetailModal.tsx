@@ -21,7 +21,7 @@ export default function PaymentDetailModal({ payment, open, onOpenChange }: Paym
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-[95vw] sm:max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <div className="flex items-start justify-between">
             <div>
@@ -40,7 +40,7 @@ export default function PaymentDetailModal({ payment, open, onOpenChange }: Paym
         <div className="space-y-6 py-4">
           {/* Payment Details */}
           <Card className="p-6 bg-card border-border">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <Label className="text-xs font-mono uppercase tracking-wider text-muted-foreground">Client</Label>
                 <p className="text-sm mt-1">{payment.client_name || 'Unknown Client'}</p>

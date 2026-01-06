@@ -90,7 +90,7 @@ export default function AdminSetupModal({ open, onSuccess }: AdminSetupModalProp
 
   return (
     <Dialog open={open} onOpenChange={() => {}}>
-      <DialogContent className="sm:max-w-md" onInteractOutside={(e) => e.preventDefault()}>
+      <DialogContent className="max-w-[95vw] sm:max-w-md" onInteractOutside={(e) => e.preventDefault()}>
         <DialogHeader>
           <div className="flex items-center gap-3 mb-2">
             <div className="w-10 h-10 rounded-lg bg-electric/20 flex items-center justify-center">

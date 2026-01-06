@@ -189,7 +189,7 @@ export default function DocumentScan() {
         title="Document Scanning" 
         subtitle="Upload photos of receipts, invoices, and documents for automatic processing"
       />
-      <div className="space-y-6 p-6">
+      <div className="space-y-4 sm:space-y-6 p-4 sm:p-6">
 
       {/* Upload Section */}
       <Card className="p-6">
@@ -260,9 +260,9 @@ export default function DocumentScan() {
       </Card>
 
       {/* Filters */}
-      <div className="flex gap-4">
+      <div className="flex flex-col sm:flex-row gap-3 sm:gap-4">
         <Select value={filterStatus} onValueChange={setFilterStatus}>
-          <SelectTrigger className="w-[180px]">
+          <SelectTrigger className="w-full sm:w-[180px]">
             <SelectValue placeholder="Filter by status" />
           </SelectTrigger>
           <SelectContent>
@@ -275,7 +275,7 @@ export default function DocumentScan() {
         </Select>
 
         <Select value={filterType} onValueChange={setFilterType}>
-          <SelectTrigger className="w-[180px]">
+          <SelectTrigger className="w-full sm:w-[180px]">
             <SelectValue placeholder="Filter by type" />
           </SelectTrigger>
           <SelectContent>
@@ -311,7 +311,7 @@ export default function DocumentScan() {
                 <div className="flex-1">
                   <div className="flex items-center gap-2 mb-2">
                     <ImageIcon className="w-5 h-5 text-muted-foreground" />
-                    <span className="font-medium">{scan.file_name || 'Document'}</span>
+                    <span className="font-medium truncate">{scan.file_name || 'Document'}</span>
                     {getStatusBadge(scan.status)}
                     {getTypeBadge(scan.document_type)}
                     {scan.confidence && (
@@ -326,7 +326,7 @@ export default function DocumentScan() {
                       {scan.extracted_data.document_number && (
                         <div>
                           <span className="text-muted-foreground">Number: </span>
-                          <span className="font-medium">{scan.extracted_data.document_number}</span>
+                          <span className="font-medium truncate">{scan.extracted_data.document_number}</span>
                         </div>
                       )}
                       {scan.extracted_data.date && (
@@ -344,7 +344,7 @@ export default function DocumentScan() {
                       {scan.extracted_data.vendor_name && (
                         <div>
                           <span className="text-muted-foreground">Vendor: </span>
-                          <span className="font-medium">{scan.extracted_data.vendor_name}</span>
+                          <span className="font-medium truncate">{scan.extracted_data.vendor_name}</span>
                         </div>
                       )}
                     </div>

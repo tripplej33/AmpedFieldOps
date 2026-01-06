@@ -230,7 +230,7 @@ export default function Clients() {
     <>
       <Header title="Client Directory" subtitle="Manage client relationships and contacts" />
 
-      <div className="p-8 max-w-[1400px] mx-auto">
+      <div className="p-4 sm:p-6 lg:p-8 max-w-[1400px] mx-auto">
         {/* Search & Actions */}
         <div className="mb-6 flex items-center gap-4">
           <div className="relative flex-1 max-w-md">
@@ -296,7 +296,7 @@ export default function Clients() {
                 </div>
                 <div className="flex items-center gap-2 text-sm">
                   <MapPin className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                  <span className="text-muted-foreground">{client.location}</span>
+                  <span className="text-muted-foreground truncate">{client.location}</span>
                 </div>
               </div>
 
@@ -391,7 +391,7 @@ export default function Clients() {
 
       {/* Create Client Modal */}
       <Dialog open={createModalOpen} onOpenChange={setCreateModalOpen}>
-        <DialogContent className="sm:max-w-[600px] bg-card border-border">
+        <DialogContent className="max-w-[95vw] sm:max-w-[600px] bg-card border-border">
           <DialogHeader>
             <DialogTitle className="text-xl font-bold">Create New Client</DialogTitle>
             <DialogDescription>Add a new client to your directory</DialogDescription>
@@ -424,7 +424,7 @@ export default function Clients() {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="email" className="font-mono text-xs uppercase tracking-wider">
                   Email *
@@ -501,7 +501,7 @@ export default function Clients() {
 
       {/* Edit Client Modal */}
       <Dialog open={editModalOpen} onOpenChange={setEditModalOpen}>
-        <DialogContent className="sm:max-w-[600px] bg-card border-border">
+        <DialogContent className="max-w-[95vw] sm:max-w-[600px] bg-card border-border">
           <DialogHeader>
             <DialogTitle className="text-xl font-bold">Edit Client</DialogTitle>
             <DialogDescription>Update client information</DialogDescription>
@@ -534,7 +534,7 @@ export default function Clients() {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="edit_email" className="font-mono text-xs uppercase tracking-wider">
                   Email *

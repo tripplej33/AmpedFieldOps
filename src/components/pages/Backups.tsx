@@ -205,10 +205,10 @@ export default function Backups() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-6 p-4 sm:p-6 lg:p-8">
       <Header title="Backups" subtitle="Manage database and file backups" />
       
-      <div className="grid gap-6 md:grid-cols-2">
+      <div className="grid gap-4 sm:gap-6 md:grid-cols-2">
         {/* Create Backup Card */}
         <Card>
           <CardHeader>

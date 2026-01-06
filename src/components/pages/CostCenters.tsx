@@ -192,7 +192,7 @@ export default function CostCenters() {
     <>
       <Header title="Cost Centers" subtitle="Manage project-specific and global cost centers" />
 
-      <div className="p-8 max-w-[1400px] mx-auto">
+      <div className="p-4 sm:p-6 lg:p-8 max-w-[1400px] mx-auto">
         {/* Actions */}
         <div className="flex items-center justify-between mb-6 flex-wrap gap-4">
           <div className="flex items-center gap-4 flex-wrap">
@@ -335,7 +335,7 @@ export default function CostCenters() {
         setShowModal(open);
         if (!open) resetForm();
       }}>
-        <DialogContent className="sm:max-w-[500px]">
+        <DialogContent className="max-w-[95vw] sm:max-w-[500px]">
           <DialogHeader>
             <DialogTitle>
               {editingCostCenter ? 'Edit Cost Center' : 'New Cost Center'}
@@ -348,7 +348,7 @@ export default function CostCenters() {
           </DialogHeader>
 
           <div className="space-y-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <Label className="font-mono text-xs uppercase">Code *</Label>
                 <Input

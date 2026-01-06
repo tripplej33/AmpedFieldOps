@@ -163,8 +163,8 @@ export default function SafetyDocuments() {
   return (
     <div className="flex flex-col h-screen">
       <Header title="Safety Documents" />
-      <div className="flex-1 overflow-auto p-6">
-        <div className="max-w-7xl mx-auto space-y-6">
+      <div className="flex-1 overflow-auto p-4 sm:p-6">
+        <div className="max-w-7xl mx-auto space-y-4 sm:space-y-6">
           {/* Filters */}
           <Card className="p-4">
             <div className="flex flex-col sm:flex-row gap-4">

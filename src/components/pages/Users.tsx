@@ -183,7 +183,7 @@ export default function Users() {
     <>
       <Header title="User Management" subtitle="Manage team members and permissions" />
 
-      <div className="p-8 max-w-[1400px] mx-auto">
+      <div className="p-4 sm:p-6 lg:p-8 max-w-[1400px] mx-auto">
         {/* Actions */}
         <div className="flex items-center justify-between mb-6">
           <p className="text-sm text-muted-foreground">
@@ -200,23 +200,23 @@ export default function Users() {
 
         {/* Users Table */}
         <Card className="bg-card border-border overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full">
+          <div className="overflow-x-auto -mx-4 sm:mx-0">
+            <table className="w-full min-w-[600px]">
               <thead className="bg-muted/50 border-b border-border">
                 <tr>
-                  <th className="px-6 py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">
+                  <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">
                     User
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">
+                  <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">
                     Role
                   </th>
-                  <th className="px-6 py-4 text-center text-xs font-mono font-bold text-muted-foreground uppercase">
+                  <th className="px-3 sm:px-6 py-3 sm:py-4 text-center text-xs font-mono font-bold text-muted-foreground uppercase">
                     Status
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">
+                  <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">
                     Created
                   </th>
-                  <th className="px-6 py-4 text-right text-xs font-mono font-bold text-muted-foreground uppercase">
+                  <th className="px-3 sm:px-6 py-3 sm:py-4 text-right text-xs font-mono font-bold text-muted-foreground uppercase">
                     Actions
                   </th>
                 </tr>
@@ -224,7 +224,7 @@ export default function Users() {
               <tbody className="divide-y divide-border">
                 {users.map((user) => (
                   <tr key={user.id} className="hover:bg-muted/30 transition-colors">
-                    <td className="px-6 py-4">
+                    <td className="px-3 sm:px-6 py-3 sm:py-4">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-full bg-muted flex items-center justify-center">
                           <UserCircle className="w-6 h-6 text-muted-foreground" />
@@ -238,7 +238,7 @@ export default function Users() {
                         </div>
                       </div>
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-3 sm:px-6 py-3 sm:py-4">
                       {getRoleBadge(user.role)}
                     </td>
                     <td className="px-6 py-4 text-center">
@@ -348,7 +348,7 @@ export default function Users() {
 
       {/* Permissions Modal */}
       <Dialog open={showPermissionsModal} onOpenChange={setShowPermissionsModal}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-[95vw] sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>
               Permissions for {selectedUser?.name}

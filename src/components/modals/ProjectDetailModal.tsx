@@ -286,7 +286,7 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
   return (
     <>
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-[95vw] sm:max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <div className="flex items-start justify-between">
             <div>
@@ -970,7 +970,7 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
                   />
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <Label className="font-mono text-xs uppercase tracking-wider">Budget ($)</Label>
                     <Input
@@ -1046,7 +1046,7 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
 
       {/* File Upload Modal */}
       <Dialog open={isUploadModalOpen} onOpenChange={setIsUploadModalOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-[95vw] sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Upload Files</DialogTitle>
             <DialogDescription>

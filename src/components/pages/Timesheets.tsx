@@ -668,7 +668,7 @@ export default function Timesheets() {
     <>
       <Header title="Timesheet Management" subtitle="Track and manage team hours and activities" />
 
-      <div className="p-8 max-w-[1400px] mx-auto">
+      <div className="p-4 sm:p-6 lg:p-8 max-w-[1400px] mx-auto">
         {/* Actions Bar */}
         <div className="mb-6 flex items-center justify-between flex-wrap gap-4">
           <div className="flex items-center gap-4 flex-wrap">
@@ -918,7 +918,7 @@ export default function Timesheets() {
 
       {/* Create Timesheet Modal */}
       <Dialog open={createModalOpen} onOpenChange={setCreateModalOpen}>
-        <DialogContent className="sm:max-w-[600px] bg-card border-border">
+        <DialogContent className="max-w-[95vw] sm:max-w-[600px] bg-card border-border">
           <DialogHeader>
             <DialogTitle className="text-xl font-bold">New Timesheet Entry</DialogTitle>
             <DialogDescription>Log hours for a project</DialogDescription>
@@ -962,7 +962,7 @@ export default function Timesheets() {
 
       {/* Edit Timesheet Modal */}
       <Dialog open={editModalOpen} onOpenChange={setEditModalOpen}>
-        <DialogContent className="sm:max-w-[600px] bg-card border-border">
+        <DialogContent className="max-w-[95vw] sm:max-w-[600px] bg-card border-border">
           <DialogHeader>
             <DialogTitle className="text-xl font-bold">Edit Timesheet Entry</DialogTitle>
             <DialogDescription>Update timesheet details</DialogDescription>
@@ -1195,7 +1195,7 @@ function TimesheetForm({
                 )}
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <Label className="font-mono text-xs uppercase tracking-wider">Activity Type *</Label>
                   <Select

@@ -406,7 +406,7 @@ export default function Financials() {
     <>
       <Header title="Financials" subtitle="Xero invoices, quotes, and financial overview" />
 
-      <div className="p-8 max-w-[1400px] mx-auto">
+      <div className="p-4 sm:p-6 lg:p-8 max-w-[1400px] mx-auto">
         {/* Summary Cards */}
         {summary && (
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
@@ -474,18 +474,19 @@ export default function Financials() {
         )}
 
         {/* Actions */}
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-3">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between mb-6 gap-3">
+          <div className="flex items-center gap-2 sm:gap-3">
             <Button
               variant="outline"
               onClick={handleSync}
               disabled={isSyncing}
+              className="flex-1 sm:flex-initial"
             >
               <RefreshCw className={cn("w-4 h-4 mr-2", isSyncing && "animate-spin")} />
               {isSyncing ? 'Syncing...' : 'Sync with Xero'}
             </Button>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
             <Button 
               variant="outline"
               onClick={() => navigate('/document-scan')}
@@ -516,7 +517,8 @@ export default function Financials() {
 
         {/* Tabs */}
         <Tabs defaultValue="invoices">
-          <TabsList className="grid w-full grid-cols-7 max-w-5xl">
+          <div className="overflow-x-auto -mx-4 sm:mx-0">
+            <TabsList className="grid w-full grid-cols-7 min-w-[700px] max-w-5xl">
             <TabsTrigger value="invoices">Invoices</TabsTrigger>
             <TabsTrigger value="quotes">Quotes</TabsTrigger>
             <TabsTrigger value="payments">Payments</TabsTrigger>
@@ -525,6 +527,7 @@ export default function Financials() {
             <TabsTrigger value="expenses">Expenses</TabsTrigger>
             <TabsTrigger value="reports">Reports</TabsTrigger>
           </TabsList>
+          </div>
 
           {/* Invoices Tab */}
           <TabsContent value="invoices" className="mt-6">
@@ -542,26 +545,26 @@ export default function Financials() {
                   </Label>
                 </div>
               </div>
-              <div className="overflow-x-auto">
-                <table className="w-full">
+              <div className="overflow-x-auto -mx-4 sm:mx-0">
+                <table className="w-full min-w-[800px]">
                   <thead className="bg-muted/50 border-b border-border">
                     <tr>
-                      <th className="px-6 py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">
+                      <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">
                         Invoice #
                       </th>
-                      <th className="px-6 py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">
+                      <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">
                         Client
                       </th>
-                      <th className="px-6 py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">
+                      <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">
                         Date
                       </th>
-                      <th className="px-6 py-4 text-right text-xs font-mono font-bold text-muted-foreground uppercase">
+                      <th className="px-3 sm:px-6 py-3 sm:py-4 text-right text-xs font-mono font-bold text-muted-foreground uppercase">
                         Amount
                       </th>
-                      <th className="px-6 py-4 text-center text-xs font-mono font-bold text-muted-foreground uppercase">
+                      <th className="px-3 sm:px-6 py-3 sm:py-4 text-center text-xs font-mono font-bold text-muted-foreground uppercase">
                         Status
                       </th>
-                      <th className="px-6 py-4 text-right text-xs font-mono font-bold text-muted-foreground uppercase">
+                      <th className="px-3 sm:px-6 py-3 sm:py-4 text-right text-xs font-mono font-bold text-muted-foreground uppercase">
                         Actions
                       </th>
                     </tr>
@@ -583,22 +586,22 @@ export default function Financials() {
                           
                           return (
                         <tr key={invoice.id} className={cn("hover:bg-muted/30 transition-colors", isDeleted && "opacity-50")}>
-                          <td className="px-6 py-4 font-mono font-medium">
+                          <td className="px-3 sm:px-6 py-3 sm:py-4 font-mono font-medium">
                             {invoice.invoice_number}
                             {isDeleted && (
                               <Badge className="ml-2 bg-muted text-muted-foreground text-xs">Deleted</Badge>
                             )}
                           </td>
-                          <td className="px-6 py-4">
+                          <td className="px-3 sm:px-6 py-3 sm:py-4">
                             {invoice.client_name}
                           </td>
                           <td className="px-6 py-4 font-mono text-sm text-muted-foreground">
                             {new Date(invoice.issue_date).toLocaleDateString()}
                           </td>
-                          <td className="px-6 py-4 text-right font-mono font-bold">
+                          <td className="px-3 sm:px-6 py-3 sm:py-4 text-right font-mono font-bold">
                             ${invoice.total?.toLocaleString() || '0'}
                           </td>
-                          <td className="px-6 py-4 text-center">
+                          <td className="px-3 sm:px-6 py-3 sm:py-4 text-center">
                             <div className="flex items-center justify-center gap-2">
                               {getStatusBadge(invoice.status)}
                               {isSyncing && (
@@ -625,7 +628,7 @@ export default function Financials() {
                               )}
                             </div>
                           </td>
-                          <td className="px-6 py-4 text-right">
+                          <td className="px-3 sm:px-6 py-3 sm:py-4 text-right">
                             <div className="flex items-center justify-end gap-2">
                               {hasError && (
                                 <Button 
@@ -672,26 +675,26 @@ export default function Financials() {
           {/* Quotes Tab */}
           <TabsContent value="quotes" className="mt-6">
             <Card className="bg-card border-border overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full">
+              <div className="overflow-x-auto -mx-4 sm:mx-0">
+                <table className="w-full min-w-[800px]">
                   <thead className="bg-muted/50 border-b border-border">
                     <tr>
-                      <th className="px-6 py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">
+                      <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">
                         Quote #
                       </th>
-                      <th className="px-6 py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">
+                      <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">
                         Client
                       </th>
-                      <th className="px-6 py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">
+                      <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">
                         Expires
                       </th>
-                      <th className="px-6 py-4 text-right text-xs font-mono font-bold text-muted-foreground uppercase">
+                      <th className="px-3 sm:px-6 py-3 sm:py-4 text-right text-xs font-mono font-bold text-muted-foreground uppercase">
                         Amount
                       </th>
-                      <th className="px-6 py-4 text-center text-xs font-mono font-bold text-muted-foreground uppercase">
+                      <th className="px-3 sm:px-6 py-3 sm:py-4 text-center text-xs font-mono font-bold text-muted-foreground uppercase">
                         Status
                       </th>
-                      <th className="px-6 py-4 text-right text-xs font-mono font-bold text-muted-foreground uppercase">
+                      <th className="px-3 sm:px-6 py-3 sm:py-4 text-right text-xs font-mono font-bold text-muted-foreground uppercase">
                         Actions
                       </th>
                     </tr>
@@ -706,22 +709,22 @@ export default function Financials() {
                     ) : (
                       quotes.map((quote) => (
                         <tr key={quote.id} className="hover:bg-muted/30 transition-colors">
-                          <td className="px-6 py-4 font-mono font-medium">
+                          <td className="px-3 sm:px-6 py-3 sm:py-4 font-mono font-medium">
                             {quote.quote_number}
                           </td>
-                          <td className="px-6 py-4">
+                          <td className="px-3 sm:px-6 py-3 sm:py-4">
                             {quote.client_name}
                           </td>
                           <td className="px-6 py-4 font-mono text-sm text-muted-foreground">
                             {quote.expiry_date ? new Date(quote.expiry_date).toLocaleDateString() : '-'}
                           </td>
-                          <td className="px-6 py-4 text-right font-mono font-bold">
+                          <td className="px-3 sm:px-6 py-3 sm:py-4 text-right font-mono font-bold">
                             ${quote.total?.toLocaleString() || '0'}
                           </td>
-                          <td className="px-6 py-4 text-center">
+                          <td className="px-3 sm:px-6 py-3 sm:py-4 text-center">
                             {getStatusBadge(quote.status)}
                           </td>
-                          <td className="px-6 py-4 text-right">
+                          <td className="px-3 sm:px-6 py-3 sm:py-4 text-right">
                             <div className="flex items-center justify-end gap-2">
                               {quote.status === 'PENDING' && (
                                 <Button 
@@ -756,17 +759,17 @@ export default function Financials() {
           {/* Payments Tab */}
           <TabsContent value="payments" className="mt-6">
             <Card className="bg-card border-border overflow-hidden">
-              <div className="overflow-x-auto">
-                <table className="w-full">
+              <div className="overflow-x-auto -mx-4 sm:mx-0">
+                <table className="w-full min-w-[800px]">
                   <thead className="bg-muted/50 border-b border-border">
                     <tr>
-                      <th className="px-6 py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">Invoice #</th>
-                      <th className="px-6 py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">Client</th>
-                      <th className="px-6 py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">Date</th>
-                      <th className="px-6 py-4 text-right text-xs font-mono font-bold text-muted-foreground uppercase">Amount</th>
-                      <th className="px-6 py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">Method</th>
-                      <th className="px-6 py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">Reference</th>
-                      <th className="px-6 py-4 text-right text-xs font-mono font-bold text-muted-foreground uppercase">Actions</th>
+                      <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">Invoice #</th>
+                      <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">Client</th>
+                      <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">Date</th>
+                      <th className="px-3 sm:px-6 py-3 sm:py-4 text-right text-xs font-mono font-bold text-muted-foreground uppercase">Amount</th>
+                      <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">Method</th>
+                      <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">Reference</th>
+                      <th className="px-3 sm:px-6 py-3 sm:py-4 text-right text-xs font-mono font-bold text-muted-foreground uppercase">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
@@ -779,15 +782,15 @@ export default function Financials() {
                     ) : (
                       payments.map((payment) => (
                         <tr key={payment.id} className="hover:bg-muted/30 transition-colors">
-                          <td className="px-6 py-4 font-mono font-medium">{payment.invoice_number}</td>
-                          <td className="px-6 py-4">{payment.client_name}</td>
+                          <td className="px-3 sm:px-6 py-3 sm:py-4 font-mono font-medium">{payment.invoice_number}</td>
+                          <td className="px-3 sm:px-6 py-3 sm:py-4">{payment.client_name}</td>
                           <td className="px-6 py-4 font-mono text-sm text-muted-foreground">
                             {new Date(payment.payment_date).toLocaleDateString()}
                           </td>
-                          <td className="px-6 py-4 text-right font-mono font-bold">
+                          <td className="px-3 sm:px-6 py-3 sm:py-4 text-right font-mono font-bold">
                             ${(Number(payment.amount) || 0).toFixed(2)}
                           </td>
-                          <td className="px-6 py-4">{payment.payment_method.replace('_', ' ')}</td>
+                          <td className="px-3 sm:px-6 py-3 sm:py-4">{payment.payment_method.replace('_', ' ')}</td>
                           <td className="px-6 py-4 text-muted-foreground">{payment.reference || '-'}</td>
                         </tr>
                       ))
@@ -808,17 +811,17 @@ export default function Financials() {
                   New PO
                 </Button>
               </div>
-              <div className="overflow-x-auto">
-                <table className="w-full">
+              <div className="overflow-x-auto -mx-4 sm:mx-0">
+                <table className="w-full min-w-[800px]">
                   <thead className="bg-muted/50 border-b border-border">
                     <tr>
-                      <th className="px-6 py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">PO #</th>
-                      <th className="px-6 py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">Supplier</th>
-                      <th className="px-6 py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">Project</th>
-                      <th className="px-6 py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">Date</th>
-                      <th className="px-6 py-4 text-right text-xs font-mono font-bold text-muted-foreground uppercase">Amount</th>
-                      <th className="px-6 py-4 text-center text-xs font-mono font-bold text-muted-foreground uppercase">Status</th>
-                      <th className="px-6 py-4 text-right text-xs font-mono font-bold text-muted-foreground uppercase">Actions</th>
+                      <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">PO #</th>
+                      <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">Supplier</th>
+                      <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">Project</th>
+                      <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">Date</th>
+                      <th className="px-3 sm:px-6 py-3 sm:py-4 text-right text-xs font-mono font-bold text-muted-foreground uppercase">Amount</th>
+                      <th className="px-3 sm:px-6 py-3 sm:py-4 text-center text-xs font-mono font-bold text-muted-foreground uppercase">Status</th>
+                      <th className="px-3 sm:px-6 py-3 sm:py-4 text-right text-xs font-mono font-bold text-muted-foreground uppercase">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
@@ -831,19 +834,19 @@ export default function Financials() {
                     ) : (
                       purchaseOrders.map((po) => (
                         <tr key={po.id} className="hover:bg-muted/30 transition-colors">
-                          <td className="px-6 py-4 font-mono font-medium">{po.po_number}</td>
-                          <td className="px-6 py-4">{po.supplier_name}</td>
-                          <td className="px-6 py-4">{po.project_name || po.project_code}</td>
+                          <td className="px-3 sm:px-6 py-3 sm:py-4 font-mono font-medium">{po.po_number}</td>
+                          <td className="px-3 sm:px-6 py-3 sm:py-4">{po.supplier_name}</td>
+                          <td className="px-3 sm:px-6 py-3 sm:py-4">{po.project_name || po.project_code}</td>
                           <td className="px-6 py-4 font-mono text-sm text-muted-foreground">
                             {new Date(po.date).toLocaleDateString()}
                           </td>
-                          <td className="px-6 py-4 text-right font-mono font-bold">
+                          <td className="px-3 sm:px-6 py-3 sm:py-4 text-right font-mono font-bold">
                             ${(Number(po.total_amount) || 0).toFixed(2)}
                           </td>
-                          <td className="px-6 py-4 text-center">
+                          <td className="px-3 sm:px-6 py-3 sm:py-4 text-center">
                             {getStatusBadge(po.status)}
                           </td>
-                          <td className="px-6 py-4 text-right">
+                          <td className="px-3 sm:px-6 py-3 sm:py-4 text-right">
                             <div className="flex items-center justify-end gap-2">
                               {po.status !== 'BILLED' && (
                                 <Button 
@@ -891,18 +894,18 @@ export default function Financials() {
                   New Bill
                 </Button>
               </div>
-              <div className="overflow-x-auto">
-                <table className="w-full">
+              <div className="overflow-x-auto -mx-4 sm:mx-0">
+                <table className="w-full min-w-[800px]">
                   <thead className="bg-muted/50 border-b border-border">
                     <tr>
-                      <th className="px-6 py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">Bill #</th>
-                      <th className="px-6 py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">Supplier</th>
-                      <th className="px-6 py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">Project</th>
-                      <th className="px-6 py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">Date</th>
-                      <th className="px-6 py-4 text-right text-xs font-mono font-bold text-muted-foreground uppercase">Amount</th>
-                      <th className="px-6 py-4 text-right text-xs font-mono font-bold text-muted-foreground uppercase">Due</th>
-                      <th className="px-6 py-4 text-center text-xs font-mono font-bold text-muted-foreground uppercase">Status</th>
-                      <th className="px-6 py-4 text-right text-xs font-mono font-bold text-muted-foreground uppercase">Actions</th>
+                      <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">Bill #</th>
+                      <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">Supplier</th>
+                      <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">Project</th>
+                      <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">Date</th>
+                      <th className="px-3 sm:px-6 py-3 sm:py-4 text-right text-xs font-mono font-bold text-muted-foreground uppercase">Amount</th>
+                      <th className="px-3 sm:px-6 py-3 sm:py-4 text-right text-xs font-mono font-bold text-muted-foreground uppercase">Due</th>
+                      <th className="px-3 sm:px-6 py-3 sm:py-4 text-center text-xs font-mono font-bold text-muted-foreground uppercase">Status</th>
+                      <th className="px-3 sm:px-6 py-3 sm:py-4 text-right text-xs font-mono font-bold text-muted-foreground uppercase">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
@@ -915,22 +918,22 @@ export default function Financials() {
                     ) : (
                       bills.map((bill) => (
                         <tr key={bill.id} className="hover:bg-muted/30 transition-colors">
-                          <td className="px-6 py-4 font-mono font-medium">{bill.bill_number}</td>
-                          <td className="px-6 py-4">{bill.supplier_name}</td>
-                          <td className="px-6 py-4">{bill.project_name || bill.project_code || '-'}</td>
+                          <td className="px-3 sm:px-6 py-3 sm:py-4 font-mono font-medium">{bill.bill_number}</td>
+                          <td className="px-3 sm:px-6 py-3 sm:py-4">{bill.supplier_name}</td>
+                          <td className="px-3 sm:px-6 py-3 sm:py-4">{bill.project_name || bill.project_code || '-'}</td>
                           <td className="px-6 py-4 font-mono text-sm text-muted-foreground">
                             {new Date(bill.date).toLocaleDateString()}
                           </td>
-                          <td className="px-6 py-4 text-right font-mono font-bold">
+                          <td className="px-3 sm:px-6 py-3 sm:py-4 text-right font-mono font-bold">
                             ${(Number(bill.amount) || 0).toFixed(2)}
                           </td>
-                          <td className="px-6 py-4 text-right font-mono">
+                          <td className="px-3 sm:px-6 py-3 sm:py-4 text-right font-mono">
                             ${(Number(bill.amount_due) || 0).toFixed(2)}
                           </td>
-                          <td className="px-6 py-4 text-center">
+                          <td className="px-3 sm:px-6 py-3 sm:py-4 text-center">
                             {getStatusBadge(bill.status)}
                           </td>
-                          <td className="px-6 py-4 text-right">
+                          <td className="px-3 sm:px-6 py-3 sm:py-4 text-right">
                             <div className="flex items-center justify-end gap-2">
                               {bill.status !== 'PAID' && (
                                 <Button 
@@ -980,17 +983,17 @@ export default function Financials() {
                   New Expense
                 </Button>
               </div>
-              <div className="overflow-x-auto">
-                <table className="w-full">
+              <div className="overflow-x-auto -mx-4 sm:mx-0">
+                <table className="w-full min-w-[800px]">
                   <thead className="bg-muted/50 border-b border-border">
                     <tr>
-                      <th className="px-6 py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">Date</th>
-                      <th className="px-6 py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">Description</th>
-                      <th className="px-6 py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">Project</th>
-                      <th className="px-6 py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">Cost Center</th>
-                      <th className="px-6 py-4 text-right text-xs font-mono font-bold text-muted-foreground uppercase">Amount</th>
-                      <th className="px-6 py-4 text-center text-xs font-mono font-bold text-muted-foreground uppercase">Status</th>
-                      <th className="px-6 py-4 text-right text-xs font-mono font-bold text-muted-foreground uppercase">Actions</th>
+                      <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">Date</th>
+                      <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">Description</th>
+                      <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">Project</th>
+                      <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase">Cost Center</th>
+                      <th className="px-3 sm:px-6 py-3 sm:py-4 text-right text-xs font-mono font-bold text-muted-foreground uppercase">Amount</th>
+                      <th className="px-3 sm:px-6 py-3 sm:py-4 text-center text-xs font-mono font-bold text-muted-foreground uppercase">Status</th>
+                      <th className="px-3 sm:px-6 py-3 sm:py-4 text-right text-xs font-mono font-bold text-muted-foreground uppercase">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-border">
@@ -1006,16 +1009,16 @@ export default function Financials() {
                           <td className="px-6 py-4 font-mono text-sm text-muted-foreground">
                             {new Date(expense.date).toLocaleDateString()}
                           </td>
-                          <td className="px-6 py-4">{expense.description}</td>
-                          <td className="px-6 py-4">{expense.project_name || expense.project_code || '-'}</td>
-                          <td className="px-6 py-4">{expense.cost_center_name || expense.cost_center_code || '-'}</td>
-                          <td className="px-6 py-4 text-right font-mono font-bold">
+                          <td className="px-3 sm:px-6 py-3 sm:py-4">{expense.description}</td>
+                          <td className="px-3 sm:px-6 py-3 sm:py-4">{expense.project_name || expense.project_code || '-'}</td>
+                          <td className="px-3 sm:px-6 py-3 sm:py-4">{expense.cost_center_name || expense.cost_center_code || '-'}</td>
+                          <td className="px-3 sm:px-6 py-3 sm:py-4 text-right font-mono font-bold">
                             ${(Number(expense.amount) || 0).toFixed(2)}
                           </td>
-                          <td className="px-6 py-4 text-center">
+                          <td className="px-3 sm:px-6 py-3 sm:py-4 text-center">
                             {getStatusBadge(expense.status)}
                           </td>
-                          <td className="px-6 py-4 text-right">
+                          <td className="px-3 sm:px-6 py-3 sm:py-4 text-right">
                             <Button 
                               variant="ghost" 
                               size="sm"
@@ -1067,14 +1070,14 @@ export default function Financials() {
 
       {/* Create Invoice Modal */}
       <Dialog open={isCreateModalOpen} onOpenChange={setIsCreateModalOpen}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-[95vw] sm:max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="text-xl font-bold">Create New Invoice</DialogTitle>
           </DialogHeader>
 
           <div className="space-y-6 py-4">
             {/* Client & Project Selection */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <Label className="font-mono text-xs uppercase tracking-wider">Client *</Label>
                 <Select
@@ -1116,7 +1119,7 @@ export default function Financials() {
             </div>
 
             {/* Due Date */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <Label className="font-mono text-xs uppercase tracking-wider">Due Date</Label>
                 <Input
@@ -1249,14 +1252,14 @@ export default function Financials() {
 
       {/* Create Invoice from Timesheets Modal */}
       <Dialog open={isCreateFromTimesheetsModalOpen} onOpenChange={setIsCreateFromTimesheetsModalOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-[95vw] sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle className="text-xl font-bold">Create Invoice from Timesheets</DialogTitle>
           </DialogHeader>
 
           <div className="space-y-6 py-4">
             {/* Client & Project Selection */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <Label className="font-mono text-xs uppercase tracking-wider">Client *</Label>
                 <Select
@@ -1321,7 +1324,7 @@ export default function Financials() {
 
             {/* Custom Date Range */}
             {timesheetInvoiceForm.period === 'custom' && (
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <Label className="font-mono text-xs uppercase tracking-wider">From Date *</Label>
                   <Input
@@ -1424,7 +1427,7 @@ export default function Financials() {
 
       {/* Error Details Modal */}
       <Dialog open={!!selectedErrorEntity} onOpenChange={(open) => !open && setSelectedErrorEntity(null)}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+        <DialogContent className="max-w-[95vw] sm:max-w-2xl max-h-[80vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Sync Error Details</DialogTitle>
           </DialogHeader>

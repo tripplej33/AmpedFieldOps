@@ -191,14 +191,14 @@ export default function BillModal({ purchaseOrderId, open, onOpenChange, onBillC
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-[95vw] sm:max-w-4xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-xl font-bold">Create Bill (Supplier Invoice)</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-6 py-4">
           {/* Supplier & PO Selection */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <Label className="font-mono text-xs uppercase tracking-wider">Supplier *</Label>
               <Select
@@ -270,7 +270,7 @@ export default function BillModal({ purchaseOrderId, open, onOpenChange, onBillC
           )}
 
           {/* Dates */}
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <Label className="font-mono text-xs uppercase tracking-wider">Bill Date *</Label>
               <Input

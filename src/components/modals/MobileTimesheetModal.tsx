@@ -188,7 +188,7 @@ export default function MobileTimesheetModal({ open, onOpenChange }: MobileTimes
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-[95vw] sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="text-xl font-bold">New Timesheet Entry</DialogTitle>
           <DialogDescription className="font-mono text-xs">
@@ -365,7 +365,7 @@ export default function MobileTimesheetModal({ open, onOpenChange }: MobileTimes
             <Label className="font-mono text-xs uppercase tracking-wider mb-3 block">
               Activity Type *
             </Label>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               {activityTypes.map((activity) => {
                 const IconComponent = iconMap[activity.icon] || Wrench;
                 return (

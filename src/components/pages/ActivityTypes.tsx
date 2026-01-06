@@ -170,7 +170,7 @@ export default function ActivityTypes() {
     <>
       <Header title="Activity Types" subtitle="Configure timesheet activity categories" />
 
-      <div className="p-8 max-w-[1200px] mx-auto">
+      <div className="p-4 sm:p-6 lg:p-8 max-w-[1200px] mx-auto">
         {/* Actions */}
         <div className="flex items-center justify-between mb-6">
           <p className="text-sm text-muted-foreground">

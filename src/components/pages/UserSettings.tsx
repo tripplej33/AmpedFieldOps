@@ -97,7 +97,7 @@ export default function UserSettings() {
     <>
       <Header title="User Settings" subtitle="Manage your account and preferences" />
 
-      <div className="p-8 max-w-[800px] mx-auto space-y-6">
+      <div className="p-4 sm:p-6 lg:p-8 max-w-[800px] mx-auto space-y-4 sm:space-y-6">
         {/* Profile Settings */}
         <Card className="p-6 bg-card border-border">
           <div className="flex items-center gap-3 mb-6">

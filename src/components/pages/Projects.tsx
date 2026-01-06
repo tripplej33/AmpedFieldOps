@@ -43,12 +43,12 @@ function ProjectCard({
 
   return (
     <Card className="p-4 bg-card border-border hover:border-electric transition-all cursor-pointer group" onClick={onClick}>
-      <div className="flex items-start justify-between mb-3">
-        <div className="flex-1">
-          <h4 className="font-semibold text-foreground group-hover:text-electric transition-colors">
+      <div className="flex items-start justify-between mb-3 gap-2">
+        <div className="flex-1 min-w-0">
+          <h4 className="font-semibold text-foreground group-hover:text-electric transition-colors truncate">
             {project.name}
           </h4>
-          <p className="text-xs font-mono text-muted-foreground mt-1">{project.code}</p>
+          <p className="text-xs font-mono text-muted-foreground mt-1 truncate">{project.code}</p>
         </div>
         <DropdownMenu>
           <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
@@ -108,7 +108,7 @@ function ProjectCard({
         <div className="flex-1 space-y-2">
           <div className="flex items-center gap-2 text-xs">
             <DollarSign className="w-3 h-3 text-muted-foreground" />
-            <span className="font-mono text-muted-foreground">
+            <span className="font-mono text-muted-foreground truncate">
               ${(project.actual_cost || 0).toLocaleString()} / ${project.budget.toLocaleString()}
             </span>
           </div>
@@ -278,7 +278,7 @@ export default function Projects() {
     <>
       <Header title="Project Status Board" subtitle="Kanban view of all active projects" />
 
-      <div className="p-8">
+      <div className="p-4 sm:p-6 lg:p-8">
         <div className="mb-6 flex items-center justify-between">
           <div className="flex items-center gap-4">
             {statusColumns.map((col) => {
@@ -302,8 +302,9 @@ export default function Projects() {
           </Button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-          {statusColumns.map((column) => (
+        <div className="overflow-x-auto -mx-4 sm:mx-0 pb-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 min-w-[320px] px-4 sm:px-0">
+            {statusColumns.map((column) => (
             <div key={column.status} className="space-y-4">
               <div className="flex items-center gap-2 pb-3 border-b border-border">
                 <div className={cn('w-2 h-2 rounded-full', column.color.replace('text-', 'bg-'))} />
@@ -332,7 +333,8 @@ export default function Projects() {
                 Add Project
               </Button>
             </div>
-          ))}
+            ))}
+          </div>
         </div>
       </div>
 
@@ -340,7 +342,7 @@ export default function Projects() {
 
       {/* Create Project Modal */}
       <Dialog open={createModalOpen} onOpenChange={setCreateModalOpen}>
-        <DialogContent className="sm:max-w-[600px] bg-card border-border">
+        <DialogContent className="max-w-[95vw] sm:max-w-[600px] bg-card border-border">
           <DialogHeader>
             <DialogTitle className="text-xl font-bold">Create New Project</DialogTitle>
             <DialogDescription>Add a new project to track time and costs</DialogDescription>
@@ -394,7 +396,7 @@ export default function Projects() {
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="budget" className="font-mono text-xs uppercase tracking-wider">
                   Budget ($)

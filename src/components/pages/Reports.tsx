@@ -171,7 +171,7 @@ export default function Reports() {
     <>
       <Header title="Cost Center Reports" subtitle="Financial and resource allocation analysis" />
 
-      <div className="p-8 max-w-[1400px] mx-auto">
+      <div className="p-4 sm:p-6 lg:p-8 max-w-[1400px] mx-auto">
         {/* Filter Bar */}
         <div className="mb-6 flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-3 flex-wrap">
@@ -288,26 +288,26 @@ export default function Reports() {
 
         {/* Cost Center Matrix */}
         <Card className="bg-card border-border overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full">
+          <div className="overflow-x-auto -mx-4 sm:mx-0">
+            <table className="w-full min-w-[640px]">
               <thead className="bg-muted/50 border-b border-border">
                 <tr>
-                  <th className="px-6 py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase tracking-wider">
+                  <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase tracking-wider">
                     Cost Center
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase tracking-wider">
+                  <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase tracking-wider">
                     Projects
                   </th>
-                  <th className="px-6 py-4 text-right text-xs font-mono font-bold text-muted-foreground uppercase tracking-wider">
+                  <th className="px-3 sm:px-6 py-3 sm:py-4 text-right text-xs font-mono font-bold text-muted-foreground uppercase tracking-wider">
                     Hours
                   </th>
-                  <th className="px-6 py-4 text-right text-xs font-mono font-bold text-muted-foreground uppercase tracking-wider">
+                  <th className="px-3 sm:px-6 py-3 sm:py-4 text-right text-xs font-mono font-bold text-muted-foreground uppercase tracking-wider">
                     Budget
                   </th>
-                  <th className="px-6 py-4 text-right text-xs font-mono font-bold text-muted-foreground uppercase tracking-wider">
+                  <th className="px-3 sm:px-6 py-3 sm:py-4 text-right text-xs font-mono font-bold text-muted-foreground uppercase tracking-wider">
                     Actual
                   </th>
-                  <th className="px-6 py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase tracking-wider">
+                  <th className="px-3 sm:px-6 py-3 sm:py-4 text-left text-xs font-mono font-bold text-muted-foreground uppercase tracking-wider">
                     Utilization
                   </th>
                 </tr>
@@ -315,25 +315,25 @@ export default function Reports() {
               <tbody className="divide-y divide-border">
                 {filteredMetrics.map((cc) => (
                   <tr key={cc.id} className="hover:bg-muted/30 transition-colors">
-                    <td className="px-6 py-4">
+                    <td className="px-3 sm:px-6 py-3 sm:py-4">
                       <div>
                         <p className="font-mono font-semibold text-foreground">{cc.code}</p>
                         <p className="text-sm text-muted-foreground mt-0.5">{cc.name}</p>
                       </div>
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-3 sm:px-6 py-3 sm:py-4">
                       <span className="font-mono text-foreground">{cc.projectCount}</span>
                     </td>
-                    <td className="px-6 py-4 text-right">
+                    <td className="px-3 sm:px-6 py-3 sm:py-4 text-right">
                       <span className="font-mono font-medium text-electric">{cc.totalHours}h</span>
                     </td>
-                    <td className="px-6 py-4 text-right">
+                    <td className="px-3 sm:px-6 py-3 sm:py-4 text-right">
                       <span className="font-mono text-foreground">${cc.totalBudget.toLocaleString()}</span>
                     </td>
-                    <td className="px-6 py-4 text-right">
+                    <td className="px-3 sm:px-6 py-3 sm:py-4 text-right">
                       <span className="font-mono text-foreground">${cc.totalActual.toLocaleString()}</span>
                     </td>
-                    <td className="px-6 py-4">
+                    <td className="px-3 sm:px-6 py-3 sm:py-4">
                       <div className="flex items-center gap-3">
                         <div className="flex-1 h-2 bg-muted rounded-full overflow-hidden max-w-[120px]">
                           <div

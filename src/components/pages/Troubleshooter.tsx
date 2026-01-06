@@ -224,8 +224,8 @@ export default function Troubleshooter() {
   return (
     <div className="flex flex-col h-screen bg-background">
       <Header title="Troubleshooter" subtitle="Run diagnostic tests to verify system functionality" />
-      <div className="flex-1 overflow-auto p-6">
-        <div className="max-w-7xl mx-auto space-y-6">
+      <div className="flex-1 overflow-auto p-4 sm:p-6">
+        <div className="max-w-7xl mx-auto space-y-4 sm:space-y-6">
 
           {/* Controls */}
           <Card className="p-4">

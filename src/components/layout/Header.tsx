@@ -86,14 +86,14 @@ export default function Header({ title, subtitle }: HeaderProps) {
   );
 
   return (
-    <div className="sticky top-0 z-10 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b border-border">
+    <div className="sticky top-0 z-30 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 border-b border-border">
       <div className="flex items-center justify-between px-4 lg:px-8 py-4">
-        <div className="pl-12 lg:pl-0">
-          <h1 className="text-xl lg:text-2xl font-bold text-foreground">{title}</h1>
-          {subtitle && <p className="text-xs lg:text-sm text-muted-foreground mt-0.5">{subtitle}</p>}
+        <div className="ml-14 lg:ml-0 flex-1 min-w-0">
+          <h1 className="text-xl lg:text-2xl font-bold text-foreground truncate">{title}</h1>
+          {subtitle && <p className="text-xs lg:text-sm text-muted-foreground mt-0.5 truncate">{subtitle}</p>}
         </div>
 
-        <div className="flex items-center gap-2 lg:gap-4">
+        <div className="flex items-center gap-1.5 sm:gap-2 lg:gap-4 flex-shrink-0">
           {/* Search with dropdown results */}
           <div className="relative hidden md:block" ref={searchRef}>
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
