@@ -577,6 +577,19 @@ export default function Timesheets() {
         if (entry.notes || formData.notes) {
           formDataToSend.append('notes', entry.notes || formData.notes);
         }
+        // Include all required fields in FormData
+        formDataToSend.append('project_id', formData.project_id);
+        formDataToSend.append('activity_type_id', entry.activity_type_id);
+        formDataToSend.append('cost_center_id', entry.cost_center_id);
+        formDataToSend.append('date', formData.date);
+        formDataToSend.append('hours', hours.toString());
+        if (entry.notes || formData.notes) {
+          formDataToSend.append('notes', entry.notes || formData.notes);
+        }
+        if (userId) {
+          formDataToSend.append('user_id', userId);
+        }
+        
         // Include existing image URLs
         if (imagePreviews.length > 0) {
           formDataToSend.append('image_urls', JSON.stringify(imagePreviews));
@@ -1118,72 +1131,84 @@ function TimesheetForm({
   handleDrop: (e: React.DragEvent) => void;
 }) {
   return (
-    <div className="space-y-4 py-4 max-h-[70vh] overflow-y-auto">
-      {/* Client and Project Selection */}
-      <div>
-        <Label className="font-mono text-xs uppercase tracking-wider">Client</Label>
-        <Select value={formData.client_id} onValueChange={handleClientChange}>
-          <SelectTrigger className="mt-2">
-            <SelectValue placeholder="Select client" />
-          </SelectTrigger>
-          <SelectContent>
-            {clients.length === 0 ? (
-              <SelectItem value="__empty__" disabled>No clients available</SelectItem>
-            ) : (
-              clients.map((client) => (
-                <SelectItem key={client.id} value={client.id.toString()}>
-                  {client.name}
-                </SelectItem>
-              ))
-            )}
-          </SelectContent>
-        </Select>
-      </div>
+    <div className="space-y-6 py-4 max-h-[70vh] overflow-y-auto">
+      {/* Project Information Section */}
+      <div className="space-y-4 p-4 rounded-lg border border-border bg-muted/20">
+        <h3 className="font-semibold text-base flex items-center gap-2">
+          <Calendar className="w-4 h-4 text-electric" />
+          Project Information
+        </h3>
+        
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <Label className="font-mono text-xs uppercase tracking-wider mb-2 block">Client</Label>
+            <Select value={formData.client_id} onValueChange={handleClientChange}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select client" />
+              </SelectTrigger>
+              <SelectContent>
+                {clients.length === 0 ? (
+                  <SelectItem value="__empty__" disabled>No clients available</SelectItem>
+                ) : (
+                  clients.map((client) => (
+                    <SelectItem key={client.id} value={client.id.toString()}>
+                      {client.name}
+                    </SelectItem>
+                  ))
+                )}
+              </SelectContent>
+            </Select>
+          </div>
 
-      <div>
-        <Label className="font-mono text-xs uppercase tracking-wider">Project *</Label>
-        <Select
-          value={formData.project_id}
-          onValueChange={handleProjectChange}
-          disabled={!formData.client_id}
-        >
-          <SelectTrigger className="mt-2">
-            <SelectValue placeholder="Select project" />
-          </SelectTrigger>
-          <SelectContent>
-            {projects.length === 0 ? (
-              <SelectItem value="__empty__" disabled>No projects for this client</SelectItem>
-            ) : (
-              projects.filter(project => project.id).map((project) => (
-                <SelectItem key={project.id} value={project.id.toString()}>
-                  {project.name}
-                </SelectItem>
-              ))
-            )}
-          </SelectContent>
-        </Select>
-      </div>
+          <div>
+            <Label className="font-mono text-xs uppercase tracking-wider mb-2 block">Project *</Label>
+            <Select
+              value={formData.project_id}
+              onValueChange={handleProjectChange}
+              disabled={!formData.client_id}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select project" />
+              </SelectTrigger>
+              <SelectContent>
+                {projects.length === 0 ? (
+                  <SelectItem value="__empty__" disabled>No projects for this client</SelectItem>
+                ) : (
+                  projects.filter(project => project.id).map((project) => (
+                    <SelectItem key={project.id} value={project.id.toString()}>
+                      {project.name}
+                    </SelectItem>
+                  ))
+                )}
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
 
-      <div>
-        <Label className="font-mono text-xs uppercase tracking-wider">Date *</Label>
-        <Input
-          type="date"
-          value={formData.date}
-          onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-          className="mt-2"
-        />
+        <div>
+          <Label className="font-mono text-xs uppercase tracking-wider mb-2 block">Date *</Label>
+          <Input
+            type="date"
+            value={formData.date}
+            onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+            className="max-w-xs"
+          />
+        </div>
       </div>
 
       {/* Activity Entries Section */}
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <Label className="font-mono text-xs uppercase tracking-wider">Activity Types *</Label>
+        <div className="flex items-center justify-between pb-2 border-b border-border">
+          <h3 className="font-semibold text-base flex items-center gap-2">
+            <Wrench className="w-4 h-4 text-electric" />
+            Activity Types *
+          </h3>
           <Button
             type="button"
             variant="outline"
             size="sm"
             onClick={addActivityEntry}
-            className="h-8"
+            className="h-8 border-electric/30 hover:border-electric hover:bg-electric/10"
           >
             <Plus className="w-3 h-3 mr-1" />
             Add Activity
@@ -1191,37 +1216,44 @@ function TimesheetForm({
         </div>
 
         {formData.activity_entries.length === 0 ? (
-          <div className="p-4 border border-dashed border-muted rounded-lg text-center text-muted-foreground text-sm">
-            No activities added. Click "Add Activity" to get started.
+          <div className="p-8 border-2 border-dashed border-muted rounded-lg text-center bg-muted/10">
+            <Wrench className="w-8 h-8 mx-auto mb-3 text-muted-foreground opacity-50" />
+            <p className="text-sm text-muted-foreground font-medium">No activities added</p>
+            <p className="text-xs text-muted-foreground mt-1">Click "Add Activity" to get started</p>
           </div>
         ) : (
           formData.activity_entries.map((entry: ActivityTypeEntry, index: number) => (
-            <div key={entry.id} className="p-4 border border-border rounded-lg bg-muted/20 space-y-4">
-              <div className="flex items-center justify-between">
-                <Label className="font-mono text-xs uppercase tracking-wider">
-                  Activity {index + 1}
-                </Label>
+            <Card key={entry.id} className="p-5 border-2 border-border hover:border-electric/50 transition-colors bg-card">
+              <div className="flex items-center justify-between mb-4 pb-3 border-b border-border">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-electric/20 border-2 border-electric flex items-center justify-center">
+                    <span className="text-sm font-bold font-mono text-electric">{index + 1}</span>
+                  </div>
+                  <Label className="font-semibold text-base">
+                    Activity {index + 1}
+                  </Label>
+                </div>
                 {formData.activity_entries.length > 1 && (
                   <Button
                     type="button"
                     variant="ghost"
                     size="sm"
                     onClick={() => removeActivityEntry(entry.id)}
-                    className="h-7 text-destructive hover:text-destructive"
+                    className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
                   >
-                    <X className="w-3 h-3" />
+                    <X className="w-4 h-4" />
                   </Button>
                 )}
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <Label className="font-mono text-xs uppercase tracking-wider">Activity Type *</Label>
+                  <Label className="font-mono text-xs uppercase tracking-wider mb-2 block">Activity Type *</Label>
                   <Select
                     value={entry.activity_type_id}
                     onValueChange={(value) => updateActivityEntry(entry.id, { activity_type_id: value })}
                   >
-                    <SelectTrigger className="mt-2">
+                    <SelectTrigger>
                       <SelectValue placeholder="Select activity" />
                     </SelectTrigger>
                     <SelectContent>
@@ -1239,13 +1271,13 @@ function TimesheetForm({
                 </div>
 
                 <div>
-                  <Label className="font-mono text-xs uppercase tracking-wider">Cost Center *</Label>
+                  <Label className="font-mono text-xs uppercase tracking-wider mb-2 block">Cost Center *</Label>
                   <Select
                     value={entry.cost_center_id}
                     onValueChange={(value) => updateActivityEntry(entry.id, { cost_center_id: value })}
                     disabled={!formData.project_id || costCenters.length === 0}
                   >
-                    <SelectTrigger className="mt-2">
+                    <SelectTrigger>
                       <SelectValue placeholder={costCenters.length === 0 ? "Select project first" : "Select cost center"} />
                     </SelectTrigger>
                     <SelectContent>
@@ -1264,9 +1296,9 @@ function TimesheetForm({
               </div>
 
               {/* Users and Hours Section */}
-              <div className="space-y-3 pt-2 border-t border-border">
-                <Label className="font-mono text-xs uppercase tracking-wider flex items-center gap-2">
-                  <Users className="w-3 h-3" />
+              <div className="space-y-3 pt-3 border-t border-border">
+                <Label className="font-mono text-xs uppercase tracking-wider flex items-center gap-2 mb-3 block">
+                  <Users className="w-4 h-4 text-electric" />
                   Assign Users & Hours
                 </Label>
                 
@@ -1274,10 +1306,16 @@ function TimesheetForm({
                   {users.map((user) => {
                     const isSelected = entry.user_ids.includes(user.id);
                     return (
-                      <div key={user.id} className="flex items-center gap-3 p-2 rounded border border-border bg-card">
+                      <div key={user.id} className={cn(
+                        "flex items-center gap-3 p-3 rounded-lg border-2 transition-all",
+                        isSelected 
+                          ? "border-electric bg-electric/10" 
+                          : "border-border hover:border-electric/30 bg-card"
+                      )}>
                         <Checkbox
                           checked={isSelected}
                           onCheckedChange={() => toggleUserForActivity(entry.id, user.id)}
+                          className="border-2"
                         />
                         <div className="flex-1">
                           <Label className="text-sm font-medium cursor-pointer" onClick={() => toggleUserForActivity(entry.id, user.id)}>
@@ -1293,10 +1331,10 @@ function TimesheetForm({
                               max="24"
                               value={entry.user_hours[user.id] || ''}
                               onChange={(e) => updateUserHoursForActivity(entry.id, user.id, e.target.value)}
-                              placeholder="Hours"
-                              className="w-20 h-8 text-sm"
+                              placeholder="0.00"
+                              className="w-24 h-9 text-sm font-mono text-center border-electric/30 focus:border-electric"
                             />
-                            <span className="text-xs text-muted-foreground">hrs</span>
+                            <span className="text-xs text-muted-foreground font-medium">hrs</span>
                           </div>
                         )}
                       </div>
@@ -1305,15 +1343,16 @@ function TimesheetForm({
                 </div>
 
                 {entry.user_ids.length === 0 && (
-                  <div className="p-2 text-xs text-muted-foreground text-center border border-dashed border-muted rounded">
-                    No users assigned. Check users above to assign hours.
+                  <div className="p-4 text-xs text-muted-foreground text-center border-2 border-dashed border-muted rounded-lg bg-muted/10">
+                    <Users className="w-5 h-5 mx-auto mb-2 opacity-50" />
+                    <p>No users assigned. Check users above to assign hours.</p>
                   </div>
                 )}
               </div>
 
               {/* Activity-specific notes */}
               <div>
-                <Label className="font-mono text-xs uppercase tracking-wider">Activity Notes</Label>
+                <Label className="font-mono text-xs uppercase tracking-wider mb-2 block">Activity Notes</Label>
                 <Textarea
                   value={entry.notes}
                   onChange={(e) => updateActivityEntry(entry.id, { notes: e.target.value })}
@@ -1327,19 +1366,22 @@ function TimesheetForm({
       </div>
 
       {/* General Notes */}
-      <div>
-        <Label className="font-mono text-xs uppercase tracking-wider">General Notes</Label>
+      <div className="p-4 rounded-lg border border-border bg-muted/20">
+        <Label className="font-mono text-xs uppercase tracking-wider mb-2 block">General Notes</Label>
         <Textarea
           value={formData.notes}
           onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
           placeholder="General work description..."
-          className="mt-2 min-h-[80px]"
+          className="min-h-[100px] resize-none"
         />
       </div>
 
       {/* Photo/Image Upload Section */}
-      <div>
-        <Label className="font-mono text-xs uppercase tracking-wider">Photos / Media</Label>
+      <div className="p-4 rounded-lg border border-border bg-muted/20">
+        <Label className="font-mono text-xs uppercase tracking-wider mb-3 block flex items-center gap-2">
+          <Camera className="w-4 h-4 text-electric" />
+          Photos / Media
+        </Label>
         
         {/* Drag and Drop Zone */}
         {imagePreviews.length < 5 && (
@@ -1350,16 +1392,27 @@ function TimesheetForm({
             onDragOver={handleDragOver}
             onDrop={handleDrop}
             className={cn(
-              "mt-2 border-2 border-dashed rounded-lg p-6 transition-colors",
+              "border-2 border-dashed rounded-lg p-8 transition-all duration-200",
               isDragging 
-                ? "border-electric bg-electric/10" 
-                : "border-muted hover:border-electric/50"
+                ? "border-electric bg-electric/20 scale-[1.02] shadow-lg shadow-electric/20" 
+                : "border-muted hover:border-electric/50 bg-muted/10"
             )}
           >
-            <div className="flex flex-col items-center justify-center gap-2 text-center">
-              <Image className="w-8 h-8 text-muted-foreground" />
+            <div className="flex flex-col items-center justify-center gap-3 text-center">
+              <div className={cn(
+                "w-16 h-16 rounded-full flex items-center justify-center transition-colors",
+                isDragging ? "bg-electric/20" : "bg-muted"
+              )}>
+                <Image className={cn(
+                  "w-8 h-8 transition-colors",
+                  isDragging ? "text-electric" : "text-muted-foreground"
+                )} />
+              </div>
               <div>
-                <p className="text-sm font-medium">
+                <p className={cn(
+                  "text-sm font-semibold transition-colors",
+                  isDragging ? "text-electric" : "text-foreground"
+                )}>
                   {isDragging ? "Drop images here" : "Drag & drop images here"}
                 </p>
                 <p className="text-xs text-muted-foreground mt-1">
@@ -1370,27 +1423,28 @@ function TimesheetForm({
           </div>
         )}
 
-        <div className="mt-2 flex flex-wrap gap-3">
+        <div className="mt-4 flex flex-wrap gap-3">
           {/* Image Previews */}
           {imagePreviews.map((preview, index) => (
-            <div key={index} className="relative w-20 h-20 rounded-lg overflow-hidden border border-border group">
+            <div key={index} className="relative w-24 h-24 rounded-lg overflow-hidden border-2 border-border group hover:border-electric transition-all shadow-sm hover:shadow-md">
               <img src={preview} alt={`Preview ${index + 1}`} className="w-full h-full object-cover" />
               {/* Upload Progress */}
               {uploadProgress[index] !== undefined && uploadProgress[index] < 100 && (
-                <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
-                  <div className="w-12 h-12 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center gap-2">
+                  <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <span className="text-xs text-white font-medium">{uploadProgress[index]}%</span>
                 </div>
               )}
               {/* Remove Button */}
               <button
                 type="button"
                 onClick={() => removeImage(index)}
-                className="absolute top-1 right-1 w-5 h-5 bg-destructive rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                className="absolute top-1 right-1 w-6 h-6 bg-destructive rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg hover:scale-110"
               >
-                <X className="w-3 h-3 text-white" />
+                <X className="w-3.5 h-3.5 text-white" />
               </button>
               {/* File Info */}
-              <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-xs p-1 truncate opacity-0 group-hover:opacity-100 transition-opacity">
+              <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent text-white text-xs p-2 truncate opacity-0 group-hover:opacity-100 transition-opacity">
                 {imageFiles[index]?.name || `Image ${index + 1}`}
               </div>
             </div>
@@ -1403,20 +1457,24 @@ function TimesheetForm({
               <button
                 type="button"
                 onClick={() => cameraInputRef.current?.click()}
-                className="w-20 h-20 rounded-lg border-2 border-dashed border-muted hover:border-electric flex flex-col items-center justify-center gap-1 transition-colors"
+                className="w-24 h-24 rounded-lg border-2 border-dashed border-muted hover:border-electric hover:bg-electric/5 flex flex-col items-center justify-center gap-2 transition-all group"
               >
-                <Camera className="w-6 h-6 text-muted-foreground" />
-                <span className="text-xs text-muted-foreground">Camera</span>
+                <div className="w-10 h-10 rounded-full bg-muted group-hover:bg-electric/20 flex items-center justify-center transition-colors">
+                  <Camera className="w-5 h-5 text-muted-foreground group-hover:text-electric transition-colors" />
+                </div>
+                <span className="text-xs text-muted-foreground group-hover:text-electric font-medium transition-colors">Camera</span>
               </button>
 
               {/* Select from Gallery */}
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="w-20 h-20 rounded-lg border-2 border-dashed border-muted hover:border-electric flex flex-col items-center justify-center gap-1 transition-colors"
+                className="w-24 h-24 rounded-lg border-2 border-dashed border-muted hover:border-electric hover:bg-electric/5 flex flex-col items-center justify-center gap-2 transition-all group"
               >
-                <Image className="w-6 h-6 text-muted-foreground" />
-                <span className="text-xs text-muted-foreground">Gallery</span>
+                <div className="w-10 h-10 rounded-full bg-muted group-hover:bg-electric/20 flex items-center justify-center transition-colors">
+                  <Image className="w-5 h-5 text-muted-foreground group-hover:text-electric transition-colors" />
+                </div>
+                <span className="text-xs text-muted-foreground group-hover:text-electric font-medium transition-colors">Gallery</span>
               </button>
             </>
           )}
@@ -1440,21 +1498,29 @@ function TimesheetForm({
           className="hidden"
         />
         
-        <p className="text-xs text-muted-foreground mt-2">
+        <p className="text-xs text-muted-foreground mt-3 flex items-center gap-1">
+          <span className="w-1.5 h-1.5 rounded-full bg-electric"></span>
           Add up to 5 photos (max 10MB each). Drag & drop or click to select.
         </p>
       </div>
 
-      <div className="flex justify-end gap-3 pt-4 sticky bottom-0 bg-card pb-2">
-        <Button variant="outline" onClick={onCancel} disabled={isSubmitting}>
+      <div className="flex justify-end gap-3 pt-6 border-t border-border sticky bottom-0 bg-card -mx-4 px-4 pb-2">
+        <Button variant="outline" onClick={onCancel} disabled={isSubmitting} className="min-w-[100px]">
           Cancel
         </Button>
         <Button
           onClick={onSubmit}
           disabled={isSubmitting}
-          className="bg-electric text-background hover:bg-electric/90"
+          className="bg-electric text-background hover:bg-electric/90 min-w-[120px] shadow-lg shadow-electric/20"
         >
-          {isSubmitting ? <Loader2 className="w-4 h-4 animate-spin" /> : submitLabel}
+          {isSubmitting ? (
+            <>
+              <Loader2 className="w-4 h-4 animate-spin mr-2" />
+              Saving...
+            </>
+          ) : (
+            submitLabel
+          )}
         </Button>
       </div>
     </div>

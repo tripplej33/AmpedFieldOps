@@ -36,14 +36,17 @@ const UPLOADS_DIR = path.join(process.cwd(), 'uploads');
 async function ensureBackupDir() {
   try {
     await fs.mkdir(BACKUP_DIR, { recursive: true });
-  } catch (error) {
-    console.error('Failed to create backup directory:', error);
-    throw error;
+    // Verify directory was created and is writable
+    await fs.access(BACKUP_DIR, fs.constants.W_OK);
+  } catch (error: any) {
+    const errorMsg = `Failed to create or access backup directory (${BACKUP_DIR}): ${error.message}`;
+    console.error(errorMsg, error);
+    throw new Error(errorMsg);
   }
 }
 
 // Extract database connection details from DATABASE_URL
-function getDatabaseConfig() {
+export function getDatabaseConfig() {
   const dbUrl = env.DATABASE_URL;
   if (!dbUrl) {
     throw new Error('DATABASE_URL not configured');
@@ -82,9 +85,16 @@ async function backupDatabase(): Promise<string> {
   const envVars = { ...process.env, PGPASSWORD: config.password };
 
   try {
-    await execAsync(pgDumpCmd, { env: envVars });
+    await execAsync(pgDumpCmd, { env: envVars, maxBuffer: 10 * 1024 * 1024 }); // 10MB buffer
+    // Verify file was created
+    await fs.access(dumpFile);
     return dumpFile;
   } catch (error: any) {
+    // Check if pg_dump is available
+    if (error.message.includes('pg_dump') || error.message.includes('not found') || error.message.includes('ENOENT')) {
+      throw new Error('pg_dump command not found. Please ensure PostgreSQL client tools are installed on the server.');
+    }
+    
     // Try alternative: plain SQL format
     const plainDumpCmd = [
       'pg_dump',
@@ -96,14 +106,14 @@ async function backupDatabase(): Promise<string> {
     ].join(' ');
 
     try {
-      await execAsync(plainDumpCmd, { env: envVars });
+      await execAsync(plainDumpCmd, { env: envVars, maxBuffer: 10 * 1024 * 1024 });
+      // Verify file was created
+      await fs.access(dumpFile);
       return dumpFile;
     } catch (retryError: any) {
-      // Check if pg_dump is available
-      if (retryError.message.includes('pg_dump') || retryError.message.includes('not found') || retryError.message.includes('ENOENT')) {
-        throw new Error('pg_dump command not found. Please ensure PostgreSQL client tools are installed on the server.');
-      }
-      throw new Error(`Database backup failed: ${retryError.message || retryError.stderr || 'Unknown error'}`);
+      // Provide more detailed error message
+      const errorDetails = retryError.stderr || retryError.message || 'Unknown error';
+      throw new Error(`Database backup failed: ${errorDetails}. Check database connection and permissions.`);
     }
   }
 }

@@ -19,7 +19,7 @@ import {
 } from '@/components/ui/select';
 import { api } from '@/lib/api';
 import { Client, Project, ActivityType, CostCenter } from '@/types';
-import { Camera, Wrench, CheckCircle, Search, MessageSquare, Clock, Loader2, Image, X } from 'lucide-react';
+import { Camera, Wrench, CheckCircle, Search, MessageSquare, Clock, Loader2, Image, X, Calendar } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 
@@ -209,32 +209,38 @@ export default function MobileTimesheetModal({ open, onOpenChange }: MobileTimes
 
         <div className="space-y-6 py-4">
           {/* Date Selection */}
-          <div>
-            <Label className="font-mono text-xs uppercase tracking-wider mb-2 block">Date</Label>
+          <div className="p-4 rounded-lg border border-border bg-muted/20">
+            <Label className="font-mono text-xs uppercase tracking-wider mb-3 block flex items-center gap-2">
+              <Calendar className="w-4 h-4 text-electric" />
+              Date
+            </Label>
             <Input
               type="date"
               value={selectedDate}
               onChange={(e) => setSelectedDate(e.target.value)}
-              className="font-mono"
+              className="font-mono text-base h-12"
             />
           </div>
 
           {/* Photo Capture */}
-          <div>
-            <Label className="font-mono text-xs uppercase tracking-wider mb-2 block">Photos (Optional)</Label>
+          <div className="p-4 rounded-lg border border-border bg-muted/20">
+            <Label className="font-mono text-xs uppercase tracking-wider mb-3 block flex items-center gap-2">
+              <Camera className="w-4 h-4 text-electric" />
+              Photos (Optional)
+            </Label>
             
             {/* Image Previews */}
             {imagePreviews.length > 0 && (
-              <div className="flex flex-wrap gap-2 mb-3">
+              <div className="flex flex-wrap gap-3 mb-4">
                 {imagePreviews.map((preview, index) => (
-                  <div key={index} className="relative w-16 h-16 rounded-lg overflow-hidden border border-border">
+                  <div key={index} className="relative w-20 h-20 rounded-lg overflow-hidden border-2 border-border group">
                     <img src={preview} alt={`Preview ${index + 1}`} className="w-full h-full object-cover" />
                     <button
                       type="button"
                       onClick={() => removeImage(index)}
-                      className="absolute top-0.5 right-0.5 w-4 h-4 bg-destructive rounded-full flex items-center justify-center"
+                      className="absolute top-1 right-1 w-6 h-6 bg-destructive rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
                     >
-                      <X className="w-2.5 h-2.5 text-white" />
+                      <X className="w-3.5 h-3.5 text-white" />
                     </button>
                   </div>
                 ))}
@@ -246,23 +252,27 @@ export default function MobileTimesheetModal({ open, onOpenChange }: MobileTimes
                 <Button
                   type="button"
                   variant="outline"
-                  className="flex-1 h-20 border-dashed border-2 hover:border-electric hover:bg-electric/5"
+                  className="flex-1 h-24 border-2 border-dashed hover:border-electric hover:bg-electric/10 transition-all"
                   onClick={() => cameraInputRef.current?.click()}
                 >
-                  <div className="flex flex-col items-center gap-1">
-                    <Camera className="w-6 h-6 text-muted-foreground" />
-                    <span className="text-xs text-muted-foreground">Take Photo</span>
+                  <div className="flex flex-col items-center gap-2">
+                    <div className="w-10 h-10 rounded-full bg-electric/20 flex items-center justify-center">
+                      <Camera className="w-5 h-5 text-electric" />
+                    </div>
+                    <span className="text-xs font-medium">Take Photo</span>
                   </div>
                 </Button>
                 <Button
                   type="button"
                   variant="outline"
-                  className="flex-1 h-20 border-dashed border-2 hover:border-electric hover:bg-electric/5"
+                  className="flex-1 h-24 border-2 border-dashed hover:border-electric hover:bg-electric/10 transition-all"
                   onClick={() => fileInputRef.current?.click()}
                 >
-                  <div className="flex flex-col items-center gap-1">
-                    <Image className="w-6 h-6 text-muted-foreground" />
-                    <span className="text-xs text-muted-foreground">Gallery</span>
+                  <div className="flex flex-col items-center gap-2">
+                    <div className="w-10 h-10 rounded-full bg-electric/20 flex items-center justify-center">
+                      <Image className="w-5 h-5 text-electric" />
+                    </div>
+                    <span className="text-xs font-medium">Gallery</span>
                   </div>
                 </Button>
               </div>
@@ -298,12 +308,12 @@ export default function MobileTimesheetModal({ open, onOpenChange }: MobileTimes
           ) : (
             <>
           {/* Client Selection */}
-          <div>
-            <Label htmlFor="client" className="font-mono text-xs uppercase tracking-wider">
+          <div className="p-4 rounded-lg border border-border bg-muted/20">
+            <Label htmlFor="client" className="font-mono text-xs uppercase tracking-wider mb-3 block">
               Client
             </Label>
             <Select value={selectedClient} onValueChange={handleClientChange}>
-              <SelectTrigger className="mt-2 focus:border-electric focus:glow-primary">
+              <SelectTrigger className="h-12 focus:border-electric">
                 <SelectValue placeholder="Select client" />
               </SelectTrigger>
               <SelectContent>
@@ -321,8 +331,8 @@ export default function MobileTimesheetModal({ open, onOpenChange }: MobileTimes
           </div>
 
           {/* Project Selection */}
-          <div>
-            <Label htmlFor="project" className="font-mono text-xs uppercase tracking-wider">
+          <div className="p-4 rounded-lg border border-border bg-muted/20">
+            <Label htmlFor="project" className="font-mono text-xs uppercase tracking-wider mb-3 block">
               Project *
             </Label>
             <Select 
@@ -330,7 +340,7 @@ export default function MobileTimesheetModal({ open, onOpenChange }: MobileTimes
               onValueChange={handleProjectChange}
               disabled={!selectedClient}
             >
-              <SelectTrigger className="mt-2 focus:border-electric focus:glow-primary">
+              <SelectTrigger className="h-12 focus:border-electric">
                 <SelectValue placeholder="Select project" />
               </SelectTrigger>
               <SelectContent>
@@ -348,8 +358,8 @@ export default function MobileTimesheetModal({ open, onOpenChange }: MobileTimes
           </div>
 
           {/* Cost Center Selection */}
-          <div>
-            <Label htmlFor="costCenter" className="font-mono text-xs uppercase tracking-wider">
+          <div className="p-4 rounded-lg border border-border bg-muted/20">
+            <Label htmlFor="costCenter" className="font-mono text-xs uppercase tracking-wider mb-3 block">
               Cost Center *
             </Label>
             <Select 
@@ -357,7 +367,7 @@ export default function MobileTimesheetModal({ open, onOpenChange }: MobileTimes
               onValueChange={setSelectedCostCenter}
               disabled={!selectedProject || costCenters.length === 0}
             >
-              <SelectTrigger className="mt-2 focus:border-electric focus:glow-primary">
+              <SelectTrigger className="h-12 focus:border-electric">
                 <SelectValue placeholder={costCenters.length === 0 ? "Select project first" : "Select cost center"} />
               </SelectTrigger>
               <SelectContent>
@@ -375,14 +385,15 @@ export default function MobileTimesheetModal({ open, onOpenChange }: MobileTimes
           </div>
 
           {/* Activity Type */}
-          <div>
-            <Label className="font-mono text-xs uppercase tracking-wider mb-3 block">
+          <div className="p-4 rounded-lg border border-border bg-muted/20">
+            <Label className="font-mono text-xs uppercase tracking-wider mb-4 block">
               Activity Type *
             </Label>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-3">
               {activityTypes.length === 0 ? (
-                <div className="col-span-2 p-4 text-center text-muted-foreground text-sm border border-dashed border-muted rounded-lg">
-                  No activity types available
+                <div className="col-span-2 p-6 text-center text-muted-foreground text-sm border-2 border-dashed border-muted rounded-lg bg-muted/10">
+                  <Wrench className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                  <p>No activity types available</p>
                 </div>
               ) : (
                 activityTypes.map((activity) => {
@@ -392,14 +403,17 @@ export default function MobileTimesheetModal({ open, onOpenChange }: MobileTimes
                     key={activity.id}
                     onClick={() => setSelectedActivity(activity.id)}
                     className={cn(
-                      'p-4 rounded-lg border-2 transition-all flex flex-col items-center gap-2',
+                      'p-4 rounded-lg border-2 transition-all flex flex-col items-center gap-2 min-h-[100px]',
                       selectedActivity === activity.id
-                        ? activity.color + ' glow-primary'
-                        : 'bg-muted/20 border-muted hover:border-electric'
+                        ? activity.color + ' glow-primary shadow-md scale-[1.02]'
+                        : 'bg-card border-border hover:border-electric/50 hover:bg-muted/30'
                     )}
                   >
-                    <IconComponent className="w-6 h-6" />
-                    <span className="text-xs font-medium">{activity.name}</span>
+                    <IconComponent className={cn(
+                      "w-7 h-7 transition-colors",
+                      selectedActivity === activity.id ? "text-electric" : "text-muted-foreground"
+                    )} />
+                    <span className="text-xs font-semibold">{activity.name}</span>
                   </button>
                 );
               })
@@ -408,29 +422,30 @@ export default function MobileTimesheetModal({ open, onOpenChange }: MobileTimes
           </div>
 
           {/* Hours */}
-          <div>
-            <Label htmlFor="hours" className="font-mono text-xs uppercase tracking-wider">
-              Hours Worked
+          <div className="p-4 rounded-lg border border-border bg-muted/20">
+            <Label htmlFor="hours" className="font-mono text-xs uppercase tracking-wider mb-3 block flex items-center gap-2">
+              <Clock className="w-4 h-4 text-electric" />
+              Hours Worked *
             </Label>
-            <div className="relative mt-2">
-              <Clock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <div className="relative">
               <Input
                 id="hours"
                 type="number"
-                step="0.5"
-                min="0"
+                step="0.25"
+                min="0.25"
                 max="24"
                 value={hours}
                 onChange={(e) => setHours(e.target.value)}
-                placeholder="8.0"
-                className="pl-10 font-mono text-lg focus:border-electric focus:glow-primary"
+                placeholder="8.00"
+                className="h-14 pl-4 pr-4 font-mono text-2xl text-center focus:border-electric focus:ring-2 focus:ring-electric/20"
               />
+              <span className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground font-medium">hrs</span>
             </div>
           </div>
 
           {/* Notes */}
-          <div>
-            <Label htmlFor="notes" className="font-mono text-xs uppercase tracking-wider">
+          <div className="p-4 rounded-lg border border-border bg-muted/20">
+            <Label htmlFor="notes" className="font-mono text-xs uppercase tracking-wider mb-3 block">
               Notes (Optional)
             </Label>
             <Textarea
@@ -438,8 +453,8 @@ export default function MobileTimesheetModal({ open, onOpenChange }: MobileTimes
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Add details about the work performed..."
-              rows={4}
-              className="mt-2 resize-none focus:border-electric focus:glow-primary"
+              rows={5}
+              className="resize-none focus:border-electric focus:ring-2 focus:ring-electric/20"
             />
           </div>
             </>
@@ -451,12 +466,15 @@ export default function MobileTimesheetModal({ open, onOpenChange }: MobileTimes
           <Button
             onClick={handleSubmit}
             disabled={isSubmitting || !selectedProject || !selectedActivity || !selectedCostCenter || !hours}
-            className="w-full h-12 bg-electric text-background hover:bg-electric/90 glow-primary text-base font-semibold"
+            className="w-full h-14 bg-electric text-background hover:bg-electric/90 glow-primary text-base font-semibold shadow-lg shadow-electric/20"
           >
             {isSubmitting ? (
-              <Loader2 className="w-5 h-5 animate-spin" />
+              <>
+                <Loader2 className="w-5 h-5 animate-spin mr-2" />
+                Saving...
+              </>
             ) : (
-              'Submit Entry'
+              'Save Entry'
             )}
           </Button>
         </div>

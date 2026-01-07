@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import { authenticate, requirePermission, AuthRequest } from '../middleware/auth';
 import { query } from '../db';
-import { createBackup, cleanupOldBackups, getBackupFileStream } from '../lib/backup';
+import { createBackup, cleanupOldBackups, getBackupFileStream, getDatabaseConfig } from '../lib/backup';
 import { 
   getAuthUrl,
   getGoogleDriveCredentials,
@@ -288,23 +288,48 @@ router.post('/:id/restore', authenticate, requirePermission('can_manage_users'),
       const extractDir = path.join(process.cwd(), 'backups', `restore-${id}`);
       await fs.mkdir(extractDir, { recursive: true });
 
-      // Extract tar.gz
-      await execAsync(`tar -xzf "${backupPath}" -C "${extractDir}"`);
+      try {
+        // Extract tar.gz
+        await execAsync(`tar -xzf "${backupPath}" -C "${extractDir}"`, { maxBuffer: 10 * 1024 * 1024 });
 
-      // Find database dump file
-      const files = await fs.readdir(extractDir);
-      const dbFile = files.find(f => f.startsWith('database-') && f.endsWith('.sql'));
+        // Find database dump file
+        const files = await fs.readdir(extractDir);
+        const dbFile = files.find(f => (f.startsWith('database-') && (f.endsWith('.sql') || f.endsWith('.dump') || !f.includes('.'))));
 
-      if (dbFile) {
+        if (!dbFile) {
+          throw new Error('Database backup file not found in archive');
+        }
+
+        const dbFilePath = path.join(extractDir, dbFile);
         const dbConfig = getDatabaseConfig();
-        const restoreCmd = `psql -h ${dbConfig.host} -p ${dbConfig.port} -U ${dbConfig.user} -d ${dbConfig.database} -f "${path.join(extractDir, dbFile)}"`;
         const envVars = { ...process.env, PGPASSWORD: dbConfig.password };
 
-        await execAsync(restoreCmd, { env: envVars });
+        // Determine if it's custom format (pg_dump -F c) or plain SQL
+        const isCustomFormat = !dbFile.endsWith('.sql');
+        
+        if (isCustomFormat) {
+          // Use pg_restore for custom format
+          const restoreCmd = `pg_restore -h ${dbConfig.host} -p ${dbConfig.port} -U ${dbConfig.user} -d ${dbConfig.database} --clean --if-exists --no-owner --no-acl "${dbFilePath}"`;
+          try {
+            await execAsync(restoreCmd, { env: envVars, maxBuffer: 10 * 1024 * 1024 });
+          } catch (restoreError: any) {
+            // If pg_restore fails, try with --no-privileges flag
+            const restoreCmd2 = `pg_restore -h ${dbConfig.host} -p ${dbConfig.port} -U ${dbConfig.user} -d ${dbConfig.database} --clean --if-exists --no-owner --no-acl --no-privileges "${dbFilePath}"`;
+            await execAsync(restoreCmd2, { env: envVars, maxBuffer: 10 * 1024 * 1024 });
+          }
+        } else {
+          // Use psql for plain SQL format
+          const restoreCmd = `psql -h ${dbConfig.host} -p ${dbConfig.port} -U ${dbConfig.user} -d ${dbConfig.database} -f "${dbFilePath}"`;
+          await execAsync(restoreCmd, { env: envVars, maxBuffer: 10 * 1024 * 1024 });
+        }
+      } catch (error: any) {
+        // Cleanup extract directory on error
+        await fs.rm(extractDir, { recursive: true, force: true }).catch(() => {});
+        throw new Error(`Database restore failed: ${error.message || error.stderr || 'Unknown error'}`);
       }
 
       // Cleanup extract directory
-      await fs.rm(extractDir, { recursive: true, force: true });
+      await fs.rm(extractDir, { recursive: true, force: true }).catch(() => {});
     }
 
     if (backup.backup_type === 'files' || backup.backup_type === 'full') {
@@ -312,8 +337,31 @@ router.post('/:id/restore', authenticate, requirePermission('can_manage_users'),
       const uploadsDir = path.join(process.cwd(), 'uploads');
       await fs.mkdir(uploadsDir, { recursive: true });
 
-      // Extract tar.gz to uploads directory
-      await execAsync(`tar -xzf "${backupPath}" -C "${path.dirname(uploadsDir)}"`);
+      try {
+        // Extract tar.gz to uploads directory
+        // If it's a full backup, the files archive is inside the main archive
+        if (backup.backup_type === 'full') {
+          // For full backups, files are already extracted above, or we need to extract the files archive
+          const extractDir = path.join(process.cwd(), 'backups', `restore-files-${id}`);
+          await fs.mkdir(extractDir, { recursive: true });
+          await execAsync(`tar -xzf "${backupPath}" -C "${extractDir}"`, { maxBuffer: 10 * 1024 * 1024 });
+          
+          // Find files archive
+          const files = await fs.readdir(extractDir);
+          const filesArchive = files.find(f => f.startsWith('files-') && f.endsWith('.tar.gz'));
+          
+          if (filesArchive) {
+            await execAsync(`tar -xzf "${path.join(extractDir, filesArchive)}" -C "${path.dirname(uploadsDir)}"`, { maxBuffer: 10 * 1024 * 1024 });
+          }
+          
+          await fs.rm(extractDir, { recursive: true, force: true }).catch(() => {});
+        } else {
+          // For files-only backup, extract directly
+          await execAsync(`tar -xzf "${backupPath}" -C "${path.dirname(uploadsDir)}"`, { maxBuffer: 10 * 1024 * 1024 });
+        }
+      } catch (error: any) {
+        throw new Error(`Files restore failed: ${error.message || 'Unknown error'}`);
+      }
     }
 
     // Clean up temp file if from Google Drive

@@ -204,6 +204,11 @@ router.post(
       fileType = 'document';
     }
 
+    // Generate proper relative file path for storage
+    // req.file.path is absolute, we need relative from uploads root
+    const uploadsRoot = path.join(process.cwd(), 'uploads');
+    const relativePath = path.relative(uploadsRoot, req.file.path).replace(/\\/g, '/'); // Normalize to forward slashes
+    
     const result = await query(
       `INSERT INTO project_files (
         project_id, cost_center_id, file_name, file_path, file_type, file_size, mime_type, uploaded_by
@@ -213,7 +218,7 @@ router.post(
         project_id,
         cost_center_id || null,
         req.file.originalname,
-        req.file.path.replace(path.join(__dirname, '../../'), ''),
+        `/uploads/${relativePath}`, // Ensure it starts with /uploads
         fileType,
         req.file.size,
         req.file.mimetype,

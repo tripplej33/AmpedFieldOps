@@ -23,6 +23,7 @@ import {
 import { toast } from 'sonner';
 import { DocumentViewer } from '@/components/ui/document-viewer';
 import { ProjectFile } from '@/types';
+import CreateSafetyDocumentModal from '@/components/modals/CreateSafetyDocumentModal';
 
 export default function SafetyDocuments() {
   const [documents, setDocuments] = useState<SafetyDocument[]>([]);
@@ -34,6 +35,7 @@ export default function SafetyDocuments() {
   const [filterProject, setFilterProject] = useState<string>('all');
   const [selectedDocument, setSelectedDocument] = useState<SafetyDocument | null>(null);
   const [viewingPDF, setViewingPDF] = useState(false);
+  const [createModalOpen, setCreateModalOpen] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -227,7 +229,7 @@ export default function SafetyDocuments() {
           <Card className="p-6">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-lg font-bold font-mono uppercase">Documents ({filteredDocuments.length})</h2>
-              <Button onClick={() => toast.info('Create document feature coming soon')}>
+              <Button onClick={() => setCreateModalOpen(true)}>
                 <Plus className="w-4 h-4 mr-2" />
                 New Document
               </Button>
@@ -338,6 +340,15 @@ export default function SafetyDocuments() {
           }}
         />
       )}
+
+      {/* Create Safety Document Modal */}
+      <CreateSafetyDocumentModal
+        open={createModalOpen}
+        onOpenChange={setCreateModalOpen}
+        onSuccess={() => {
+          loadData();
+        }}
+      />
     </div>
   );
 }

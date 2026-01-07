@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Project, ComplianceData } from '@/types';
+import { Project, ComplianceData, SafetyCertificateData } from '@/types';
 import { api } from '@/lib/api';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,7 +13,8 @@ import { toast } from 'sonner';
 interface ComplianceCreateFormProps {
   projectId?: string;
   costCenterId?: string;
-  onSubmit: (data: ComplianceData) => Promise<void>;
+  initialData?: Partial<ComplianceData | SafetyCertificateData>;
+  onSubmit: (data: ComplianceData | SafetyCertificateData) => Promise<void>;
   onCancel: () => void;
   isSubmitting?: boolean;
   documentType?: 'electrical_compliance' | 'electrical_safety_certificate';
@@ -21,7 +22,8 @@ interface ComplianceCreateFormProps {
 
 export function ComplianceCreateForm({ 
   projectId, 
-  costCenterId, 
+  costCenterId,
+  initialData,
   onSubmit, 
   onCancel, 
   isSubmitting = false,
@@ -30,20 +32,61 @@ export function ComplianceCreateForm({
   const [projects, setProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const [formData, setFormData] = useState<ComplianceData>({
-    certificate_number: '',
-    issue_date: new Date().toISOString().split('T')[0],
-    location: '',
-    description: '',
-    inspector_name: '',
-    inspector_license: '',
-    compliance_standards: [],
-    testing_results: [],
-  });
+  const isSafetyCertificate = documentType === 'electrical_safety_certificate';
+  
+  const [formData, setFormData] = useState<ComplianceData | SafetyCertificateData>(
+    isSafetyCertificate
+      ? {
+          certificate_number: (initialData as SafetyCertificateData)?.certificate_number || '',
+          issue_date: (initialData as SafetyCertificateData)?.issue_date || new Date().toISOString().split('T')[0],
+          expiry_date: (initialData as SafetyCertificateData)?.expiry_date || '',
+          location: (initialData as SafetyCertificateData)?.location || initialData?.location || '',
+          description: (initialData as SafetyCertificateData)?.description || initialData?.description || '',
+          safety_checks: (initialData as SafetyCertificateData)?.safety_checks || [],
+          inspector_name: initialData?.inspector_name || '',
+          inspector_license: initialData?.inspector_license || '',
+          inspection_date: initialData?.inspection_date || '',
+          inspector_signature_date: initialData?.inspector_signature_date || '',
+        }
+      : {
+          certificate_number: (initialData as ComplianceData)?.certificate_number || '',
+          issue_date: (initialData as ComplianceData)?.issue_date || new Date().toISOString().split('T')[0],
+          location: (initialData as ComplianceData)?.location || initialData?.location || '',
+          description: (initialData as ComplianceData)?.description || initialData?.description || '',
+          installation_date: (initialData as ComplianceData)?.installation_date || '',
+          testing_results: (initialData as ComplianceData)?.testing_results || [],
+          compliance_standards: (initialData as ComplianceData)?.compliance_standards || [],
+          inspector_name: initialData?.inspector_name || '',
+          inspector_license: initialData?.inspector_license || '',
+          inspection_date: initialData?.inspection_date || '',
+          inspector_signature_date: initialData?.inspector_signature_date || '',
+        }
+  );
 
   useEffect(() => {
     loadData();
   }, []);
+
+  // Update form data when initialData changes (for autofill)
+  useEffect(() => {
+    if (initialData) {
+      if (isSafetyCertificate) {
+        setFormData(prev => ({
+          ...prev,
+          ...(initialData as Partial<SafetyCertificateData>),
+          location: (initialData as SafetyCertificateData)?.location || initialData?.location || prev.location,
+          description: (initialData as SafetyCertificateData)?.description || initialData?.description || prev.description,
+        } as SafetyCertificateData));
+      } else {
+        setFormData(prev => ({
+          ...prev,
+          ...(initialData as Partial<ComplianceData>),
+          location: (initialData as ComplianceData)?.location || initialData?.location || prev.location,
+          description: (initialData as ComplianceData)?.description || initialData?.description || prev.description,
+        } as ComplianceData));
+      }
+    }
+  }, [initialData, isSafetyCertificate]);
 
   const loadData = async () => {
     try {
@@ -108,7 +151,7 @@ export function ComplianceCreateForm({
       return;
     }
 
-    await onSubmit(formData);
+    await onSubmit(formData as ComplianceData | SafetyCertificateData);
   };
 
   if (loading) {
@@ -270,8 +313,98 @@ export function ComplianceCreateForm({
       {/* Safety Checks (for safety certificate) */}
       {isSafetyCertificate && (
         <div className="space-y-4">
-          <h3 className="font-semibold text-lg">Safety Checks</h3>
-          <p className="text-sm text-muted-foreground">Safety checks will be added in the document data structure.</p>
+          <div className="flex items-center justify-between">
+            <h3 className="font-semibold text-lg">Safety Checks</h3>
+            <Button type="button" variant="outline" size="sm" onClick={() => {
+              const checks = (formData as SafetyCertificateData).safety_checks || [];
+              setFormData({
+                ...formData,
+                safety_checks: [...checks, { check: '', status: 'pending', notes: '' }]
+              } as SafetyCertificateData);
+            }}>
+              <Plus className="w-4 h-4 mr-2" />
+              Add Check
+            </Button>
+          </div>
+
+          {Array.isArray((formData as SafetyCertificateData).safety_checks) && (formData as SafetyCertificateData).safety_checks!.length > 0 ? (
+            <div className="space-y-3">
+              {(formData as SafetyCertificateData).safety_checks!.map((check, index) => (
+                <Card key={index} className="p-4 border border-border">
+                  <div className="flex items-start justify-between mb-3">
+                    <h4 className="font-medium">Check #{index + 1}</h4>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => {
+                        const checks = (formData as SafetyCertificateData).safety_checks || [];
+                        setFormData({
+                          ...formData,
+                          safety_checks: checks.filter((_, i) => i !== index)
+                        } as SafetyCertificateData);
+                      }}
+                    >
+                      <Trash2 className="w-4 h-4 text-destructive" />
+                    </Button>
+                  </div>
+
+                  <div className="space-y-3">
+                    <div>
+                      <Label className="font-mono text-xs uppercase tracking-wider">Check Description</Label>
+                      <Input
+                        value={check.check}
+                        onChange={(e) => {
+                          const checks = [...((formData as SafetyCertificateData).safety_checks || [])];
+                          checks[index] = { ...checks[index], check: e.target.value };
+                          setFormData({ ...formData, safety_checks: checks } as SafetyCertificateData);
+                        }}
+                        className="mt-2"
+                        placeholder="Safety check description"
+                      />
+                    </div>
+                    <div>
+                      <Label className="font-mono text-xs uppercase tracking-wider">Status</Label>
+                      <Select
+                        value={check.status}
+                        onValueChange={(value) => {
+                          const checks = [...((formData as SafetyCertificateData).safety_checks || [])];
+                          checks[index] = { ...checks[index], status: value };
+                          setFormData({ ...formData, safety_checks: checks } as SafetyCertificateData);
+                        }}
+                      >
+                        <SelectTrigger className="mt-2">
+                          <SelectValue placeholder="Select status" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="pending">Pending</SelectItem>
+                          <SelectItem value="passed">Passed</SelectItem>
+                          <SelectItem value="failed">Failed</SelectItem>
+                          <SelectItem value="n/a">N/A</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div>
+                      <Label className="font-mono text-xs uppercase tracking-wider">Notes</Label>
+                      <Textarea
+                        value={check.notes || ''}
+                        onChange={(e) => {
+                          const checks = [...((formData as SafetyCertificateData).safety_checks || [])];
+                          checks[index] = { ...checks[index], notes: e.target.value };
+                          setFormData({ ...formData, safety_checks: checks } as SafetyCertificateData);
+                        }}
+                        className="mt-2"
+                        rows={2}
+                        placeholder="Additional notes..."
+                      />
+                    </div>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">No safety checks added. Click "Add Check" to add one.</p>
+          )}
         </div>
       )}
 

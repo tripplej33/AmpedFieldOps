@@ -582,22 +582,41 @@ router.delete('/:id', authenticate, async (req: AuthRequest, res: Response) => {
 
 // Upload images for existing timesheet
 router.post('/:id/images', authenticate,
-  (req, res, next) => {
-    // Handle multer errors with better messages
-    projectUpload.array('images', 5)(req, res, (err) => {
-      if (err) {
-        if (err instanceof multer.MulterError) {
-          if (err.code === 'LIMIT_FILE_COUNT') {
-            return res.status(400).json({ error: 'Maximum 5 images allowed per timesheet' });
-          }
-          if (err.code === 'LIMIT_FILE_SIZE') {
-            return res.status(400).json({ error: 'File size exceeds 10MB limit. Please compress your images.' });
-          }
-        }
-        return res.status(400).json({ error: err.message || 'File upload validation failed' });
+  async (req: AuthRequest, res: Response, next) => {
+    try {
+      // Fetch project_id from timesheet BEFORE multer processes files
+      const timesheet = await query('SELECT project_id FROM timesheets WHERE id = $1', [req.params.id]);
+      if (timesheet.rows.length === 0) {
+        return res.status(404).json({ error: 'Timesheet not found' });
       }
-      next();
-    });
+
+      const project_id = timesheet.rows[0].project_id;
+      if (!project_id) {
+        return res.status(400).json({ error: 'Timesheet does not have an associated project' });
+      }
+
+      // Add project_id to request body so multer can use it for destination
+      req.body.project_id = project_id;
+
+      // Now let multer process the files
+      projectUpload.array('images', 5)(req, res, (err) => {
+        if (err) {
+          if (err instanceof multer.MulterError) {
+            if (err.code === 'LIMIT_FILE_COUNT') {
+              return res.status(400).json({ error: 'Maximum 5 images allowed per timesheet' });
+            }
+            if (err.code === 'LIMIT_FILE_SIZE') {
+              return res.status(400).json({ error: 'File size exceeds 10MB limit. Please compress your images.' });
+            }
+          }
+          return res.status(400).json({ error: err.message || 'File upload validation failed' });
+        }
+        next();
+      });
+    } catch (error) {
+      log.error('Error fetching timesheet for image upload', error, { timesheetId: req.params.id });
+      res.status(500).json({ error: 'Failed to process upload request' });
+    }
   },
   async (req: AuthRequest, res: Response) => {
     try {
@@ -607,13 +626,8 @@ router.post('/:id/images', authenticate,
         return res.status(400).json({ error: 'No files uploaded' });
       }
 
-    // Get project_id from timesheet
-    const timesheet = await query('SELECT project_id FROM timesheets WHERE id = $1', [req.params.id]);
-    if (timesheet.rows.length === 0) {
-      return res.status(404).json({ error: 'Timesheet not found' });
-    }
-
-    const project_id = timesheet.rows[0].project_id;
+      // Get project_id from request body (already set in previous middleware)
+      const project_id = req.body.project_id;
     
     // Upload files to cloud storage
     let cloudImageUrls: string[] = [];
