@@ -16,7 +16,7 @@ export interface FileMetadata {
 }
 
 export interface StorageConfig {
-  driver: 'local' | 's3';
+  driver: 'local' | 's3' | 'google-drive';
   basePath?: string;
   // S3 config
   s3Bucket?: string;
@@ -24,4 +24,6 @@ export interface StorageConfig {
   s3AccessKeyId?: string;
   s3SecretAccessKey?: string;
   s3Endpoint?: string;
+  // Google Drive config (optional, uses existing OAuth tokens from settings)
+  googleDriveFolderId?: string; // Optional: specific folder ID to use as root, otherwise uses basePath
 }

@@ -4,8 +4,8 @@ import { PutOptions, FileMetadata } from './types';
 /**
  * Storage Provider Interface
  * 
- * Abstract interface for file storage operations supporting both
- * local filesystem and S3-compatible cloud storage.
+ * Abstract interface for file storage operations supporting
+ * local filesystem, S3-compatible cloud storage, and Google Drive.
  */
 export interface IStorageProvider {
   // Core operations
@@ -19,11 +19,11 @@ export interface IStorageProvider {
   
   // URL generation
   url(filePath: string): Promise<string>;
-  signedUrl(filePath: string, expiresIn?: number): Promise<string>; // CRITICAL: For S3 direct access
+  signedUrl(filePath: string, expiresIn?: number): Promise<string>; // CRITICAL: For S3/Google Drive direct access
   
   // Metadata
   getMetadata(filePath: string): Promise<FileMetadata>;
-  getDriver(): 'local' | 's3'; // Returns current driver type
+  getDriver(): 'local' | 's3' | 'google-drive'; // Returns current driver type
   
   // Directory operations
   list(prefix?: string): Promise<FileMetadata[]>;

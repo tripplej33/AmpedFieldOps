@@ -15,7 +15,7 @@ import { createHash } from 'crypto';
 export class FlystorageStorageProvider implements IStorageProvider {
   private config: StorageConfig;
   private storage: any; // Flystorage instance
-  private driver: 'local' | 's3';
+  private driver: 'local' | 's3'; // Note: This provider only supports local and S3
 
   constructor(config: StorageConfig) {
     this.config = config;
