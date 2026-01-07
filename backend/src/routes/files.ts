@@ -561,6 +561,9 @@ router.get('/cost-centers/:costCenterId', authenticate, requirePermission('can_v
 
   res.json(result.rows);
 }));
+
+// Get timesheet images for a specific project
+router.get('/timesheet-images/:projectId', authenticate, asyncHandler(async (req: AuthRequest, res: Response) => {
   // Check if user can view all timesheets
   const canViewAll = req.user!.role === 'admin' || 
                      req.user!.role === 'manager' || 
