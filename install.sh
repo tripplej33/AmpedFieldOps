@@ -121,7 +121,7 @@ sleep 3
 
 MAX_RETRIES=30
 RETRY_COUNT=0
-until $COMPOSE_CMD exec -T postgres pg_isready -U ampedfieldops -d ampedfieldops > /dev/null 2>&1; do
+until $COMPOSE_CMD exec -T postgres pg_isready -U ampedfieldops > /dev/null 2>&1; do
     RETRY_COUNT=$((RETRY_COUNT + 1))
     if [ $RETRY_COUNT -ge $MAX_RETRIES ]; then
         echo -e "${RED}Error: PostgreSQL failed to start${NC}"
@@ -131,6 +131,30 @@ until $COMPOSE_CMD exec -T postgres pg_isready -U ampedfieldops -d ampedfieldops
     sleep 2
 done
 printf "\r${GREEN}✓ PostgreSQL is ready${NC}\n"
+
+# Ensure database exists (connect to postgres database to check/create)
+echo -e "${YELLOW}Ensuring database exists...${NC}"
+DB_EXISTS=$($COMPOSE_CMD exec -T postgres psql -U ampedfieldops -d postgres -tc "SELECT 1 FROM pg_database WHERE datname = 'ampedfieldops'" 2>/dev/null | tr -d '[:space:]')
+if [ "$DB_EXISTS" != "1" ]; then
+    $COMPOSE_CMD exec -T postgres psql -U ampedfieldops -d postgres -c "CREATE DATABASE ampedfieldops" > /dev/null 2>&1
+    echo -e "${GREEN}✓ Database created${NC}"
+else
+    echo -e "${GREEN}✓ Database already exists${NC}"
+fi
+
+# Wait for the database to be ready for connections
+sleep 2
+MAX_RETRIES=10
+RETRY_COUNT=0
+until $COMPOSE_CMD exec -T postgres pg_isready -U ampedfieldops -d ampedfieldops > /dev/null 2>&1; do
+    RETRY_COUNT=$((RETRY_COUNT + 1))
+    if [ $RETRY_COUNT -ge $MAX_RETRIES ]; then
+        echo -e "${RED}Error: Database not ready for connections${NC}"
+        exit 1
+    fi
+    sleep 1
+done
+echo -e "${GREEN}✓ Database ready for connections${NC}"
 
 # Run migrations
 show_step "Step 6: Running Database Migrations"
