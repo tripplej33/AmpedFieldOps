@@ -1624,7 +1624,7 @@ export default function Settings() {
                   )}
 
                   {/* Legacy Google Drive Configuration (kept for backward compatibility) */}
-                  {false && cloudStorageProvider === 'google-drive' && (
+                  {cloudStorageProvider === 'google-drive' && (
                     <div className="space-y-4">
                       {/* Connection Status */}
                       <div className="flex items-center justify-between p-3 rounded-lg bg-muted/20 border border-border">

@@ -184,8 +184,8 @@ router.post(
   '/',
   authenticate,
   requirePermission('can_edit_projects'),
-  validateProjectAccess,
-  fileUpload.single('file'),
+  fileUpload.single('file'), // Multer must run first to parse FormData into req.body
+  validateProjectAccess, // Then validate project_id from parsed body
   asyncHandler(async (req: AuthRequest, res: Response) => {
     if (!req.file) {
       throw new ValidationError('No file uploaded');
@@ -453,7 +453,7 @@ router.get('/timesheet-images/:projectId', authenticate, asyncHandler(async (req
   // Check if user can view all timesheets
   const canViewAll = req.user!.role === 'admin' || 
                      req.user!.role === 'manager' || 
-                     req.user!.permissions.includes('can_view_all_timesheets');
+                     (req.user!.permissions && req.user!.permissions.includes('can_view_all_timesheets'));
 
   let sql = `
     SELECT 
@@ -513,7 +513,7 @@ router.get('/timesheet-images', authenticate, asyncHandler(async (req: AuthReque
   // Check if user can view all timesheets
   const canViewAll = req.user!.role === 'admin' || 
                      req.user!.role === 'manager' || 
-                     req.user!.permissions.includes('can_view_all_timesheets');
+                     (req.user!.permissions && req.user!.permissions.includes('can_view_all_timesheets'));
 
   let sql = `
     SELECT 
@@ -552,50 +552,30 @@ router.get('/timesheet-images', authenticate, asyncHandler(async (req: AuthReque
 
 // Get all logo files
 router.get('/logos', authenticate, requirePermission('can_manage_settings'), asyncHandler(async (req: AuthRequest, res: Response) => {
-  const logosDir = path.join(__dirname, '../../uploads/logos');
-  
-  // Check if directory exists, create it if it doesn't
-  if (!fs.existsSync(logosDir)) {
-    fs.mkdirSync(logosDir, { recursive: true });
-    return res.json([]);
-  }
-
-  // Read directory and get file stats
-  let files: string[];
   try {
-    files = fs.readdirSync(logosDir);
-  } catch (readError) {
-    log.error('Failed to read logos directory', readError);
-    return res.json([]);
+    const storage = await StorageFactory.getInstance();
+    const basePath = 'logos';
+    
+    // List all files in the logos directory
+    const files = await storage.list(basePath);
+    
+    // Filter to only files (not directories) and map to response format
+    const logos = files
+      .filter((file) => !file.isDirectory)
+      .map((file) => ({
+        url: `/uploads/${file.path}`,
+        filename: file.name,
+        upload_date: file.lastModified || new Date(),
+        file_size: file.size || 0
+      }))
+      .sort((a, b) => new Date(b.upload_date).getTime() - new Date(a.upload_date).getTime());
+
+    res.json(logos);
+  } catch (error: any) {
+    log.error('Failed to list logos', error);
+    // Return empty array on error
+    res.json([]);
   }
-
-  const logos = await Promise.all(
-    files.map(async (filename: string) => {
-      try {
-        const filePath = path.join(logosDir, filename);
-        const stats = fs.statSync(filePath);
-        // Skip directories
-        if (stats.isDirectory()) {
-          return null;
-        }
-        return {
-          url: `/uploads/logos/${filename}`,
-          filename,
-          upload_date: stats.birthtime || stats.mtime,
-          file_size: stats.size
-        };
-      } catch (statError) {
-        log.error(`Failed to get stats for ${filename}`, statError);
-        return null;
-      }
-    })
-  );
-
-  // Filter out null values and sort by upload date (newest first)
-  const validLogos = logos.filter((logo): logo is NonNullable<typeof logo> => logo !== null);
-  validLogos.sort((a, b) => new Date(b.upload_date).getTime() - new Date(a.upload_date).getTime());
-
-  res.json(validLogos);
 }));
 
 // Delete a logo file
