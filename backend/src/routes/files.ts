@@ -153,7 +153,9 @@ router.post(
       throw new ValidationError('No file uploaded');
     }
 
-    const { project_id, cost_center_id } = req.body;
+    // Extract project_id from body (FormData fields are parsed by multer)
+    const project_id = req.body?.project_id || req.body?.projectId;
+    const cost_center_id = req.body?.cost_center_id || req.body?.costCenterId;
 
     if (!project_id) {
       // Delete uploaded file if validation fails
@@ -164,6 +166,7 @@ router.post(
           log.error('Failed to delete uploaded file after validation failure', unlinkError);
         }
       }
+      log.error('File upload failed: project_id missing', { body: req.body, hasFile: !!req.file });
       throw new ValidationError('project_id is required');
     }
 

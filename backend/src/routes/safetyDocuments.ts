@@ -295,9 +295,13 @@ router.post('/:id/generate-pdf', authenticate, requirePermission('can_edit_proje
     );
 
     res.json({ message: 'PDF generated successfully', file_path: relativePath });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Generate PDF error:', error);
-    res.status(500).json({ error: 'Failed to generate PDF' });
+    const errorMessage = error?.message || 'Failed to generate PDF';
+    res.status(500).json({ 
+      error: 'Failed to generate PDF',
+      details: process.env.NODE_ENV === 'development' ? errorMessage : undefined
+    });
   }
 });
 

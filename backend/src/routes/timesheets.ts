@@ -31,7 +31,7 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
                        req.user!.permissions.includes('can_view_all_timesheets');
     
     // Build WHERE clause for both count and data queries
-    let whereClause = 'WHERE t.deleted_at IS NULL';
+    let whereClause = 'WHERE 1=1';
     const params: any[] = [];
     let paramCount = 1;
 
@@ -152,7 +152,7 @@ router.get('/:id', authenticate, async (req: AuthRequest, res: Response) => {
        LEFT JOIN clients c ON t.client_id = c.id AND c.deleted_at IS NULL
        LEFT JOIN activity_types at ON t.activity_type_id = at.id
        LEFT JOIN cost_centers cc ON t.cost_center_id = cc.id
-       WHERE t.id = $1 AND t.deleted_at IS NULL`,
+       WHERE t.id = $1`,
       [req.params.id]
     );
 
@@ -467,7 +467,7 @@ router.put('/:id', authenticate,
 
     try {
       // Check ownership or permission
-      const existing = await query('SELECT user_id, hours, project_id, activity_type_id, COALESCE(billing_status, \'unbilled\') as billing_status FROM timesheets WHERE id = $1 AND deleted_at IS NULL', [req.params.id]);
+      const existing = await query('SELECT user_id, hours, project_id, activity_type_id, COALESCE(billing_status, \'unbilled\') as billing_status FROM timesheets WHERE id = $1', [req.params.id]);
       if (existing.rows.length === 0) {
         return res.status(404).json({ error: 'Timesheet not found' });
       }
@@ -563,7 +563,7 @@ router.put('/:id', authenticate,
 router.delete('/:id', authenticate, async (req: AuthRequest, res: Response) => {
   try {
     const existing = await query(
-      'SELECT user_id, hours, project_id, activity_type_id, COALESCE(billing_status, \'unbilled\') as billing_status FROM timesheets WHERE id = $1 AND deleted_at IS NULL', 
+      'SELECT user_id, hours, project_id, activity_type_id, COALESCE(billing_status, \'unbilled\') as billing_status FROM timesheets WHERE id = $1', 
       [req.params.id]
     );
     
