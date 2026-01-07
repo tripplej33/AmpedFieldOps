@@ -246,7 +246,6 @@ router.post('/', authenticate, uploadLimiter,
 
   // Get image URLs from uploaded files or from body
   let imageUrls: string[] = [];
-  let cloudImageUrls: string[] = [];
   
   if (isFormData && files.length > 0) {
     // Files were uploaded - upload to storage provider
@@ -298,7 +297,6 @@ router.post('/', authenticate, uploadLimiter,
   } else {
     // JSON request with pre-uploaded URLs
     imageUrls = req.body.image_urls || [];
-    cloudImageUrls = req.body.cloud_image_urls || [];
   }
 
   const { client_id, notes, location } = req.body;
@@ -328,10 +326,10 @@ router.post('/', authenticate, uploadLimiter,
       }
 
       const result = await query(
-        `INSERT INTO timesheets (user_id, project_id, client_id, date, hours, activity_type_id, cost_center_id, notes, image_urls, cloud_image_urls, location, billing_status)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'unbilled')
+        `INSERT INTO timesheets (user_id, project_id, client_id, date, hours, activity_type_id, cost_center_id, notes, image_urls, location, billing_status)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'unbilled')
          RETURNING *`,
-        [userId, project_id, finalClientId, timesheetDate, timesheetHours, timesheetActivityTypeId, timesheetCostCenterId, notes, imageUrls, cloudImageUrls.length > 0 ? cloudImageUrls : null, location]
+        [userId, project_id, finalClientId, timesheetDate, timesheetHours, timesheetActivityTypeId, timesheetCostCenterId, notes, imageUrls, location]
       );
 
       // Update project actual_cost based on activity hourly rate
@@ -434,7 +432,6 @@ router.put('/:id', authenticate,
     
     // Get image URLs from uploaded files or from body
     let imageUrls: string[] = [];
-    let cloudImageUrls: string[] = [];
     
     if (isFormData && files.length > 0) {
       // Files were uploaded - upload to storage provider
@@ -456,11 +453,6 @@ router.put('/:id', authenticate,
           // Get URL from storage provider
           const fileUrl = await storage.url(storagePath);
           imageUrls.push(fileUrl);
-          
-          // For S3, also store in cloud_image_urls
-          if (storage.getDriver() === 's3') {
-            cloudImageUrls.push(fileUrl);
-          }
           
           // Delete temp file after successful upload
           try {
@@ -495,22 +487,9 @@ router.put('/:id', authenticate,
           // If parsing fails, just use the new files
         }
       }
-      
-      // Include existing cloud URLs
-      if (req.body.cloud_image_urls) {
-        try {
-          const existingCloudUrls = typeof req.body.cloud_image_urls === 'string'
-            ? JSON.parse(req.body.cloud_image_urls)
-            : req.body.cloud_image_urls;
-          cloudImageUrls = [...cloudImageUrls, ...existingCloudUrls];
-        } catch (e) {
-          // If parsing fails, just use the new files
-        }
-      }
     } else {
       // JSON request with pre-uploaded URLs or existing URLs
       imageUrls = req.body.image_urls || [];
-      cloudImageUrls = req.body.cloud_image_urls || [];
     }
 
     try {
@@ -549,7 +528,6 @@ router.put('/:id', authenticate,
         cost_center_id, 
         notes, 
         image_urls: imageUrls.length > 0 ? imageUrls : undefined,
-        cloud_image_urls: cloudImageUrls.length > 0 ? cloudImageUrls : undefined,
         location, 
         synced 
       };
@@ -752,7 +730,6 @@ router.post('/:id/images', authenticate,
     const storage = await StorageFactory.getInstance();
     const basePath = `projects/${project_id}`;
     let imageUrls: string[] = [];
-    let cloudImageUrls: string[] = [];
     
     for (const file of files) {
       try {
@@ -768,11 +745,6 @@ router.post('/:id/images', authenticate,
         // Get URL from storage provider
         const fileUrl = await storage.url(storagePath);
         imageUrls.push(fileUrl);
-        
-        // For S3, also store in cloud_image_urls
-        if (storage.getDriver() === 's3') {
-          cloudImageUrls.push(fileUrl);
-        }
         
         // Delete temp file after successful upload
         try {
@@ -796,20 +768,18 @@ router.post('/:id/images', authenticate,
       }
     }
 
-    // Update both local and cloud URLs
+    // Update image URLs
     const result = await query(
       `UPDATE timesheets 
        SET image_urls = array_cat(COALESCE(image_urls, '{}'), $1), 
-           cloud_image_urls = array_cat(COALESCE(cloud_image_urls, '{}'), $2),
            updated_at = CURRENT_TIMESTAMP
-       WHERE id = $3
-       RETURNING image_urls, cloud_image_urls`,
-      [imageUrls, cloudImageUrls.length > 0 ? cloudImageUrls : [], req.params.id]
+       WHERE id = $2
+       RETURNING image_urls`,
+      [imageUrls, req.params.id]
     );
 
     res.json({ 
-      image_urls: result.rows[0].image_urls,
-      cloud_image_urls: result.rows[0].cloud_image_urls || []
+      image_urls: result.rows[0].image_urls
     });
   } catch (error) {
     log.error('Upload images error', error, { timesheetId: req.params.id, userId: req.user!.id });
