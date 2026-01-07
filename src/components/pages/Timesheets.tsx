@@ -2012,9 +2012,10 @@ function TimesheetForm({
             </div>
           </AccordionContent>
         </AccordionItem>
+      </Accordion>
 
-        {/* Additional Details - Inline (not in accordion) */}
-        <div className="space-y-4 pt-2">
+      {/* Additional Details - Inline (not in accordion) */}
+      <div className="space-y-4 pt-2">
           {/* General Notes */}
           <div>
             <Label className="font-mono text-xs uppercase tracking-wider mb-2 block flex items-center gap-2">
@@ -2164,7 +2165,6 @@ function TimesheetForm({
               </div>
             </div>
         </div>
-      </Accordion>
 
       {/* Sticky Action Buttons */}
       <div className="flex justify-end gap-2 sm:gap-3 pt-3 sm:pt-4 border-t border-border sticky bottom-0 bg-card -mx-3 sm:-mx-4 lg:-mx-6 px-3 sm:px-4 lg:px-6 pb-2 mt-4">
