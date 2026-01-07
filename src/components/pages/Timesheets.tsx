@@ -2029,8 +2029,9 @@ function TimesheetForm({
           </div>
         </div>
 
-      {/* Additional Details - Inline (not in accordion) */}
-      <div className="space-y-4 pt-2">
+        {/* Additional Details - Inline (not in accordion) */}
+        <div className="border border-border rounded-lg bg-muted/20 p-4 sm:p-6">
+          <div className="space-y-4">
           {/* General Notes */}
           <div>
             <Label className="font-mono text-xs uppercase tracking-wider mb-2 block flex items-center gap-2">
@@ -2177,6 +2178,7 @@ function TimesheetForm({
               onChange={handleFileSelect}
               className="hidden"
             />
+          </div>
           </div>
         </div>
       </div>
