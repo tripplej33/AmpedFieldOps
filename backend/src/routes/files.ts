@@ -560,15 +560,25 @@ router.get('/logos', authenticate, requirePermission('can_manage_settings'), asy
     const files = await storage.list(basePath);
     
     // Filter to only files (not directories) and map to response format
-    const logos = files
-      .filter((file) => !file.isDirectory)
-      .map((file) => ({
-        url: `/uploads/${file.path}`,
-        filename: file.name,
-        upload_date: file.lastModified || new Date(),
-        file_size: file.size || 0
-      }))
-      .sort((a, b) => new Date(b.upload_date).getTime() - new Date(a.upload_date).getTime());
+    // Use storage.url() to get proper URLs (signed URLs for S3, /uploads/... for local)
+    const logos = await Promise.all(
+      files
+        .filter((file) => !file.isDirectory)
+        .map(async (file) => {
+          // Get proper URL from storage provider
+          // For S3, this will be a signed URL; for local, it will be /uploads/...
+          const url = await storage.url(file.path);
+          return {
+            url,
+            filename: file.name,
+            upload_date: file.lastModified || new Date(),
+            file_size: file.size || 0
+          };
+        })
+    );
+    
+    // Sort by upload date (newest first)
+    logos.sort((a, b) => new Date(b.upload_date).getTime() - new Date(a.upload_date).getTime());
 
     res.json(logos);
   } catch (error: any) {
