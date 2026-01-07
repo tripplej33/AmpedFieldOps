@@ -1546,29 +1546,144 @@ export default function Settings() {
                             {storageSettings.googleDriveConnected ? 'Connected' : 'Not Connected'}
                           </span>
                         </div>
-                        {!storageSettings.googleDriveConnected && (
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              // Navigate to Integrations tab for OAuth setup
-                              const integrationsTab = document.querySelector('[value="integrations"]');
-                              if (integrationsTab) {
-                                (integrationsTab as HTMLElement).click();
-                                toast.info('Please connect Google Drive in the Integrations tab first');
-                              }
-                            }}
-                          >
-                            <Cloud className="w-4 h-4 mr-2" />
-                            Connect in Integrations
-                          </Button>
-                        )}
                       </div>
 
+                      {/* OAuth Credentials */}
                       {!storageSettings.googleDriveConnected && (
-                        <div className="p-3 rounded-lg bg-warning/10 border border-warning/20">
-                          <p className="text-sm text-warning">
-                            ⚠️ Google Drive OAuth connection required. Please connect your Google Drive account in the <strong>Integrations</strong> tab before using Google Drive storage.
+                        <div className="space-y-4">
+                          <div>
+                            <Label className="font-mono text-xs uppercase tracking-wider">
+                              Client ID *
+                            </Label>
+                            <Input
+                              value={googleDriveCredentials.clientId}
+                              onChange={(e) => setGoogleDriveCredentials(prev => ({ ...prev, clientId: e.target.value }))}
+                              placeholder="Enter Google OAuth Client ID"
+                              className="mt-2 font-mono text-sm"
+                            />
+                          </div>
+
+                          <div>
+                            <Label className="font-mono text-xs uppercase tracking-wider">
+                              Client Secret *
+                            </Label>
+                            <Input
+                              type="password"
+                              value={googleDriveCredentials.clientSecret}
+                              onChange={(e) => setGoogleDriveCredentials(prev => ({ ...prev, clientSecret: e.target.value }))}
+                              placeholder="Enter Google OAuth Client Secret"
+                              className="mt-2 font-mono text-sm"
+                            />
+                          </div>
+
+                          <div>
+                            <Label className="font-mono text-xs uppercase tracking-wider">
+                              Redirect URI
+                            </Label>
+                            <Input
+                              value={googleDriveCredentials.redirectUri}
+                              onChange={(e) => setGoogleDriveCredentials(prev => ({ ...prev, redirectUri: e.target.value }))}
+                              placeholder={`${window.location.origin}/api/backups/google-drive/callback`}
+                              className="mt-2 font-mono text-sm"
+                            />
+                            <p className="text-xs text-muted-foreground mt-1">
+                              OAuth redirect URI (must match Google Cloud Console configuration)
+                            </p>
+                          </div>
+                          
+                          <div className="flex gap-2">
+                            {showGoogleDriveSaveButton && (
+                              <Button
+                                onClick={handleSaveGoogleDriveCredentials}
+                                disabled={isSavingGoogleDriveCredentials || !googleDriveCredentials.clientId || !googleDriveCredentials.clientSecret}
+                                className="flex-1 bg-electric text-background hover:bg-electric/90"
+                              >
+                                {isSavingGoogleDriveCredentials ? (
+                                  <>
+                                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                    Saving...
+                                  </>
+                                ) : (
+                                  <>
+                                    <CheckCircle className="w-4 h-4 mr-2" />
+                                    {googleDriveCredentialsChanged ? 'Save Changes' : 'Save'}
+                                  </>
+                                )}
+                              </Button>
+                            )}
+                            <Button 
+                              onClick={async () => {
+                                if (!googleDriveCredentials.clientId || !googleDriveCredentials.clientSecret) {
+                                  toast.error('Please save your Google Drive credentials first.');
+                                  return;
+                                }
+
+                                try {
+                                  setIsConnectingGoogleDrive(true);
+                                  const { url } = await api.getGoogleDriveAuthUrl();
+                                  const popup = window.open(url, 'google-drive-auth', 'width=600,height=700');
+                                  
+                                  // Poll for connection status
+                                  const checkInterval = setInterval(async () => {
+                                    try {
+                                      const status = await api.getGoogleDriveStatus();
+                                      if (status.connected) {
+                                        clearInterval(checkInterval);
+                                        setGoogleDriveConnected(true);
+                                        setStorageSettings(prev => ({ ...prev, googleDriveConnected: true }));
+                                        toast.success('Google Drive connected successfully');
+                                        if (popup) popup.close();
+                                        // Reload storage settings to get updated connection status
+                                        const storageData = await api.getStorageSettings();
+                                        setStorageSettings(prev => ({ ...prev, googleDriveConnected: storageData.googleDriveConnected ?? true }));
+                                      }
+                                    } catch (error) {
+                                      // Ignore errors during polling
+                                    }
+                                  }, 2000);
+
+                                  // Stop polling after 5 minutes
+                                  setTimeout(() => clearInterval(checkInterval), 5 * 60 * 1000);
+
+                                  // Listen for popup close
+                                  const checkClosed = setInterval(() => {
+                                    if (popup?.closed) {
+                                      clearInterval(checkClosed);
+                                      clearInterval(checkInterval);
+                                      setIsConnectingGoogleDrive(false);
+                                    }
+                                  }, 500);
+                                } catch (error: any) {
+                                  toast.error(error.message || 'Failed to get Google Drive auth URL');
+                                } finally {
+                                  setIsConnectingGoogleDrive(false);
+                                }
+                              }}
+                              className="flex-1 bg-electric text-background hover:bg-electric/90"
+                              disabled={isConnectingGoogleDrive || !googleDriveCredentials.clientId || !googleDriveCredentials.clientSecret}
+                            >
+                              {isConnectingGoogleDrive ? (
+                                <>
+                                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                                  Connecting...
+                                </>
+                              ) : (
+                                <>
+                                  <Cloud className="w-4 h-4 mr-2" />
+                                  Connect
+                                </>
+                              )}
+                            </Button>
+                          </div>
+
+                          {googleDriveCredentialsChanged && showGoogleDriveSaveButton && (
+                            <p className="text-xs text-warning text-center">
+                              ⚠️ Save credentials before connecting
+                            </p>
+                          )}
+
+                          <p className="text-xs text-muted-foreground text-center">
+                            Get credentials from <a href="https://console.cloud.google.com/apis/credentials" target="_blank" rel="noopener noreferrer" className="text-electric hover:underline">Google Cloud Console</a>
                           </p>
                         </div>
                       )}
