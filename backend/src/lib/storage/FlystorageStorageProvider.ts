@@ -18,8 +18,13 @@ export class FlystorageStorageProvider implements IStorageProvider {
   private driver: 'local' | 's3'; // Note: This provider only supports local and S3
 
   constructor(config: StorageConfig) {
+    // Validate that driver is not 'google-drive' (this provider doesn't support it)
+    if (config.driver === 'google-drive') {
+      throw new Error('FlystorageStorageProvider does not support Google Drive. Use GoogleDriveStorageProvider instead.');
+    }
+    
     this.config = config;
-    this.driver = config.driver;
+    this.driver = config.driver as 'local' | 's3'; // Type assertion is safe after validation
 
     // Initialize Flystorage based on driver
     if (config.driver === 's3') {
@@ -267,7 +272,8 @@ export class FlystorageStorageProvider implements IStorageProvider {
     }
   }
 
-  getDriver(): 'local' | 's3' {
+  getDriver(): 'local' | 's3' | 'google-drive' {
+    // This provider only supports 'local' and 's3', but interface requires union type
     return this.driver;
   }
 
