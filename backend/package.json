@@ -10,6 +10,8 @@
     "migrate": "tsx src/db/migrate.ts",
     "seed": "tsx src/db/seed.ts",
     "seed:demo": "tsx src/db/seed-demo.ts",
+    "cleanup:duplicates": "tsx scripts/cleanup-duplicates.ts",
+    "cleanup:activity-types": "tsx scripts/cleanup-duplicate-activity-types.ts",
     "migrate:fresh": "tsx src/db/migrate.ts --fresh && tsx src/db/seed.ts",
     "test": "jest",
     "test:watch": "jest --watch",

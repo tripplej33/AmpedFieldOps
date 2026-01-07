@@ -1,10 +1,11 @@
 import { Router, Response } from 'express';
-import { body, validationResult } from 'express-validator';
 import rateLimit from 'express-rate-limit';
 import multer from 'multer';
+import fs from 'fs';
+import path from 'path';
 import { query } from '../db';
 import { authenticate, requirePermission, AuthRequest } from '../middleware/auth';
-import { upload, projectUpload } from '../middleware/upload';
+import { projectUpload } from '../middleware/upload';
 import { parsePaginationParams, createPaginatedResponse } from '../lib/pagination';
 import { log } from '../lib/logger';
 
@@ -767,8 +768,6 @@ router.delete('/:id/images/:index', authenticate, async (req: AuthRequest, res: 
 
     // Delete physical file
     try {
-      const fs = require('fs');
-      const path = require('path');
       // Extract filename from URL (e.g., /uploads/projects/{id}/filename.jpg)
       const filename = imageUrl.split('/').pop();
       if (filename && projectId) {

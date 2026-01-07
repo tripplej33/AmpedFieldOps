@@ -1,5 +1,5 @@
 import dotenv from 'dotenv';
-import { query } from './index';
+import { query } from '../src/db/index';
 
 // Suppress dotenv parsing warnings
 dotenv.config({ debug: false, override: false });

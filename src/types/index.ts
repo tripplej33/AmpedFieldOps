@@ -95,6 +95,7 @@ export interface TimesheetEntry {
   hours: number;
   notes: string;
   image_urls: string[];
+  cloud_image_urls?: string[]; // Cloud storage URLs for images
   location?: string;
   synced: boolean;
   xero_timesheet_id?: string;

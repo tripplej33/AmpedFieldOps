@@ -16,8 +16,10 @@ A mobile-first service business management platform designed for electrical cont
 - 👤 **User Management** - Role-based access control with granular permissions
 - 🎨 **Activity Types** - Configurable work categories with hourly rates
 - 📁 **File Management** - Project files, timesheet images, and company logos organized by client/project
-- 🛡️ **Safety Documents** - Manage safety documentation (JSA, Electrical Compliance, etc.)
+- 🛡️ **Safety Documents** - Manage safety documentation (JSA, Electrical Compliance, etc.) with PDF generation
+- 📄 **Document Scan (OCR)** - Upload documents for OCR processing and automatic matching
 - 💾 **Backups** - Database backups with Google Drive integration
+- ☁️ **Cloud Storage** - Optional cloud storage for timesheet images
 - 🔧 **Troubleshooter** - System diagnostics and route testing
 - 👤 **User Settings** - Profile updates and password changes
 - 🔐 **Password Recovery** - Forgot password flow with email reset links
@@ -275,13 +277,13 @@ POST   /api/xero/contacts/push-all - Push all clients to Xero
 
 ### Files
 ```
-GET    /api/files                  - List project files
+GET    /api/files                           - List project files
 GET    /api/files/timesheet-images/:projectId - Get timesheet images for project
-GET    /api/files/timesheet-images - Get all timesheet images summary
-GET    /api/files/logos            - List company logos
-POST   /api/files                  - Upload project file
-DELETE /api/files/:id              - Delete project file
-DELETE /api/files/logos/:filename - Delete logo
+GET    /api/files/timesheet-images          - Get all timesheet images summary
+GET    /api/files/logos                     - List company logos
+POST   /api/files                           - Upload project file
+DELETE /api/files/:id                       - Delete project file
+DELETE /api/files/logos/:filename           - Delete logo
 ```
 
 ### Backups
@@ -299,11 +301,24 @@ GET    /api/backups/google-drive/status - Get Google Drive connection status
 
 ### Safety Documents
 ```
-GET    /api/safety-documents       - List safety documents
-POST   /api/safety-documents       - Create safety document
-GET    /api/safety-documents/:id   - Get safety document
-PUT    /api/safety-documents/:id   - Update safety document
-DELETE /api/safety-documents/:id   - Delete safety document
+GET    /api/safety-documents                - List safety documents
+POST   /api/safety-documents                - Create safety document
+GET    /api/safety-documents/:id            - Get safety document
+PUT    /api/safety-documents/:id            - Update safety document
+DELETE /api/safety-documents/:id            - Delete safety document
+POST   /api/safety-documents/:id/generate-pdf - Generate PDF from safety document
+GET    /api/safety-documents/:id/pdf        - Download generated PDF
+```
+
+### Document Scan (OCR)
+```
+POST   /api/document-scan/upload            - Upload and process document (OCR)
+GET    /api/document-scan                   - List all scanned documents
+GET    /api/document-scan/:id               - Get scan status and extracted data
+GET    /api/document-scan/:id/matches       - Get suggested matches for a scan
+POST   /api/document-scan/:id/match/:matchId/confirm - Confirm and link a match
+POST   /api/document-scan/:id/match/reject  - Reject all matches
+POST   /api/document-scan/:id/retry         - Retry failed scan
 ```
 
 ### Troubleshooter
@@ -332,7 +347,7 @@ clients               - Customer records
 projects              - Project management
 project_cost_centers  - Project to cost center mapping
 project_files         - Project file metadata
-timesheets            - Time tracking entries (with billing_status, invoice_id, image_urls)
+timesheets            - Time tracking entries (with billing_status, invoice_id, image_urls, cloud_image_urls, location)
 cost_centers          - Cost categorization
 activity_types        - Work type definitions
 permissions           - Available system permissions
@@ -422,6 +437,10 @@ cd backend && npm run build
 - [EMAIL_SETUP.md](./EMAIL_SETUP.md) - Email/SMTP configuration guide
 - [XERO_SETUP.md](./XERO_SETUP.md) - Xero integration setup guide
 - [IMPLEMENTATION.md](./IMPLEMENTATION.md) - Implementation details
+- [TROUBLESHOOTER_PROMPT.md](./TROUBLESHOOTER_PROMPT.md) - Troubleshooting guide
+- [ARCHITECTURE_DIAGRAMS.md](./ARCHITECTURE_DIAGRAMS.md) - System architecture diagrams
+
+**Historical Documentation:** Archived implementation summaries and reviews are available in `docs/archive/` for reference.
 
 ## Contributing
 

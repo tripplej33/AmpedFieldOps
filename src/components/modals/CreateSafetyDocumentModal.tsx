@@ -99,7 +99,8 @@ export default function CreateSafetyDocumentModal({
           setSelectedClient(client);
           
           // Autofill location from client address or project description
-          const location = project.location || client.address || project.description || '';
+          // Note: projects table doesn't have location column, use client address or project description
+          const location = client.address || project.description || '';
           
           // Autofill based on document type
           if (documentType === 'jsa') {
