@@ -4,8 +4,10 @@
  */
 import FormData from 'form-data';
 import fs from 'fs';
+import path from 'path';
 import { env } from '../config/env';
 import { log } from './logger';
+import { StorageFactory } from './storage/StorageFactory';
 
 export interface OCRResult {
   success: boolean;
@@ -41,16 +43,37 @@ class OCRServiceClient {
 
   /**
    * Process an image file through OCR
+   * @param filePath Storage provider path (e.g., 'projects/.../file.jpg') or local file path for backward compatibility
    */
   async processImage(filePath: string): Promise<OCRResult> {
     try {
-      if (!fs.existsSync(filePath)) {
-        throw new Error(`File not found: ${filePath}`);
+      let fileStream: NodeJS.ReadableStream;
+      let filename: string;
+      
+      // Check if it's a storage provider path or local file path
+      const storage = await StorageFactory.getInstance();
+      const isStoragePath = !filePath.startsWith('/') && !path.isAbsolute(filePath);
+      
+      if (isStoragePath) {
+        // Use storage provider
+        const exists = await storage.exists(filePath);
+        if (!exists) {
+          throw new Error(`File not found in storage: ${filePath}`);
+        }
+        fileStream = await storage.getStream(filePath);
+        filename = filePath.split('/').pop() || 'image.jpg';
+      } else {
+        // Local file path (backward compatibility)
+        if (!fs.existsSync(filePath)) {
+          throw new Error(`File not found: ${filePath}`);
+        }
+        fileStream = fs.createReadStream(filePath);
+        filename = filePath.split('/').pop() || 'image.jpg';
       }
 
       const formData = new FormData();
-      formData.append('file', fs.createReadStream(filePath), {
-        filename: filePath.split('/').pop() || 'image.jpg',
+      formData.append('file', fileStream, {
+        filename,
         contentType: 'image/jpeg',
       });
 

@@ -10,7 +10,7 @@ import { ocrService, OCRResult } from '../lib/ocrService';
 import { findMatches } from '../lib/documentMatcher';
 import { StorageFactory } from '../lib/storage/StorageFactory';
 import { generatePartitionedPath, resolveStoragePath } from '../lib/storage/pathUtils';
-import { createReadStream } from 'fs';
+import { bufferToStream } from '../middleware/upload';
 import path from 'path';
 import fs from 'fs';
 
@@ -35,16 +35,14 @@ router.post(
     const cost_center_id = req.body?.cost_center_id || req.body?.costCenterId;
 
     if (!project_id) {
-      // Delete uploaded file if validation fails
-      if (fs.existsSync(req.file.path)) {
-        try {
-          fs.unlinkSync(req.file.path);
-        } catch (unlinkError) {
-          log.error('Failed to delete uploaded file after validation failure', unlinkError);
-        }
-      }
       log.error('Document scan upload failed: project_id missing', { body: req.body, hasFile: !!req.file });
       throw new ValidationError('project_id is required');
+    }
+
+    // Check if file is an image (validate before uploading)
+    const isImage = req.file.mimetype.startsWith('image/');
+    if (!isImage) {
+      throw new FileError('Only image files can be processed for OCR');
     }
 
     // Get storage provider
@@ -56,46 +54,20 @@ router.post(
     const basePath = `projects/${projectId}/files${cost_center_id ? `/${cost_center_id}` : ''}`;
     const storagePath = generatePartitionedPath(req.file.originalname, basePath);
     
-    // Stream file from temp location to storage provider
+    // Stream file from memory buffer to storage provider
     try {
-      const fileStream = createReadStream(req.file.path);
+      const fileStream = bufferToStream(req.file.buffer);
       await storage.put(storagePath, fileStream, {
         contentType: req.file.mimetype,
       });
-      
-      // Delete temp file after successful upload
-      try {
-        if (fs.existsSync(req.file.path)) {
-          fs.unlinkSync(req.file.path);
-        }
-      } catch (cleanupError) {
-        log.error('Failed to cleanup temp file after upload', cleanupError);
-      }
     } catch (storageError: any) {
-      log.error('Failed to upload file to storage', storageError, { project_id, tempPath: req.file.path });
-      // Try to clean up temp file
-      try {
-        if (fs.existsSync(req.file.path)) {
-          fs.unlinkSync(req.file.path);
-        }
-      } catch (cleanupError) {
-        log.error('Failed to cleanup temp file after storage error', cleanupError);
-      }
+      log.error('Failed to upload file to storage', storageError, { 
+        project_id, 
+        storagePath,
+        errorMessage: storageError.message,
+        errorStack: storageError.stack
+      });
       throw new ValidationError(`Failed to save file to storage: ${storageError.message}`);
-    }
-
-    // Check if file is an image
-    const isImage = req.file.mimetype.startsWith('image/');
-    if (!isImage) {
-      // Delete uploaded file
-      if (fs.existsSync(req.file.path)) {
-        try {
-          fs.unlinkSync(req.file.path);
-        } catch (unlinkError) {
-          log.error('Failed to delete non-image file', unlinkError);
-        }
-      }
-      throw new FileError('Only image files can be processed for OCR');
     }
 
     // Determine file type from mime type
@@ -469,10 +441,18 @@ router.post('/:id/retry', authenticate, requirePermission('can_edit_projects'), 
   }
 
   const scan = scanResult.rows[0];
-  const filePath = path.join(__dirname, '../../', scan.file_path);
-
-  if (!fs.existsSync(filePath)) {
-    throw new FileError('Original file not found');
+  // Extract storage path from file_path (could be URL or path)
+  let storagePath: string;
+  if (scan.file_path.startsWith('http://') || scan.file_path.startsWith('https://')) {
+    // For S3/Google Drive URLs, we need to extract the storage path
+    // The URL format depends on the storage provider
+    // For now, we'll use the file_path as-is and let the OCR service handle it
+    storagePath = scan.file_path;
+  } else {
+    // Local path - extract relative path
+    storagePath = scan.file_path.startsWith('/') 
+      ? scan.file_path.substring(1) // Remove leading slash
+      : scan.file_path;
   }
 
   // Reset scan status and clear previous matches
@@ -487,8 +467,8 @@ router.post('/:id/retry', authenticate, requirePermission('can_edit_projects'), 
 
   await query('DELETE FROM document_matches WHERE scan_id = $1', [scanId]);
 
-  // Process in background
-  processDocumentScan(scanId, filePath).catch(error => {
+  // Process in background (pass storage path)
+  processDocumentScan(scanId, storagePath).catch(error => {
     log.error('Retry OCR processing failed', error, { scanId });
   });
 

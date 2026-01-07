@@ -11,6 +11,7 @@ import { parsePaginationParams, createPaginatedResponse } from '../lib/paginatio
 import { log } from '../lib/logger';
 import { StorageFactory } from '../lib/storage/StorageFactory';
 import { generatePartitionedPath, resolveStoragePath } from '../lib/storage/pathUtils';
+import { bufferToStream } from '../middleware/upload';
 
 const router = Router();
 
@@ -258,8 +259,8 @@ router.post('/', authenticate, uploadLimiter,
         // Generate partitioned path
         const storagePath = generatePartitionedPath(file.originalname, basePath);
         
-        // Stream file from temp location to storage provider
-        const fileStream = createReadStream(file.path);
+        // Stream file from memory buffer to storage provider
+        const fileStream = bufferToStream(file.buffer);
         await storage.put(storagePath, fileStream, {
           contentType: file.mimetype,
         });
@@ -267,25 +268,14 @@ router.post('/', authenticate, uploadLimiter,
         // Get URL from storage provider (signed URL for S3, regular path for local)
         const fileUrl = await storage.url(storagePath);
         imageUrls.push(fileUrl);
-        
-        // Delete temp file after successful upload
-        try {
-          if (fs.existsSync(file.path)) {
-            fs.unlinkSync(file.path);
-          }
-        } catch (cleanupError) {
-          log.error('Failed to cleanup temp file after upload', cleanupError, { filePath: file.path });
-        }
       } catch (uploadError: any) {
-        log.error(`Failed to upload ${file.filename} to storage`, uploadError, { filename: file.filename, project_id });
-        // Try to clean up temp file
-        try {
-          if (fs.existsSync(file.path)) {
-            fs.unlinkSync(file.path);
-          }
-        } catch (cleanupError) {
-          log.error('Failed to cleanup temp file after upload error', cleanupError);
-        }
+        log.error(`Failed to upload ${file.originalname} to storage`, uploadError, { 
+          filename: file.originalname, 
+          project_id,
+          storagePath,
+          errorMessage: uploadError.message,
+          errorStack: uploadError.stack
+        });
         // Don't add to imageUrls if upload failed
       }
     }
@@ -439,8 +429,8 @@ router.put('/:id', authenticate,
           // Generate partitioned path
           const storagePath = generatePartitionedPath(file.originalname, basePath);
           
-          // Stream file from temp location to storage provider
-          const fileStream = createReadStream(file.path);
+          // Stream file from memory buffer to storage provider
+          const fileStream = bufferToStream(file.buffer);
           await storage.put(storagePath, fileStream, {
             contentType: file.mimetype,
           });
@@ -448,25 +438,14 @@ router.put('/:id', authenticate,
           // Get URL from storage provider
           const fileUrl = await storage.url(storagePath);
           imageUrls.push(fileUrl);
-          
-          // Delete temp file after successful upload
-          try {
-            if (fs.existsSync(file.path)) {
-              fs.unlinkSync(file.path);
-            }
-          } catch (cleanupError) {
-            log.error('Failed to cleanup temp file after upload', cleanupError);
-          }
         } catch (uploadError: any) {
-          log.error(`Failed to upload ${file.filename} to storage`, uploadError, { filename: file.filename, project_id });
-          // Try to clean up temp file
-          try {
-            if (fs.existsSync(file.path)) {
-              fs.unlinkSync(file.path);
-            }
-          } catch (cleanupError) {
-            log.error('Failed to cleanup temp file after upload error', cleanupError);
-          }
+          log.error(`Failed to upload ${file.originalname} to storage`, uploadError, { 
+            filename: file.originalname, 
+            project_id,
+            storagePath,
+            errorMessage: uploadError.message,
+            errorStack: uploadError.stack
+          });
           // Don't add to imageUrls if upload failed
         }
       }
@@ -731,8 +710,8 @@ router.post('/:id/images', authenticate,
         // Generate partitioned path
         const storagePath = generatePartitionedPath(file.originalname, basePath);
         
-        // Stream file from temp location to storage provider
-        const fileStream = createReadStream(file.path);
+        // Stream file from memory buffer to storage provider
+        const fileStream = bufferToStream(file.buffer);
         await storage.put(storagePath, fileStream, {
           contentType: file.mimetype,
         });
@@ -740,25 +719,14 @@ router.post('/:id/images', authenticate,
         // Get URL from storage provider
         const fileUrl = await storage.url(storagePath);
         imageUrls.push(fileUrl);
-        
-        // Delete temp file after successful upload
-        try {
-          if (fs.existsSync(file.path)) {
-            fs.unlinkSync(file.path);
-          }
-        } catch (cleanupError) {
-          log.error('Failed to cleanup temp file after upload', cleanupError);
-        }
       } catch (uploadError: any) {
-        log.error(`Failed to upload ${file.filename} to storage`, uploadError, { filename: file.filename, timesheetId: req.params.id });
-        // Try to clean up temp file
-        try {
-          if (fs.existsSync(file.path)) {
-            fs.unlinkSync(file.path);
-          }
-        } catch (cleanupError) {
-          log.error('Failed to cleanup temp file after upload error', cleanupError);
-        }
+        log.error(`Failed to upload ${file.originalname} to storage`, uploadError, { 
+          filename: file.originalname, 
+          timesheetId: req.params.id,
+          storagePath,
+          errorMessage: uploadError.message,
+          errorStack: uploadError.stack
+        });
         // Don't add to imageUrls if upload failed
       }
     }

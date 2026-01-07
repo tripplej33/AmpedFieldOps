@@ -6,7 +6,7 @@ import { clearEmailSettingsCache, sendTestEmail } from '../lib/email';
 import { StorageFactory } from '../lib/storage/StorageFactory';
 import { StorageConfig } from '../lib/storage/types';
 import { generatePartitionedPath } from '../lib/storage/pathUtils';
-import { createReadStream } from 'fs';
+import { bufferToStream } from '../middleware/upload';
 import { log } from '../lib/logger';
 import { isGoogleDriveConnected } from '../lib/googleDrive';
 import fs from 'fs';
@@ -445,23 +445,14 @@ router.post('/logo', authenticate, requireRole('admin'), logoUpload.single('logo
     const basePath = 'logos';
     const storagePath = generatePartitionedPath(req.file.originalname, basePath);
     
-    // Stream file from temp location to storage provider
-    const fileStream = createReadStream(req.file.path);
+    // Stream file from memory buffer to storage provider
+    const fileStream = bufferToStream(req.file.buffer);
     await storage.put(storagePath, fileStream, {
       contentType: req.file.mimetype,
     });
     
     // Get URL from storage provider
     const logoUrl = await storage.url(storagePath);
-    
-    // Delete temp file after successful upload
-    try {
-      if (fs.existsSync(req.file.path)) {
-        fs.unlinkSync(req.file.path);
-      }
-    } catch (cleanupError) {
-      log.error('Failed to cleanup temp logo file', cleanupError);
-    }
 
     await query(
       `INSERT INTO settings (key, value, user_id)
@@ -502,23 +493,14 @@ router.post('/favicon', authenticate, requireRole('admin'), faviconUpload.single
     const faviconFilename = isIco ? 'favicon.ico' : `favicon-${Date.now()}${path.extname(req.file.originalname)}`;
     const storagePath = generatePartitionedPath(faviconFilename, basePath);
     
-    // Stream file from temp location to storage provider
-    const fileStream = createReadStream(req.file.path);
+    // Stream file from memory buffer to storage provider
+    const fileStream = bufferToStream(req.file.buffer);
     await storage.put(storagePath, fileStream, {
       contentType: req.file.mimetype,
     });
     
     // Get URL from storage provider
     const faviconUrl = await storage.url(storagePath);
-    
-    // Delete temp file after successful upload
-    try {
-      if (fs.existsSync(req.file.path)) {
-        fs.unlinkSync(req.file.path);
-      }
-    } catch (cleanupError) {
-      log.error('Failed to cleanup temp favicon file', cleanupError);
-    }
 
     await query(
       `INSERT INTO settings (key, value, user_id)

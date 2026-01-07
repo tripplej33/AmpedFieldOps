@@ -14,6 +14,8 @@ import { generatePartitionedPath, resolveStoragePath } from '../lib/storage/path
 import { createReadStream } from 'fs';
 import path from 'path';
 import fs from 'fs';
+import { bufferToStream } from '../middleware/upload';
+import { Readable } from 'stream';
 
 const router = Router();
 
@@ -241,14 +243,6 @@ router.post(
       storage = await StorageFactory.getInstance();
     } catch (storageInitError: any) {
       log.error('Failed to initialize storage provider', storageInitError, { project_id });
-      // Clean up temp file
-      if (fs.existsSync(req.file.path)) {
-        try {
-          fs.unlinkSync(req.file.path);
-        } catch (cleanupError) {
-          log.error('Failed to cleanup temp file after storage init error', cleanupError);
-        }
-      }
       throw new ValidationError(`Failed to initialize storage: ${storageInitError.message || 'Unknown error'}`);
     }
 
@@ -259,39 +253,20 @@ router.post(
     const basePath = `projects/${projectId}/files${cost_center_id ? `/${cost_center_id}` : ''}`;
     const storagePath = generatePartitionedPath(req.file.originalname, basePath);
     
-    // Stream file from temp location to storage provider
+    // Stream file from memory buffer to storage provider
     try {
-      const fileStream = createReadStream(req.file.path);
+      const fileStream = bufferToStream(req.file.buffer);
       await storage.put(storagePath, fileStream, {
         contentType: req.file.mimetype,
       });
-      
-      // Delete temp file after successful upload
-      try {
-        if (fs.existsSync(req.file.path)) {
-          fs.unlinkSync(req.file.path);
-        }
-      } catch (cleanupError) {
-        log.error('Failed to cleanup temp file after upload', cleanupError);
-        // Don't throw - file is already in storage
-      }
     } catch (storageError: any) {
       log.error('Failed to upload file to storage', storageError, { 
         project_id, 
-        tempPath: req.file.path,
         storagePath,
         storageDriver: storage?.getDriver(),
         errorMessage: storageError.message,
         errorStack: storageError.stack
       });
-      // Try to clean up temp file
-      try {
-        if (fs.existsSync(req.file.path)) {
-          fs.unlinkSync(req.file.path);
-        }
-      } catch (cleanupError) {
-        log.error('Failed to cleanup temp file after storage error', cleanupError);
-      }
       const errorMessage = storageError.message || 'Unknown storage error';
       throw new ValidationError(`Failed to save file to storage: ${errorMessage}`);
     }

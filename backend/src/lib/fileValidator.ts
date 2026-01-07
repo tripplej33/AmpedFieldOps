@@ -51,26 +51,27 @@ const FILE_SIGNATURES: { [key: string]: Array<{ offset: number; bytes: number[] 
 
 /**
  * Validates file content matches declared MIME type
- * @param filePath Path to the file
+ * @param filePathOrBuffer Path to the file (string) or file buffer (Buffer)
  * @param declaredMimeType MIME type declared by the client
+ * @param isBuffer If true, first param is a Buffer; if false, it's a file path
  * @returns true if file content matches declared type, false otherwise
  */
 export async function validateFileContent(
-  filePath: string,
+  filePathOrBuffer: string | Buffer,
   declaredMimeType: string,
-  useStorageProvider: boolean = false
+  isBuffer: boolean = false
 ): Promise<boolean> {
   try {
     let buffer: Buffer;
     
-    if (useStorageProvider) {
-      // Use storage provider to read file
-      const storage = await StorageFactory.getInstance();
-      const fileContent = await storage.get(filePath);
-      // Read first 32 bytes
-      buffer = fileContent.slice(0, 32);
+    if (isBuffer) {
+      // First param is already a Buffer (from memory storage)
+      buffer = filePathOrBuffer as Buffer;
+      // Use first 32 bytes for validation
+      buffer = buffer.slice(0, 32);
     } else {
-      // Use local filesystem (backward compatibility)
+      // First param is a file path (backward compatibility)
+      const filePath = filePathOrBuffer as string;
       buffer = Buffer.alloc(32);
       const fd = await fs.promises.open(filePath, 'r');
       const { bytesRead } = await fd.read(buffer, 0, 32, 0);
