@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Project, TimesheetEntry, Client, ProjectStatus, CostCenter } from '@/types';
+import { Project, ProjectStatus, CostCenter } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
@@ -34,11 +34,8 @@ interface ProjectDetailModalProps {
 
 export default function ProjectDetailModal({ project, open, onOpenChange, onProjectUpdated }: ProjectDetailModalProps) {
   const [isSyncing, setIsSyncing] = useState(false);
-  const [projectEntries, setProjectEntries] = useState<TimesheetEntry[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const [clients, setClients] = useState<Client[]>([]);
   const [costCenters, setCostCenters] = useState<CostCenter[]>([]);
   const [projectFinancials, setProjectFinancials] = useState<ProjectFinancials | null>(null);
   const [projectFiles, setProjectFiles] = useState<ProjectFile[]>([]);
@@ -65,7 +62,6 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
   // Edit form state
   const [editForm, setEditForm] = useState({
     name: '',
-    client_id: '',
     description: '',
     budget: '',
     status: 'quoted' as ProjectStatus,
@@ -73,8 +69,6 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
 
   useEffect(() => {
     if (project && open) {
-      loadProjectTimesheets();
-      loadClients();
       loadCostCenters();
       loadProjectFinancials();
       loadProjectFiles();
@@ -82,7 +76,6 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
       // Reset edit form when project changes
       setEditForm({
         name: project.name,
-        client_id: project.client_id || '',
         description: project.description || '',
         budget: project.budget?.toString() || '',
         status: project.status,
@@ -131,29 +124,6 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
     }
   };
 
-  const loadProjectTimesheets = async () => {
-    if (!project) return;
-    setIsLoading(true);
-    try {
-      const timesheets = await api.getTimesheets({ project_id: project.id });
-      setProjectEntries(Array.isArray(timesheets) ? timesheets : []);
-    } catch (error) {
-      console.error('Failed to load timesheets:', error);
-      setProjectEntries([]);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const loadClients = async () => {
-    try {
-      const data = await api.getClients();
-      setClients(Array.isArray(data) ? data : []);
-    } catch (error) {
-      console.error('Failed to load clients:', error);
-      setClients([]);
-    }
-  };
 
   const loadCostCenters = async () => {
     if (!project) return;
@@ -234,7 +204,7 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
   };
 
   const handleSaveEdit = async () => {
-    if (!project || !editForm.name || !editForm.client_id) {
+    if (!project || !editForm.name) {
       toast.error('Please fill in required fields');
       return;
     }
@@ -243,7 +213,6 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
     try {
       await api.updateProject(project.id, {
         name: editForm.name,
-        client_id: editForm.client_id,
         description: editForm.description,
         budget: parseFloat(editForm.budget) || 0,
         status: editForm.status,
@@ -263,17 +232,8 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
   const progress = project.budget > 0 ? ((project.actual_cost || 0) / project.budget) * 100 : 0;
   const isOverBudget = progress > 100;
 
-  const totalHours = projectEntries.reduce((sum, e) => sum + parseFloat(String(e.hours)), 0);
-
-  // Group entries by cost center
-  const entriesByCostCenter = projectEntries.reduce((acc, entry) => {
-    const cc = entry.cost_center_code || 'Unknown';
-    if (!acc[cc]) {
-      acc[cc] = [];
-    }
-    acc[cc].push(entry);
-    return acc;
-  }, {} as Record<string, TimesheetEntry[]>);
+  // Calculate total hours from cost centers
+  const totalHours = costCenters.reduce((sum, cc) => sum + (Number(cc.total_hours) || 0), 0);
 
   const handleSendToXero = () => {
     setIsSyncing(true);
@@ -434,10 +394,8 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
 
           {/* Tabs */}
           <Tabs defaultValue="costcenters" className="w-full">
-            <TabsList className="grid w-full grid-cols-6">
+            <TabsList className="grid w-full grid-cols-4">
               <TabsTrigger value="costcenters">Cost Centers</TabsTrigger>
-              <TabsTrigger value="breakdown">Breakdown</TabsTrigger>
-              <TabsTrigger value="timesheets">Timesheets</TabsTrigger>
               <TabsTrigger value="files">Files</TabsTrigger>
               <TabsTrigger value="safety">Safety</TabsTrigger>
               <TabsTrigger value="details">Details</TabsTrigger>
@@ -603,81 +561,6 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
                     );
                   })}
                 </div>
-              )}
-            </TabsContent>
-
-            {/* Cost Breakdown */}
-            <TabsContent value="breakdown" className="space-y-4 mt-4">
-              {isLoading ? (
-                <div className="flex items-center justify-center py-8">
-                  <Loader2 className="w-6 h-6 animate-spin text-electric" />
-                </div>
-              ) : Object.entries(entriesByCostCenter).length === 0 ? (
-                <Card className="p-6 bg-card border-border">
-                  <p className="text-center text-muted-foreground">No timesheet entries found</p>
-                </Card>
-              ) : (
-                Object.entries(entriesByCostCenter).map(([costCenter, entries]) => {
-                  const totalCCHours = entries.reduce((sum, e) => sum + parseFloat(String(e.hours)), 0);
-                  return (
-                    <Card key={costCenter} className="p-4 bg-card border-border">
-                      <div className="flex items-center justify-between mb-3">
-                        <div>
-                          <h4 className="font-mono font-semibold text-foreground">{costCenter}</h4>
-                        </div>
-                        <div className="text-right">
-                          <p className="font-mono font-bold text-electric">{totalCCHours}h</p>
-                          <p className="text-xs text-muted-foreground">{entries.length} entries</p>
-                        </div>
-                      </div>
-                      <div className="space-y-2">
-                        {entries.slice(0, 3).map((entry) => (
-                          <div key={entry.id} className="flex items-center justify-between text-sm py-1">
-                            <span className="text-muted-foreground">{entry.user_name}</span>
-                            <span className="font-mono text-foreground">{entry.hours}h</span>
-                          </div>
-                        ))}
-                        {entries.length > 3 && (
-                          <p className="text-xs text-muted-foreground text-center pt-1">
-                            +{entries.length - 3} more entries
-                          </p>
-                        )}
-                      </div>
-                    </Card>
-                  );
-                })
-              )}
-            </TabsContent>
-
-            {/* Timesheets */}
-            <TabsContent value="timesheets" className="space-y-3 mt-4">
-              {isLoading ? (
-                <div className="flex items-center justify-center py-8">
-                  <Loader2 className="w-6 h-6 animate-spin text-electric" />
-                </div>
-              ) : projectEntries.length === 0 ? (
-                <Card className="p-6 bg-card border-border">
-                  <p className="text-center text-muted-foreground">No timesheet entries found</p>
-                </Card>
-              ) : (
-                projectEntries.map((entry) => (
-                  <Card key={entry.id} className="p-4 bg-card border-border">
-                    <div className="flex items-center justify-between mb-2">
-                      <div>
-                        <p className="font-semibold text-foreground">{entry.user_name}</p>
-                        <p className="text-xs text-muted-foreground font-mono">{entry.date}</p>
-                      </div>
-                      <div className="text-right">
-                        <p className="font-mono font-bold text-electric">{entry.hours}h</p>
-                        <Badge variant="outline" className="text-xs mt-1">
-                          {entry.cost_center_code}
-                        </Badge>
-                      </div>
-                    </div>
-                    <p className="text-sm text-muted-foreground">{entry.notes}</p>
-                    <Badge className="mt-2 capitalize text-xs">{entry.activity_type_name}</Badge>
-                  </Card>
-                ))
               )}
             </TabsContent>
 
@@ -955,25 +838,6 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
                 </div>
 
                 <div>
-                  <Label className="font-mono text-xs uppercase tracking-wider">Client *</Label>
-                  <Select 
-                    value={editForm.client_id} 
-                    onValueChange={(value) => setEditForm({ ...editForm, client_id: value })}
-                  >
-                    <SelectTrigger className="mt-2">
-                      <SelectValue placeholder="Select a client" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {clients.map((client) => (
-                        <SelectItem key={client.id} value={client.id.toString()}>
-                          {client.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div>
                   <Label className="font-mono text-xs uppercase tracking-wider">Description</Label>
                   <Textarea
                     value={editForm.description}
@@ -1006,6 +870,7 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
                         <SelectItem value="in-progress">In Progress</SelectItem>
                         <SelectItem value="completed">Completed</SelectItem>
                         <SelectItem value="invoiced">Invoiced</SelectItem>
+                        <SelectItem value="paid">Paid (Archived)</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>

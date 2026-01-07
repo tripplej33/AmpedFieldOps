@@ -1,4 +1,4 @@
-export type ProjectStatus = 'quoted' | 'in-progress' | 'completed' | 'invoiced';
+export type ProjectStatus = 'quoted' | 'in-progress' | 'completed' | 'invoiced' | 'paid';
 export type UserRole = 'admin' | 'manager' | 'user';
 
 export interface Client {

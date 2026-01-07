@@ -102,7 +102,7 @@ CREATE TABLE IF NOT EXISTS projects (
   code VARCHAR(50) UNIQUE NOT NULL,
   name VARCHAR(255) NOT NULL,
   client_id UUID REFERENCES clients(id) ON DELETE SET NULL,
-  status VARCHAR(20) DEFAULT 'quoted' CHECK (status IN ('quoted', 'in-progress', 'completed', 'invoiced')),
+  status VARCHAR(20) DEFAULT 'quoted' CHECK (status IN ('quoted', 'in-progress', 'completed', 'invoiced', 'paid')),
   budget DECIMAL(15,2) DEFAULT 0,
   actual_cost DECIMAL(15,2) DEFAULT 0,
   description TEXT,
@@ -515,6 +515,23 @@ CREATE INDEX IF NOT EXISTS idx_document_scans_created_at ON document_scans(creat
 CREATE INDEX IF NOT EXISTS idx_document_matches_scan_id ON document_matches(scan_id);
 CREATE INDEX IF NOT EXISTS idx_document_matches_entity ON document_matches(entity_type, entity_id);
 CREATE INDEX IF NOT EXISTS idx_document_matches_confirmed ON document_matches(confirmed);
+
+-- Update projects table status constraint to include 'paid' status
+DO $$ 
+BEGIN
+  -- Drop existing constraint if it exists
+  IF EXISTS (
+    SELECT 1 FROM information_schema.table_constraints 
+    WHERE constraint_name = 'projects_status_check' 
+    AND table_name = 'projects'
+  ) THEN
+    ALTER TABLE projects DROP CONSTRAINT projects_status_check;
+  END IF;
+  
+  -- Add new constraint with 'paid' status
+  ALTER TABLE projects ADD CONSTRAINT projects_status_check 
+    CHECK (status IN ('quoted', 'in-progress', 'completed', 'invoiced', 'paid'));
+END $$;
 `;
 
 async function runMigration() {
