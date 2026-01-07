@@ -13,7 +13,6 @@ const Dashboard = lazy(() => import("./components/pages/Dashboard"));
 const Projects = lazy(() => import("./components/pages/Projects"));
 const Clients = lazy(() => import("./components/pages/Clients"));
 const Timesheets = lazy(() => import("./components/pages/Timesheets"));
-const Reports = lazy(() => import("./components/pages/Reports"));
 const Settings = lazy(() => import("./components/pages/Settings"));
 const Login = lazy(() => import("./components/pages/Login"));
 const ForgotPassword = lazy(() => import("./components/pages/ForgotPassword"));
@@ -73,7 +72,6 @@ function AppRoutes() {
           <Route path="projects" element={<Projects />} />
           <Route path="clients" element={<Clients />} />
           <Route path="timesheets" element={<Timesheets />} />
-          <Route path="reports" element={<Reports />} />
           <Route path="settings" element={<Settings />} />
           <Route path="user-settings" element={<UserSettings />} />
           <Route path="financials" element={

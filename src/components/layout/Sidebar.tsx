@@ -4,7 +4,6 @@ import {
   Users, 
   Briefcase, 
   Clock, 
-  FileText, 
   Settings, 
   Zap, 
   Menu, 
@@ -40,7 +39,6 @@ const mainNavigation: NavItem[] = [
   { name: 'Clients', href: '/clients', icon: Users },
   { name: 'Timesheets', href: '/timesheets', icon: Clock },
   { name: 'Files', href: '/files', icon: FolderOpen, permission: 'can_view_financials' },
-  { name: 'Reports', href: '/reports', icon: FileText },
   { name: 'Financials', href: '/financials', icon: DollarSign, permission: 'can_view_financials' },
   { name: 'Document Scan', href: '/document-scan', icon: Camera, permission: 'can_edit_projects' },
 ];
