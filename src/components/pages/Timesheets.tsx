@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { api } from '@/lib/api';
 import { TimesheetEntry, Client, Project, ActivityType, CostCenter, User } from '@/types';
-import { Plus, Calendar, Clock, Wrench, Pencil, Trash2, Loader2, Camera, Image, X, ChevronLeft, ChevronRight, Users, CheckCircle2, AlertCircle } from 'lucide-react';
+import { Plus, Calendar, Clock, Wrench, Pencil, Trash2, Loader2, Camera, Image, X, ChevronLeft, ChevronRight, Users, CheckCircle2, AlertCircle, CheckCircle, Search, MessageSquare, Settings2 } from 'lucide-react';
 import ImageViewer from '@/components/modals/ImageViewer';
 import { Pagination } from '@/components/ui/pagination';
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
@@ -302,24 +302,42 @@ export default function Timesheets() {
   };
 
   const handleProjectChange = async (projectId: string) => {
-    // Reset cost centers in all activity entries when project changes
-    setFormData(prev => ({
-      ...prev,
-      project_id: projectId,
-      activity_entries: prev.activity_entries.map(entry => ({
-        ...entry,
-        cost_center_id: '' // Reset cost center when project changes
-      }))
-    }));
     if (projectId) {
       try {
         const costCenterData = await api.getCostCenters(true, projectId);
-        setCostCenters(Array.isArray(costCenterData) ? costCenterData.filter(cc => cc.id) : []);
+        const loadedCostCenters = Array.isArray(costCenterData) ? costCenterData.filter(cc => cc.id) : [];
+        setCostCenters(loadedCostCenters);
+        
+        // Update activity entries: reset cost centers and set default to first if available
+        setFormData(prev => ({
+          ...prev,
+          project_id: projectId,
+          activity_entries: prev.activity_entries.map(entry => ({
+            ...entry,
+            cost_center_id: loadedCostCenters.length > 0 ? loadedCostCenters[0].id : '' // Default to first cost center
+          }))
+        }));
       } catch (error) {
         setCostCenters([]);
+        setFormData(prev => ({
+          ...prev,
+          project_id: projectId,
+          activity_entries: prev.activity_entries.map(entry => ({
+            ...entry,
+            cost_center_id: '' // Reset if loading fails
+          }))
+        }));
       }
     } else {
       setCostCenters([]);
+      setFormData(prev => ({
+        ...prev,
+        project_id: projectId,
+        activity_entries: prev.activity_entries.map(entry => ({
+          ...entry,
+          cost_center_id: '' // Reset cost center when project changes
+        }))
+      }));
     }
   };
 
@@ -481,21 +499,51 @@ export default function Timesheets() {
     }
   };
 
+  // Icon component helper (matching ActivityTypes page)
+  const getIconComponent = (iconName: string) => {
+    const iconMap: Record<string, any> = {
+      'Wrench': Wrench,
+      'CheckCircle': CheckCircle,
+      'Search': Search,
+      'MessageSquare': MessageSquare,
+      'Settings2': Settings2,
+    };
+    const Icon = iconMap[iconName] || Wrench;
+    return <Icon className="w-5 h-5" />;
+  };
+
   // Activity entry management functions
-  const addActivityEntry = () => {
+  const addActivityEntry = (activityTypeId?: string) => {
+    // If activity type ID provided, check if it already exists
+    if (activityTypeId) {
+      const existing = formData.activity_entries.find(
+        e => e.activity_type_id === activityTypeId
+      );
+      if (existing) {
+        // Expand existing entry instead of creating duplicate
+        setExpandedActivities(prev => new Set(prev).add(existing.id));
+        return;
+      }
+    }
+
+    // Add new entry with default cost center
     const newEntry: ActivityTypeEntry = {
       id: `entry-${Date.now()}-${Math.random()}`,
-      activity_type_id: '',
-      cost_center_id: '',
+      activity_type_id: activityTypeId || '',
+      cost_center_id: costCenters.length > 0 ? costCenters[0].id : '',
       hours: '',
       user_ids: [],
       user_hours: {},
       notes: '',
     };
+    
     setFormData(prev => ({
       ...prev,
       activity_entries: [...prev.activity_entries, newEntry]
     }));
+    
+    // Auto-expand new entry
+    setExpandedActivities(prev => new Set(prev).add(newEntry.id));
   };
 
   const removeActivityEntry = (entryId: string) => {
@@ -1180,7 +1228,7 @@ export default function Timesheets() {
 
       {/* Create Timesheet Modal */}
       <Dialog open={createModalOpen} onOpenChange={setCreateModalOpen}>
-        <DialogContent className="max-w-[95vw] sm:max-w-[600px] bg-card border-border">
+        <DialogContent className="max-w-[95vw] sm:max-w-[700px] lg:max-w-[900px] xl:max-w-[1100px] bg-card border-border">
           <DialogHeader>
             <DialogTitle className="text-xl font-bold">New Timesheet Entry</DialogTitle>
             <DialogDescription>Log hours for a project</DialogDescription>
@@ -1224,7 +1272,7 @@ export default function Timesheets() {
 
       {/* Edit Timesheet Modal */}
       <Dialog open={editModalOpen} onOpenChange={setEditModalOpen}>
-        <DialogContent className="max-w-[95vw] sm:max-w-[600px] bg-card border-border">
+        <DialogContent className="max-w-[95vw] sm:max-w-[700px] lg:max-w-[900px] xl:max-w-[1100px] bg-card border-border">
           <DialogHeader>
             <DialogTitle className="text-xl font-bold">Edit Timesheet Entry</DialogTitle>
             <DialogDescription>Update timesheet details</DialogDescription>
@@ -1470,7 +1518,7 @@ function TimesheetForm({
   onCancel: () => void;
   isSubmitting: boolean;
   submitLabel: string;
-  addActivityEntry: () => void;
+  addActivityEntry: (activityTypeId?: string) => void;
   removeActivityEntry: (entryId: string) => void;
   updateActivityEntry: (entryId: string, updates: any) => void;
   toggleUserForActivity: (entryId: string, userId: string) => void;
@@ -1494,6 +1542,19 @@ function TimesheetForm({
     }
   });
 
+  // Icon component helper (matching ActivityTypes page)
+  const getIconComponent = (iconName: string) => {
+    const iconMap: Record<string, any> = {
+      'Wrench': Wrench,
+      'CheckCircle': CheckCircle,
+      'Search': Search,
+      'MessageSquare': MessageSquare,
+      'Settings2': Settings2,
+    };
+    const Icon = iconMap[iconName] || Wrench;
+    return <Icon className="w-5 h-5" />;
+  };
+
   // Smart defaults - remember last selections
   useEffect(() => {
     const lastClient = localStorage.getItem('timesheet_last_client');
@@ -1516,6 +1577,20 @@ function TimesheetForm({
       });
     }
   }, [formData.activity_entries.length]);
+
+  // Set default cost center when cost centers are loaded and entries don't have one
+  useEffect(() => {
+    if (costCenters.length > 0 && formData.activity_entries.length > 0) {
+      const firstCostCenterId = costCenters[0].id;
+      setFormData(prev => ({
+        ...prev,
+        activity_entries: prev.activity_entries.map(entry => ({
+          ...entry,
+          cost_center_id: entry.cost_center_id || firstCostCenterId
+        }))
+      }));
+    }
+  }, [costCenters.length, costCenters[0]?.id]);
 
   const toggleActivityExpanded = (entryId: string) => {
     setExpandedActivities(prev => {
@@ -1563,7 +1638,7 @@ function TimesheetForm({
   };
 
   return (
-    <div className="space-y-4 py-4 max-h-[75vh] overflow-y-auto">
+    <div className="space-y-3 sm:space-y-4 lg:space-y-6 p-3 sm:p-4 lg:p-6 max-h-[85vh] overflow-y-auto">
       {/* Progress Indicator */}
       <div className="mb-4 p-3 rounded-lg border border-border bg-muted/20">
         <div className="flex items-center justify-between mb-2">
@@ -1579,21 +1654,21 @@ function TimesheetForm({
       </div>
 
       {/* Accordion Sections */}
-      <Accordion type="multiple" defaultValue={['basic-info']} className="space-y-4">
+      <Accordion type="multiple" defaultValue={['basic-info', 'activities']} className="space-y-3 sm:space-y-4 lg:space-y-6">
         {/* Basic Information Section */}
         <AccordionItem value="basic-info" className="border border-border rounded-lg bg-muted/20">
-          <AccordionTrigger className="px-4 hover:no-underline">
+          <AccordionTrigger className="px-3 sm:px-4 hover:no-underline">
             <div className="flex items-center gap-2">
               <Calendar className="w-4 h-4 text-electric" />
-              <span className="font-semibold text-base">Basic Information</span>
+              <span className="font-semibold text-sm sm:text-base">Basic Information</span>
               {formData.project_id && formData.date && (
                 <CheckCircle2 className="w-4 h-4 text-green-500" />
               )}
             </div>
           </AccordionTrigger>
-          <AccordionContent className="px-4 pb-4">
-            <div className="space-y-4 pt-2">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <AccordionContent className="px-3 sm:px-4 pb-4">
+            <div className="space-y-3 sm:space-y-4 pt-2">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
                 <div>
                   <Label className="font-mono text-xs uppercase tracking-wider mb-2 block">Client</Label>
                   <Select value={formData.client_id} onValueChange={(value) => {
@@ -1657,7 +1732,7 @@ function TimesheetForm({
                   type="date"
                   value={formData.date}
                   onChange={(e) => setFormData({ ...formData, date: e.target.value })}
-                  className="max-w-xs"
+                  className="w-full sm:max-w-xs"
                 />
               </div>
             </div>
@@ -1666,10 +1741,10 @@ function TimesheetForm({
 
         {/* Activities Section */}
         <AccordionItem value="activities" className="border border-border rounded-lg bg-muted/20">
-          <AccordionTrigger className="px-4 hover:no-underline">
+          <AccordionTrigger className="px-3 sm:px-4 hover:no-underline">
             <div className="flex items-center gap-2">
               <Wrench className="w-4 h-4 text-electric" />
-              <span className="font-semibold text-base">Activities *</span>
+              <span className="font-semibold text-sm sm:text-base">Activities *</span>
               {formData.activity_entries.length > 0 && formData.activity_entries.every((e: ActivityTypeEntry) => 
                 e.activity_type_id && e.cost_center_id && 
                 (e.user_ids.length > 0 ? e.user_ids.every(uid => e.user_hours[uid] && parseFloat(e.user_hours[uid]) > 0) : e.hours && parseFloat(e.hours) > 0)
@@ -1678,29 +1753,51 @@ function TimesheetForm({
               )}
             </div>
           </AccordionTrigger>
-          <AccordionContent className="px-4 pb-4">
-            <div className="space-y-4 pt-2">
-              <div className="flex items-center justify-between">
-                <p className="text-sm text-muted-foreground">Add activity types and assign users</p>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={addActivityEntry}
-                  className="h-8 border-electric/30 hover:border-electric hover:bg-electric/10"
-                >
-                  <Plus className="w-3 h-3 mr-1" />
-                  Add Activity
-                </Button>
+          <AccordionContent className="px-3 sm:px-4 pb-4">
+            <div className="space-y-3 sm:space-y-4 pt-2">
+              <div>
+                <p className="text-sm text-muted-foreground mb-3">Select activity types to add</p>
+                {/* Activity Type Buttons Grid */}
+                {activityTypes.filter(type => type.is_active).length === 0 ? (
+                  <div className="p-8 border-2 border-dashed border-muted rounded-lg text-center bg-muted/10">
+                    <Wrench className="w-8 h-8 mx-auto mb-3 text-muted-foreground opacity-50" />
+                    <p className="text-sm text-muted-foreground font-medium">No activity types available</p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-2 sm:gap-3 lg:gap-4">
+                    {activityTypes.filter(type => type.is_active).map((type) => {
+                      const isAdded = formData.activity_entries.some(
+                        e => e.activity_type_id === type.id
+                      );
+                      return (
+                        <Button
+                          key={type.id}
+                          type="button"
+                          variant="outline"
+                          className={cn(
+                            "h-auto p-2 sm:p-3 lg:p-4 flex flex-col items-center gap-1 sm:gap-2 transition-all",
+                            isAdded && "border-electric ring-2 ring-electric/20 bg-electric/5"
+                          )}
+                          onClick={() => addActivityEntry(type.id)}
+                        >
+                          <div className={cn(
+                            "w-8 h-8 sm:w-10 sm:h-10 rounded-lg border-2 flex items-center justify-center",
+                            type.color
+                          )}>
+                            {getIconComponent(type.icon)}
+                          </div>
+                          <span className="text-xs sm:text-sm font-medium text-center leading-tight">
+                            {type.name}
+                          </span>
+                          {isAdded && <CheckCircle2 className="w-3 h-3 sm:w-4 sm:h-4 text-electric" />}
+                        </Button>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
 
-              {formData.activity_entries.length === 0 ? (
-                <div className="p-8 border-2 border-dashed border-muted rounded-lg text-center bg-muted/10">
-                  <Wrench className="w-8 h-8 mx-auto mb-3 text-muted-foreground opacity-50" />
-                  <p className="text-sm text-muted-foreground font-medium">No activities added</p>
-                  <p className="text-xs text-muted-foreground mt-1">Click "Add Activity" to get started</p>
-                </div>
-              ) : (
+              {formData.activity_entries.length > 0 && (
                 formData.activity_entries.map((entry: ActivityTypeEntry, index: number) => {
                   const isExpanded = expandedActivities.has(entry.id);
                   const activityType = activityTypes.find(at => at.id === entry.activity_type_id);
@@ -1711,11 +1808,20 @@ function TimesheetForm({
                     <Collapsible key={entry.id} open={isExpanded} onOpenChange={() => toggleActivityExpanded(entry.id)}>
                       <Card className="border-2 border-border hover:border-electric/50 transition-colors bg-card">
                         <CollapsibleTrigger asChild>
-                          <div className="flex items-center justify-between p-4 cursor-pointer">
+                          <div className="flex items-center justify-between p-3 sm:p-4 cursor-pointer">
                             <div className="flex items-center gap-3 flex-1">
-                              <div className="w-8 h-8 rounded-lg bg-electric/20 border-2 border-electric flex items-center justify-center flex-shrink-0">
-                                <span className="text-sm font-bold font-mono text-electric">{index + 1}</span>
-                              </div>
+                              {activityType ? (
+                                <div className={cn(
+                                  "w-8 h-8 sm:w-10 sm:h-10 rounded-lg border-2 flex items-center justify-center flex-shrink-0",
+                                  activityType.color
+                                )}>
+                                  {getIconComponent(activityType.icon)}
+                                </div>
+                              ) : (
+                                <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-lg bg-electric/20 border-2 border-electric flex items-center justify-center flex-shrink-0">
+                                  <span className="text-sm font-bold font-mono text-electric">{index + 1}</span>
+                                </div>
+                              )}
                               <div className="flex-1 min-w-0">
                                 <div className="flex items-center gap-2">
                                   <span className="font-semibold text-sm">
@@ -1751,35 +1857,9 @@ function TimesheetForm({
                         </CollapsibleTrigger>
                         
                         <CollapsibleContent>
-                          <div className="px-4 pb-4 space-y-4 border-t border-border pt-4">
+                          <div className="px-3 sm:px-4 pb-4 space-y-3 sm:space-y-4 border-t border-border pt-3 sm:pt-4">
 
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                              <div>
-                                <Label className="font-mono text-xs uppercase tracking-wider mb-2 block flex items-center gap-1">
-                                  Activity Type *
-                                  {!entry.activity_type_id && <AlertCircle className="w-3 h-3 text-destructive" />}
-                                </Label>
-                                <Select
-                                  value={entry.activity_type_id}
-                                  onValueChange={(value) => updateActivityEntry(entry.id, { activity_type_id: value })}
-                                >
-                                  <SelectTrigger>
-                                    <SelectValue placeholder="Select activity" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {activityTypes.length === 0 ? (
-                                      <SelectItem value="__empty__" disabled>No activity types available</SelectItem>
-                                    ) : (
-                                      activityTypes.filter(type => type.id).map((type) => (
-                                        <SelectItem key={type.id} value={type.id.toString()}>
-                                          {type.name}
-                                        </SelectItem>
-                                      ))
-                                    )}
-                                  </SelectContent>
-                                </Select>
-                              </div>
-
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
                               <div>
                                 <Label className="font-mono text-xs uppercase tracking-wider mb-2 block flex items-center gap-1">
                                   Cost Center *
@@ -1933,80 +2013,73 @@ function TimesheetForm({
           </AccordionContent>
         </AccordionItem>
 
-        {/* Additional Details Section */}
-        <AccordionItem value="additional" className="border border-border rounded-lg bg-muted/20">
-          <AccordionTrigger className="px-4 hover:no-underline">
-            <div className="flex items-center gap-2">
+        {/* Additional Details - Inline (not in accordion) */}
+        <div className="space-y-4 pt-2">
+          {/* General Notes */}
+          <div>
+            <Label className="font-mono text-xs uppercase tracking-wider mb-2 block flex items-center gap-2">
               <Image className="w-4 h-4 text-electric" />
-              <span className="font-semibold text-base">Additional Details</span>
-              <CheckCircle2 className="w-4 h-4 text-green-500" />
-            </div>
-          </AccordionTrigger>
-          <AccordionContent className="px-4 pb-4">
-            <div className="space-y-4 pt-2">
+              General Notes
+            </Label>
+            <Textarea
+              value={formData.notes}
+              onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+              placeholder="General work description..."
+              className="min-h-[80px] resize-none"
+            />
+          </div>
 
-              {/* General Notes */}
-              <div>
-                <Label className="font-mono text-xs uppercase tracking-wider mb-2 block">General Notes</Label>
-                <Textarea
-                  value={formData.notes}
-                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                  placeholder="General work description..."
-                  className="min-h-[80px] resize-none"
-                />
-              </div>
-
-              {/* Improved Photo/Image Upload Section */}
-              <div>
-                <Label className="font-mono text-xs uppercase tracking-wider mb-3 block flex items-center gap-2">
-                  <Camera className="w-4 h-4 text-electric" />
-                  Photos / Media
-                </Label>
-        
-                {/* Enhanced Drag and Drop Zone */}
-                {imagePreviews.length < 5 && (
-                  <div
-                    ref={dropZoneRef as React.LegacyRef<HTMLDivElement>}
-                    onDragEnter={handleDragEnter}
-                    onDragLeave={handleDragLeave}
-                    onDragOver={handleDragOver}
-                    onDrop={handleDrop}
-                    className={cn(
-                      "border-2 border-dashed rounded-lg p-12 transition-all duration-200 cursor-pointer",
-                      isDragging 
-                        ? "border-electric bg-electric/20 scale-[1.02] shadow-lg shadow-electric/20" 
-                        : "border-electric/50 hover:border-electric bg-electric/5"
-                    )}
-                    onClick={() => fileInputRef.current?.click()}
-                  >
-                    <div className="flex flex-col items-center justify-center gap-4 text-center">
-                      <div className={cn(
-                        "w-20 h-20 rounded-full flex items-center justify-center transition-colors",
-                        isDragging ? "bg-electric/30" : "bg-electric/10"
-                      )}>
-                        <Image className={cn(
-                          "w-10 h-10 transition-colors",
-                          isDragging ? "text-electric" : "text-electric"
-                        )} />
-                      </div>
-                      <div>
-                        <p className={cn(
-                          "text-base font-semibold transition-colors",
-                          isDragging ? "text-electric" : "text-foreground"
-                        )}>
-                          {isDragging ? "Drop images here" : "Drag & drop images here"}
-                        </p>
-                        <p className="text-sm text-muted-foreground mt-1">
-                          or click to browse • Up to 5 photos (max 10MB each)
-                        </p>
-                      </div>
-                    </div>
-                  </div>
+          {/* Improved Photo/Image Upload Section */}
+          <div>
+            <Label className="font-mono text-xs uppercase tracking-wider mb-3 block flex items-center gap-2">
+              <Camera className="w-4 h-4 text-electric" />
+              Photos / Media
+            </Label>
+    
+            {/* Enhanced Drag and Drop Zone */}
+            {imagePreviews.length < 5 && (
+              <div
+                ref={dropZoneRef as React.LegacyRef<HTMLDivElement>}
+                onDragEnter={handleDragEnter}
+                onDragLeave={handleDragLeave}
+                onDragOver={handleDragOver}
+                onDrop={handleDrop}
+                className={cn(
+                  "border-2 border-dashed rounded-lg p-8 sm:p-12 transition-all duration-200 cursor-pointer",
+                  isDragging 
+                    ? "border-electric bg-electric/20 scale-[1.02] shadow-lg shadow-electric/20" 
+                    : "border-electric/50 hover:border-electric bg-electric/5"
                 )}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <div className="flex flex-col items-center justify-center gap-4 text-center">
+                  <div className={cn(
+                    "w-16 h-16 sm:w-20 sm:h-20 rounded-full flex items-center justify-center transition-colors",
+                    isDragging ? "bg-electric/30" : "bg-electric/10"
+                  )}>
+                    <Image className={cn(
+                      "w-8 h-8 sm:w-10 sm:h-10 transition-colors",
+                      isDragging ? "text-electric" : "text-electric"
+                    )} />
+                  </div>
+                  <div>
+                    <p className={cn(
+                      "text-sm sm:text-base font-semibold transition-colors",
+                      isDragging ? "text-electric" : "text-foreground"
+                    )}>
+                      {isDragging ? "Drop images here" : "Drag & drop images here"}
+                    </p>
+                    <p className="text-xs sm:text-sm text-muted-foreground mt-1">
+                      or click to browse • Up to 5 photos (max 10MB each)
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
 
-                {/* Improved Image Preview Grid */}
-                {imagePreviews.length > 0 && (
-                  <div className="grid grid-cols-4 sm:grid-cols-5 gap-3">
+            {/* Improved Image Preview Grid */}
+            {imagePreviews.length > 0 && (
+              <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-5 gap-2 sm:gap-3 lg:gap-4">
                     {imagePreviews.map((preview, index) => (
                       <div key={index} className="relative aspect-square rounded-lg overflow-hidden border-2 border-border group hover:border-electric transition-all shadow-sm hover:shadow-md">
                         <img src={preview} alt={`Preview ${index + 1}`} className="w-full h-full object-cover" />
@@ -2090,12 +2163,11 @@ function TimesheetForm({
                 />
               </div>
             </div>
-          </AccordionContent>
-        </AccordionItem>
+        </div>
       </Accordion>
 
       {/* Sticky Action Buttons */}
-      <div className="flex justify-end gap-3 pt-4 border-t border-border sticky bottom-0 bg-card -mx-4 px-4 pb-2 mt-4">
+      <div className="flex justify-end gap-2 sm:gap-3 pt-3 sm:pt-4 border-t border-border sticky bottom-0 bg-card -mx-3 sm:-mx-4 lg:-mx-6 px-3 sm:px-4 lg:px-6 pb-2 mt-4">
         <Button variant="outline" onClick={onCancel} disabled={isSubmitting} className="min-w-[100px]">
           Cancel
         </Button>
