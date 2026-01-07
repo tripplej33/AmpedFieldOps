@@ -532,22 +532,5 @@ router.post('/cleanup', authenticate, requirePermission('can_manage_users'), asy
   }
 });
 
-// Helper function to get database config
-function getDatabaseConfig() {
-  const dbUrl = process.env.DATABASE_URL;
-  if (!dbUrl) {
-    throw new Error('DATABASE_URL not configured');
-  }
-
-  const url = new URL(dbUrl);
-  return {
-    host: url.hostname,
-    port: url.port || '5432',
-    database: url.pathname.slice(1),
-    user: url.username,
-    password: url.password
-  };
-}
-
 export default router;
 
