@@ -198,42 +198,18 @@ router.post(
     const cost_center_id = req.body?.cost_center_id || req.body?.costCenterId;
 
     if (!project_id) {
-      // Delete uploaded file if validation fails
-      if (fs.existsSync(req.file.path)) {
-        try {
-          fs.unlinkSync(req.file.path);
-        } catch (unlinkError) {
-          log.error('Failed to delete uploaded file after validation failure', unlinkError);
-        }
-      }
       log.error('File upload failed: project_id missing', { body: req.body, hasFile: !!req.file });
       throw new ValidationError('project_id is required');
     }
 
     // Validate file extension matches MIME type (before uploading to storage)
     if (!validateFileExtension(req.file.originalname, req.file.mimetype)) {
-      // Delete temp file
-      if (fs.existsSync(req.file.path)) {
-        try {
-          fs.unlinkSync(req.file.path);
-        } catch (unlinkError) {
-          log.error('Failed to delete uploaded file after extension validation failure', unlinkError);
-        }
-      }
       throw new FileError('File extension does not match declared file type');
     }
 
-    // Validate file content (magic number validation) - using temp file
-    const isValidContent = await validateFileContent(req.file.path, req.file.mimetype, false);
+    // Validate file content (magic number validation) - using buffer
+    const isValidContent = await validateFileContent(req.file.buffer, req.file.mimetype, true);
     if (!isValidContent) {
-      // Delete temp file
-      if (fs.existsSync(req.file.path)) {
-        try {
-          fs.unlinkSync(req.file.path);
-        } catch (unlinkError) {
-          log.error('Failed to delete uploaded file after content validation failure', unlinkError);
-        }
-      }
       throw new FileError('File content does not match declared file type. The file may be corrupted or malicious.');
     }
 
