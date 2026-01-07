@@ -236,7 +236,22 @@ router.post(
     }
 
     // Get storage provider
-    const storage = await StorageFactory.getInstance();
+    let storage;
+    try {
+      storage = await StorageFactory.getInstance();
+    } catch (storageInitError: any) {
+      log.error('Failed to initialize storage provider', storageInitError, { project_id });
+      // Clean up temp file
+      if (fs.existsSync(req.file.path)) {
+        try {
+          fs.unlinkSync(req.file.path);
+        } catch (cleanupError) {
+          log.error('Failed to cleanup temp file after storage init error', cleanupError);
+        }
+      }
+      throw new ValidationError(`Failed to initialize storage: ${storageInitError.message || 'Unknown error'}`);
+    }
+
     const { sanitizeProjectId } = await import('../middleware/validateProject');
     const projectId = sanitizeProjectId(project_id);
     
@@ -261,7 +276,14 @@ router.post(
         // Don't throw - file is already in storage
       }
     } catch (storageError: any) {
-      log.error('Failed to upload file to storage', storageError, { project_id, tempPath: req.file.path });
+      log.error('Failed to upload file to storage', storageError, { 
+        project_id, 
+        tempPath: req.file.path,
+        storagePath,
+        storageDriver: storage?.getDriver(),
+        errorMessage: storageError.message,
+        errorStack: storageError.stack
+      });
       // Try to clean up temp file
       try {
         if (fs.existsSync(req.file.path)) {
@@ -270,7 +292,8 @@ router.post(
       } catch (cleanupError) {
         log.error('Failed to cleanup temp file after storage error', cleanupError);
       }
-      throw new ValidationError(`Failed to save file to storage: ${storageError.message}`);
+      const errorMessage = storageError.message || 'Unknown storage error';
+      throw new ValidationError(`Failed to save file to storage: ${errorMessage}`);
     }
 
     // Determine file type from mime type

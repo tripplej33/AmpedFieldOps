@@ -32,7 +32,7 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
     // Check if user can view all timesheets
     const canViewAll = req.user!.role === 'admin' || 
                        req.user!.role === 'manager' || 
-                       req.user!.permissions.includes('can_view_all_timesheets');
+                       (req.user!.permissions && req.user!.permissions.includes('can_view_all_timesheets'));
     
     // Build WHERE clause for both count and data queries
     let whereClause = 'WHERE 1=1';
@@ -167,7 +167,7 @@ router.get('/:id', authenticate, async (req: AuthRequest, res: Response) => {
     // Check permission
     const canViewAll = req.user!.role === 'admin' || 
                        req.user!.role === 'manager' || 
-                       req.user!.permissions.includes('can_view_all_timesheets');
+                       (req.user!.permissions && req.user!.permissions.includes('can_view_all_timesheets'));
     
     if (!canViewAll && result.rows[0].user_id !== req.user!.id) {
       return res.status(403).json({ error: 'Not authorized to view this timesheet' });
@@ -321,7 +321,7 @@ router.post('/', authenticate, uploadLimiter,
       if (req.body.user_id && req.body.user_id !== req.user!.id) {
         const canManageOthers = req.user!.role === 'admin' || 
                                 req.user!.role === 'manager' ||
-                                req.user!.permissions.includes('can_view_all_timesheets');
+                                (req.user!.permissions && req.user!.permissions.includes('can_view_all_timesheets'));
         if (!canManageOthers) {
           return res.status(403).json({ error: 'Not authorized to create timesheets for other users' });
         }
@@ -558,7 +558,7 @@ router.put('/:id', authenticate,
       if (user_id && user_id !== existing.rows[0].user_id) {
         const canManageOthers = req.user!.role === 'admin' || 
                                 req.user!.role === 'manager' ||
-                                req.user!.permissions.includes('can_view_all_timesheets');
+                                (req.user!.permissions && req.user!.permissions.includes('can_view_all_timesheets'));
         if (canManageOthers) {
           fields.user_id = user_id;
         }
