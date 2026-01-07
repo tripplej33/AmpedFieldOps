@@ -153,54 +153,15 @@ export const faviconUpload = multer({
   }
 });
 
-// File upload storage for project files with organized directory structure
-const fileUploadStorage = multer.diskStorage({
+// Temporary storage for file uploads (we'll move files after we have project_id)
+const tempStorage = multer.diskStorage({
   destination: (req, file, cb) => {
-    try {
-      const rawProjectId = req.body?.project_id;
-      
-      if (!rawProjectId) {
-        return cb(new Error('project_id is required'), '');
-      }
-
-      // Sanitize and validate project_id
-      const projectId = sanitizeProjectId(rawProjectId);
-      
-      // Sanitize cost_center_id if provided
-      let costCenterId = req.body?.cost_center_id;
-      if (costCenterId && typeof costCenterId === 'string') {
-        // Validate UUID format for cost center
-        if (!isValidUUID(costCenterId)) {
-          return cb(new Error('Invalid cost_center_id: must be a valid UUID'), '');
-        }
-        // Remove path traversal attempts
-        costCenterId = costCenterId.replace(/\.\./g, '').replace(/\//g, '').replace(/\\/g, '');
-      }
-      
-      // Use path.resolve to prevent directory traversal
-      const baseDir = path.resolve(__dirname, '../../uploads/projects');
-      let uploadDir = path.join(baseDir, projectId, 'files');
-      
-      // If cost center is specified, add it to the path
-      if (costCenterId) {
-        uploadDir = path.join(uploadDir, costCenterId);
-      }
-      
-      // Ensure the resolved path is still within the base directory
-      const resolvedPath = path.resolve(uploadDir);
-      if (!resolvedPath.startsWith(path.resolve(baseDir))) {
-        return cb(new Error('Invalid path: path traversal detected'), '');
-      }
-      
-      // Ensure directory exists
-      if (!fs.existsSync(uploadDir)) {
-        fs.mkdirSync(uploadDir, { recursive: true });
-      }
-      
-      cb(null, uploadDir);
-    } catch (error: any) {
-      cb(new Error(`Invalid upload path: ${error.message}`), '');
+    // Use a temporary directory - we'll move the file after validation
+    const tempDir = path.join(__dirname, '../../uploads/temp');
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir, { recursive: true });
     }
+    cb(null, tempDir);
   },
   filename: (req, file, cb) => {
     // Sanitize file extension
@@ -232,8 +193,9 @@ const fileUploadFilter = (req: Express.Request, file: Express.Multer.File, cb: m
 };
 
 // File upload middleware for project files
+// Uses temporary storage, then files are moved to correct location after project_id validation
 export const fileUpload = multer({
-  storage: fileUploadStorage,
+  storage: tempStorage,
   fileFilter: fileUploadFilter,
   limits: {
     fileSize: 50 * 1024 * 1024 // 50MB
