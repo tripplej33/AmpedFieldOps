@@ -8,6 +8,7 @@ import { StorageConfig } from '../lib/storage/types';
 import { generatePartitionedPath } from '../lib/storage/pathUtils';
 import { createReadStream } from 'fs';
 import { log } from '../lib/logger';
+import { isGoogleDriveConnected } from '../lib/googleDrive';
 import fs from 'fs';
 import path from 'path';
 import { env } from '../config/env';
@@ -67,7 +68,7 @@ router.get('/storage', authenticate, requireRole('admin'), async (req: AuthReque
     const result = await query(
       `SELECT key, value FROM settings 
        WHERE user_id IS NULL 
-       AND key IN ('storage_driver', 'storage_base_path', 'storage_s3_bucket', 'storage_s3_region', 'storage_s3_access_key_id', 'storage_s3_secret_access_key', 'storage_s3_endpoint')`
+       AND key IN ('storage_driver', 'storage_base_path', 'storage_s3_bucket', 'storage_s3_region', 'storage_s3_access_key_id', 'storage_s3_secret_access_key', 'storage_s3_endpoint', 'storage_google_drive_folder_id')`
     );
 
     const settings: Record<string, string> = {};
@@ -93,6 +94,15 @@ router.get('/storage', authenticate, requireRole('admin'), async (req: AuthReque
           : '****';
       }
       response.s3Endpoint = settings.storage_s3_endpoint || '';
+    } else if (settings.storage_driver === 'google-drive') {
+      response.googleDriveFolderId = settings.storage_google_drive_folder_id || '';
+      // Check OAuth connection status
+      try {
+        response.googleDriveConnected = await isGoogleDriveConnected();
+      } catch (error: any) {
+        log.error('Failed to check Google Drive connection status', error);
+        response.googleDriveConnected = false;
+      }
     }
 
     res.json(response);
@@ -108,11 +118,11 @@ router.get('/storage', authenticate, requireRole('admin'), async (req: AuthReque
 // Update storage configuration (admin only) - MUST be before /:key route
 router.put('/storage', authenticate, requireRole('admin'), async (req: AuthRequest, res: Response) => {
   try {
-    const { driver, basePath, s3Bucket, s3Region, s3AccessKeyId, s3SecretAccessKey, s3Endpoint } = req.body;
+    const { driver, basePath, s3Bucket, s3Region, s3AccessKeyId, s3SecretAccessKey, s3Endpoint, googleDriveFolderId } = req.body;
 
     // Validate driver
-    if (driver && !['local', 's3'].includes(driver)) {
-      return res.status(400).json({ error: 'Invalid storage driver. Must be "local" or "s3"' });
+    if (driver && !['local', 's3', 'google-drive'].includes(driver)) {
+      return res.status(400).json({ error: 'Invalid storage driver. Must be "local", "s3", or "google-drive"' });
     }
 
     // Validate S3 configuration if switching to S3
@@ -129,8 +139,20 @@ router.put('/storage', authenticate, requireRole('admin'), async (req: AuthReque
       }
     }
 
-    // Test connection before saving (if switching to S3 or updating S3 config)
-    if (driver === 's3' || (driver && driver !== 'local')) {
+    // Validate Google Drive configuration if switching to Google Drive
+    if (driver === 'google-drive') {
+      // Check OAuth connection
+      const isConnected = await isGoogleDriveConnected();
+      if (!isConnected) {
+        return res.status(400).json({ 
+          error: 'Google Drive not connected',
+          message: 'Please connect your Google Drive account in Settings → Integrations before using Google Drive storage.'
+        });
+      }
+    }
+
+    // Test connection before saving (if switching to S3/Google Drive or updating config)
+    if (driver === 's3' || driver === 'google-drive' || (driver && driver !== 'local')) {
       try {
         const testConfig: StorageConfig = {
           driver: driver || 's3',
@@ -140,6 +162,7 @@ router.put('/storage', authenticate, requireRole('admin'), async (req: AuthReque
           s3AccessKeyId,
           s3SecretAccessKey,
           s3Endpoint,
+          googleDriveFolderId,
         };
 
         const testProvider = await StorageFactory.createTestInstance(testConfig);
@@ -173,8 +196,30 @@ router.put('/storage', authenticate, requireRole('admin'), async (req: AuthReque
         { key: 'storage_s3_secret_access_key', value: s3SecretAccessKey }, // TODO: Encrypt this
         ...(s3Endpoint ? [{ key: 'storage_s3_endpoint', value: s3Endpoint }] : [])
       );
-    } else {
-      // Clear S3 settings when switching to local
+    } else if (driver === 'google-drive') {
+      // Save Google Drive folder ID if provided
+      if (googleDriveFolderId) {
+        settingsToSave.push(
+          { key: 'storage_google_drive_folder_id', value: googleDriveFolderId }
+        );
+      } else {
+        // Clear folder ID if not provided
+        await query('DELETE FROM settings WHERE key = $1 AND user_id IS NULL', ['storage_google_drive_folder_id']);
+      }
+    }
+
+    // Clear settings for other drivers when switching
+    if (driver === 'local') {
+      // Clear S3 and Google Drive settings
+      const otherSettings = ['storage_s3_bucket', 'storage_s3_region', 'storage_s3_access_key_id', 'storage_s3_secret_access_key', 'storage_s3_endpoint', 'storage_google_drive_folder_id'];
+      for (const key of otherSettings) {
+        await query('DELETE FROM settings WHERE key = $1 AND user_id IS NULL', [key]);
+      }
+    } else if (driver === 's3') {
+      // Clear Google Drive settings
+      await query('DELETE FROM settings WHERE key = $1 AND user_id IS NULL', ['storage_google_drive_folder_id']);
+    } else if (driver === 'google-drive') {
+      // Clear S3 settings
       const s3Settings = ['storage_s3_bucket', 'storage_s3_region', 'storage_s3_access_key_id', 'storage_s3_secret_access_key', 'storage_s3_endpoint'];
       for (const key of s3Settings) {
         await query('DELETE FROM settings WHERE key = $1 AND user_id IS NULL', [key]);
@@ -214,11 +259,11 @@ router.put('/storage', authenticate, requireRole('admin'), async (req: AuthReque
 // Test storage connection without saving (admin only) - MUST be before /:key route
 router.post('/storage/test', authenticate, requireRole('admin'), async (req: AuthRequest, res: Response) => {
   try {
-    const { driver, basePath, s3Bucket, s3Region, s3AccessKeyId, s3SecretAccessKey, s3Endpoint } = req.body;
+    const { driver, basePath, s3Bucket, s3Region, s3AccessKeyId, s3SecretAccessKey, s3Endpoint, googleDriveFolderId } = req.body;
 
     // Validate driver
-    if (!driver || !['local', 's3'].includes(driver)) {
-      return res.status(400).json({ error: 'Invalid storage driver. Must be "local" or "s3"' });
+    if (!driver || !['local', 's3', 'google-drive'].includes(driver)) {
+      return res.status(400).json({ error: 'Invalid storage driver. Must be "local", "s3", or "google-drive"' });
     }
 
     // Validate S3 configuration
@@ -235,6 +280,17 @@ router.post('/storage/test', authenticate, requireRole('admin'), async (req: Aut
       }
     }
 
+    // Validate Google Drive - check OAuth connection
+    if (driver === 'google-drive') {
+      const isConnected = await isGoogleDriveConnected();
+      if (!isConnected) {
+        return res.status(400).json({ 
+          success: false,
+          message: 'Google Drive not connected. Please connect your Google Drive account in Settings → Integrations first.'
+        });
+      }
+    }
+
     // Create test instance
     const testConfig: StorageConfig = {
       driver,
@@ -244,6 +300,7 @@ router.post('/storage/test', authenticate, requireRole('admin'), async (req: Aut
       s3AccessKeyId,
       s3SecretAccessKey,
       s3Endpoint,
+      googleDriveFolderId,
     };
 
     const testProvider = await StorageFactory.createTestInstance(testConfig);
