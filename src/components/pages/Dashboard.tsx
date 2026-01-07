@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Header from '@/components/layout/Header';
 import { Card } from '@/components/ui/card';
 import { api } from '@/lib/api';
@@ -16,10 +17,18 @@ export default function Dashboard() {
   const [isLoading, setIsLoading] = useState(true);
   const { notifyInfo } = useNotifications();
   const { user } = useAuth();
+  const navigate = useNavigate();
   const welcomeShownRef = useRef(false);
 
   useEffect(() => {
     loadDashboardData();
+    
+    // Auto-refresh every 30 seconds
+    const interval = setInterval(() => {
+      loadDashboardData();
+    }, 30000);
+
+    return () => clearInterval(interval);
   }, []);
 
   // Show welcome notification once per session
@@ -108,16 +117,24 @@ export default function Dashboard() {
     trend,
     icon: Icon,
     suffix = '',
+    onClick,
   }: {
     title: string;
     value: string | number;
     trend: number;
     icon: React.ElementType;
     suffix?: string;
+    onClick?: () => void;
   }) => {
     const isPositive = trend > 0;
     return (
-      <Card className="p-6 bg-card border-border hover:border-electric transition-colors">
+      <Card 
+        className={cn(
+          "p-6 bg-card border-border transition-all",
+          onClick ? "hover:border-electric hover:shadow-lg cursor-pointer" : "hover:border-border"
+        )}
+        onClick={onClick}
+      >
         <div className="flex items-start justify-between">
           <div className="flex-1">
             <p className="text-sm font-mono text-muted-foreground uppercase tracking-wider">{title}</p>
@@ -163,6 +180,7 @@ export default function Dashboard() {
             value={metrics.activeProjects}
             trend={metrics.projectsTrend}
             icon={Briefcase}
+            onClick={() => navigate('/projects')}
           />
           <MetricCard
             title="Total Hours"
@@ -170,19 +188,22 @@ export default function Dashboard() {
             trend={metrics.hoursTrend}
             icon={Clock}
             suffix="hrs"
+            onClick={() => navigate('/timesheets')}
           />
           <MetricCard
             title="Revenue (YTD)"
             value={`$${(metrics.totalRevenue / 1000).toFixed(0)}k`}
             trend={metrics.revenueTrend}
             icon={DollarSign}
+            onClick={() => navigate('/financials')}
           />
           <MetricCard
             title="Team Active"
-            value={8}
+            value={metrics.activeTeam}
             trend={0}
             icon={Activity}
             suffix="techs"
+            onClick={() => navigate('/users')}
           />
         </div>
 
@@ -214,7 +235,10 @@ export default function Dashboard() {
           <Card className="p-6 bg-card border-border">
             <h3 className="text-lg font-bold mb-4">Quick Stats</h3>
             <div className="space-y-4">
-              <div>
+              <div 
+                className="cursor-pointer hover:opacity-80 transition-opacity"
+                onClick={() => navigate('/financials')}
+              >
                 <div className="flex justify-between items-center mb-2">
                   <span className="text-sm font-mono text-muted-foreground">Budget Utilization</span>
                   <span className="text-sm font-bold font-mono text-foreground">{quickStats?.budgetUtilization || 0}%</span>
@@ -223,7 +247,10 @@ export default function Dashboard() {
                   <div className="h-full bg-electric" style={{ width: `${quickStats?.budgetUtilization || 0}%` }} />
                 </div>
               </div>
-              <div>
+              <div 
+                className="cursor-pointer hover:opacity-80 transition-opacity"
+                onClick={() => navigate('/projects')}
+              >
                 <div className="flex justify-between items-center mb-2">
                   <span className="text-sm font-mono text-muted-foreground">Projects On Track</span>
                   <span className="text-sm font-bold font-mono text-voltage">{quickStats?.projectsOnTrack || 0}%</span>
@@ -232,7 +259,10 @@ export default function Dashboard() {
                   <div className="h-full bg-voltage" style={{ width: `${quickStats?.projectsOnTrack || 0}%` }} />
                 </div>
               </div>
-              <div>
+              <div 
+                className="cursor-pointer hover:opacity-80 transition-opacity"
+                onClick={() => navigate('/projects?status=overdue')}
+              >
                 <div className="flex justify-between items-center mb-2">
                   <span className="text-sm font-mono text-muted-foreground">Overdue Projects</span>
                   <span className="text-sm font-bold font-mono text-warning">{quickStats?.overdueProjects || 0}%</span>
@@ -255,7 +285,11 @@ export default function Dashboard() {
                 <p className="text-sm text-muted-foreground text-center py-4">No recent timesheets</p>
               ) : (
                 recentTimesheets.map((entry) => (
-                <div key={entry.id} className="flex items-center gap-4 p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors">
+                <div 
+                  key={entry.id} 
+                  className="flex items-center gap-4 p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors cursor-pointer"
+                  onClick={() => navigate('/timesheets')}
+                >
                   <div className="flex-1">
                     <p className="text-sm font-medium text-foreground">{entry.project_name}</p>
                     <p className="text-xs text-muted-foreground font-mono mt-0.5">
@@ -281,7 +315,11 @@ export default function Dashboard() {
                 activeProjects.map((project) => {
                   const progress = project.budget > 0 ? (project.actual_cost / project.budget) * 100 : 0;
                   return (
-                    <div key={project.id} className="p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors">
+                    <div 
+                      key={project.id} 
+                      className="p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors cursor-pointer"
+                      onClick={() => navigate(`/projects?id=${project.id}`)}
+                    >
                       <div className="flex items-center justify-between mb-2">
                         <p className="text-sm font-medium text-foreground">{project.name}</p>
                         <span className="text-xs font-mono text-muted-foreground">{project.code}</span>
