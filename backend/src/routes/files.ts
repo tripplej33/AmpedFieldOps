@@ -62,7 +62,147 @@ router.get('/', authenticate, requirePermission('can_view_financials'), asyncHan
   res.json(result.rows);
 }));
 
-// Get single file metadata
+// Get all logo files (must be before /:id route)
+router.get('/logos', authenticate, requirePermission('can_manage_settings'), asyncHandler(async (req: AuthRequest, res: Response) => {
+  try {
+    const storage = await StorageFactory.getInstance();
+    const basePath = 'logos';
+    
+    // List all files in the logos directory
+    const files = await storage.list(basePath);
+    
+    // Filter to only files (not directories) and map to response format
+    // Use storage.url() to get proper URLs (signed URLs for S3, /uploads/... for local)
+    const logos = await Promise.all(
+      files
+        .filter((file) => !file.isDirectory)
+        .map(async (file) => {
+          // Get proper URL from storage provider
+          // For S3, this will be a signed URL; for local, it will be /uploads/...
+          const url = await storage.url(file.path);
+          return {
+            url,
+            filename: file.name,
+            upload_date: file.lastModified || new Date(),
+            file_size: file.size || 0
+          };
+        })
+    );
+    
+    // Sort by upload date (newest first)
+    logos.sort((a, b) => new Date(b.upload_date).getTime() - new Date(a.upload_date).getTime());
+
+    res.json(logos);
+  } catch (error: any) {
+    log.error('Failed to list logos', error);
+    // Return empty array on error
+    res.json([]);
+  }
+}));
+
+// Get all timesheet images across all projects (summary) - must be before /:id route
+router.get('/timesheet-images', authenticate, asyncHandler(async (req: AuthRequest, res: Response) => {
+  // Check if user can view all timesheets
+  const canViewAll = req.user!.role === 'admin' || 
+                     req.user!.role === 'manager' || 
+                     (req.user!.permissions && req.user!.permissions.includes('can_view_all_timesheets'));
+
+  let sql = `
+    SELECT 
+      t.project_id,
+      p.code as project_code,
+      p.name as project_name,
+      c.name as client_name,
+      COUNT(*) FILTER (WHERE t.image_urls IS NOT NULL AND array_length(t.image_urls, 1) > 0) as timesheets_with_images,
+      SUM(array_length(t.image_urls, 1)) FILTER (WHERE t.image_urls IS NOT NULL) as total_images
+    FROM timesheets t
+    LEFT JOIN projects p ON t.project_id = p.id
+    LEFT JOIN clients c ON p.client_id = c.id
+    WHERE t.image_urls IS NOT NULL AND array_length(t.image_urls, 1) > 0
+  `;
+  const params: any[] = [];
+
+  // If user can't view all, only show their own timesheet images
+  if (!canViewAll) {
+    sql += ` AND t.user_id = $1`;
+    params.push(req.user!.id);
+  }
+
+  sql += ` GROUP BY t.project_id, p.code, p.name, c.name ORDER BY c.name, p.code`;
+
+  const result = await query(sql, params);
+
+  // Convert numeric strings to numbers
+  const rows = result.rows.map((row: any) => ({
+    ...row,
+    timesheets_with_images: parseInt(row.timesheets_with_images) || 0,
+    total_images: parseInt(row.total_images) || 0
+  }));
+
+  res.json(rows);
+}));
+
+// Get timesheet images for a specific project - must be before /:id route
+router.get('/timesheet-images/:projectId', authenticate, asyncHandler(async (req: AuthRequest, res: Response) => {
+  // Check if user can view all timesheets
+  const canViewAll = req.user!.role === 'admin' || 
+                     req.user!.role === 'manager' || 
+                     (req.user!.permissions && req.user!.permissions.includes('can_view_all_timesheets'));
+
+  let sql = `
+    SELECT 
+      t.id as timesheet_id,
+      t.user_id,
+      t.date as timesheet_date,
+      t.image_urls,
+      t.created_at,
+      u.name as user_name,
+      p.code as project_code,
+      p.name as project_name
+    FROM timesheets t
+    LEFT JOIN users u ON t.user_id = u.id
+    LEFT JOIN projects p ON t.project_id = p.id
+    WHERE t.project_id = $1 
+      AND t.image_urls IS NOT NULL 
+      AND array_length(t.image_urls, 1) > 0
+  `;
+  const params: any[] = [req.params.projectId];
+
+  // If user can't view all, only show their own timesheet images
+  if (!canViewAll) {
+    sql += ` AND t.user_id = $2`;
+    params.push(req.user!.id);
+  }
+
+  sql += ` ORDER BY t.date DESC, t.created_at DESC`;
+
+  const result = await query(sql, params);
+
+  // Flatten image_urls into individual image objects
+  const images: any[] = [];
+  result.rows.forEach((row: any) => {
+    if (row.image_urls && Array.isArray(row.image_urls)) {
+      row.image_urls.forEach((url: string, index: number) => {
+        const filename = url.split('/').pop() || '';
+        images.push({
+          url,
+          filename,
+          timesheet_id: row.timesheet_id,
+          timesheet_date: row.timesheet_date,
+          upload_date: row.created_at,
+          user_name: row.user_name,
+          project_code: row.project_code,
+          project_name: row.project_name,
+          image_index: index
+        });
+      });
+    }
+  });
+
+  res.json(images);
+}));
+
+// Get single file metadata (must be after specific routes)
 router.get('/:id', authenticate, requirePermission('can_view_financials'), asyncHandler(async (req: AuthRequest, res: Response) => {
   const result = await query(
     `SELECT f.*,
@@ -421,9 +561,6 @@ router.get('/cost-centers/:costCenterId', authenticate, requirePermission('can_v
 
   res.json(result.rows);
 }));
-
-// Get timesheet images for a specific project
-router.get('/timesheet-images/:projectId', authenticate, asyncHandler(async (req: AuthRequest, res: Response) => {
   // Check if user can view all timesheets
   const canViewAll = req.user!.role === 'admin' || 
                      req.user!.role === 'manager' || 
@@ -480,86 +617,6 @@ router.get('/timesheet-images/:projectId', authenticate, asyncHandler(async (req
   });
 
   res.json(images);
-}));
-
-// Get all timesheet images across all projects (summary)
-router.get('/timesheet-images', authenticate, asyncHandler(async (req: AuthRequest, res: Response) => {
-  // Check if user can view all timesheets
-  const canViewAll = req.user!.role === 'admin' || 
-                     req.user!.role === 'manager' || 
-                     (req.user!.permissions && req.user!.permissions.includes('can_view_all_timesheets'));
-
-  let sql = `
-    SELECT 
-      t.project_id,
-      p.code as project_code,
-      p.name as project_name,
-      c.name as client_name,
-      COUNT(*) FILTER (WHERE t.image_urls IS NOT NULL AND array_length(t.image_urls, 1) > 0) as timesheets_with_images,
-      SUM(array_length(t.image_urls, 1)) FILTER (WHERE t.image_urls IS NOT NULL) as total_images
-    FROM timesheets t
-    LEFT JOIN projects p ON t.project_id = p.id
-    LEFT JOIN clients c ON p.client_id = c.id
-    WHERE t.image_urls IS NOT NULL AND array_length(t.image_urls, 1) > 0
-  `;
-  const params: any[] = [];
-
-  // If user can't view all, only show their own timesheet images
-  if (!canViewAll) {
-    sql += ` AND t.user_id = $1`;
-    params.push(req.user!.id);
-  }
-
-  sql += ` GROUP BY t.project_id, p.code, p.name, c.name ORDER BY c.name, p.code`;
-
-  const result = await query(sql, params);
-
-  // Convert numeric strings to numbers
-  const rows = result.rows.map((row: any) => ({
-    ...row,
-    timesheets_with_images: parseInt(row.timesheets_with_images) || 0,
-    total_images: parseInt(row.total_images) || 0
-  }));
-
-  res.json(rows);
-}));
-
-// Get all logo files
-router.get('/logos', authenticate, requirePermission('can_manage_settings'), asyncHandler(async (req: AuthRequest, res: Response) => {
-  try {
-    const storage = await StorageFactory.getInstance();
-    const basePath = 'logos';
-    
-    // List all files in the logos directory
-    const files = await storage.list(basePath);
-    
-    // Filter to only files (not directories) and map to response format
-    // Use storage.url() to get proper URLs (signed URLs for S3, /uploads/... for local)
-    const logos = await Promise.all(
-      files
-        .filter((file) => !file.isDirectory)
-        .map(async (file) => {
-          // Get proper URL from storage provider
-          // For S3, this will be a signed URL; for local, it will be /uploads/...
-          const url = await storage.url(file.path);
-          return {
-            url,
-            filename: file.name,
-            upload_date: file.lastModified || new Date(),
-            file_size: file.size || 0
-          };
-        })
-    );
-    
-    // Sort by upload date (newest first)
-    logos.sort((a, b) => new Date(b.upload_date).getTime() - new Date(a.upload_date).getTime());
-
-    res.json(logos);
-  } catch (error: any) {
-    log.error('Failed to list logos', error);
-    // Return empty array on error
-    res.json([]);
-  }
 }));
 
 // Delete a logo file
