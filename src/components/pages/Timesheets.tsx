@@ -521,7 +521,18 @@ export default function Timesheets() {
       );
       if (existing) {
         // Expand existing entry instead of creating duplicate
-        setExpandedActivities(prev => new Set(prev).add(existing.id));
+        setExpandedActivities(prev => {
+          const newSet = new Set(prev);
+          newSet.add(existing.id);
+          // Scroll to the expanded activity block
+          setTimeout(() => {
+            const element = document.getElementById(`activity-${existing.id}`);
+            if (element) {
+              element.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+            }
+          }, 100);
+          return newSet;
+        });
         return;
       }
     }
@@ -542,8 +553,12 @@ export default function Timesheets() {
       activity_entries: [...prev.activity_entries, newEntry]
     }));
     
-    // Auto-expand new entry
-    setExpandedActivities(prev => new Set(prev).add(newEntry.id));
+    // Auto-expand new entry immediately
+    setExpandedActivities(prev => {
+      const newSet = new Set(prev);
+      newSet.add(newEntry.id);
+      return newSet;
+    });
   };
 
   const removeActivityEntry = (entryId: string) => {
@@ -1599,6 +1614,13 @@ function TimesheetForm({
         newSet.delete(entryId);
       } else {
         newSet.add(entryId);
+        // Scroll to the expanded activity block
+        setTimeout(() => {
+          const element = document.getElementById(`activity-${entryId}`);
+          if (element) {
+            element.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+          }
+        }, 100);
       }
       return newSet;
     });
@@ -1653,22 +1675,19 @@ function TimesheetForm({
         </div>
       </div>
 
-      {/* Accordion Sections */}
-      <Accordion type="multiple" defaultValue={['basic-info', 'activities']} className="space-y-3 sm:space-y-4 lg:space-y-6">
+      {/* Form Sections */}
+      <div className="space-y-4 sm:space-y-6">
         {/* Basic Information Section */}
-        <AccordionItem value="basic-info" className="border border-border rounded-lg bg-muted/20">
-          <AccordionTrigger className="px-3 sm:px-4 hover:no-underline">
-            <div className="flex items-center gap-2">
-              <Calendar className="w-4 h-4 text-electric" />
-              <span className="font-semibold text-sm sm:text-base">Basic Information</span>
-              {formData.project_id && formData.date && (
-                <CheckCircle2 className="w-4 h-4 text-green-500" />
-              )}
-            </div>
-          </AccordionTrigger>
-          <AccordionContent className="px-3 sm:px-4 pb-4">
-            <div className="space-y-3 sm:space-y-4 pt-2">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
+        <div className="border border-border rounded-lg bg-muted/20 p-4 sm:p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <Calendar className="w-4 h-4 text-electric" />
+            <span className="font-semibold text-sm sm:text-base">Basic Information</span>
+            {formData.project_id && formData.date && (
+              <CheckCircle2 className="w-4 h-4 text-green-500" />
+            )}
+          </div>
+          <div className="space-y-3 sm:space-y-4">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 sm:gap-4">
                 <div>
                   <Label className="font-mono text-xs uppercase tracking-wider mb-2 block">Client</Label>
                   <Select value={formData.client_id} onValueChange={(value) => {
@@ -1736,25 +1755,22 @@ function TimesheetForm({
                 />
               </div>
             </div>
-          </AccordionContent>
-        </AccordionItem>
+          </div>
+        </div>
 
         {/* Activities Section */}
-        <AccordionItem value="activities" className="border border-border rounded-lg bg-muted/20">
-          <AccordionTrigger className="px-3 sm:px-4 hover:no-underline">
-            <div className="flex items-center gap-2">
-              <Wrench className="w-4 h-4 text-electric" />
-              <span className="font-semibold text-sm sm:text-base">Activities *</span>
-              {formData.activity_entries.length > 0 && formData.activity_entries.every((e: ActivityTypeEntry) => 
-                e.activity_type_id && e.cost_center_id && 
-                (e.user_ids.length > 0 ? e.user_ids.every(uid => e.user_hours[uid] && parseFloat(e.user_hours[uid]) > 0) : e.hours && parseFloat(e.hours) > 0)
-              ) && (
-                <CheckCircle2 className="w-4 h-4 text-green-500" />
-              )}
-            </div>
-          </AccordionTrigger>
-          <AccordionContent className="px-3 sm:px-4 pb-4">
-            <div className="space-y-3 sm:space-y-4 pt-2">
+        <div className="border border-border rounded-lg bg-muted/20 p-4 sm:p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <Wrench className="w-4 h-4 text-electric" />
+            <span className="font-semibold text-sm sm:text-base">Activities *</span>
+            {formData.activity_entries.length > 0 && formData.activity_entries.every((e: ActivityTypeEntry) => 
+              e.activity_type_id && e.cost_center_id && 
+              (e.user_ids.length > 0 ? e.user_ids.every(uid => e.user_hours[uid] && parseFloat(e.user_hours[uid]) > 0) : e.hours && parseFloat(e.hours) > 0)
+            ) && (
+              <CheckCircle2 className="w-4 h-4 text-green-500" />
+            )}
+          </div>
+          <div className="space-y-3 sm:space-y-4">
               <div>
                 <p className="text-sm text-muted-foreground mb-3">Select activity types to add</p>
                 {/* Activity Type Buttons Grid */}
@@ -1806,9 +1822,9 @@ function TimesheetForm({
                   
                   return (
                     <Collapsible key={entry.id} open={isExpanded} onOpenChange={() => toggleActivityExpanded(entry.id)}>
-                      <Card className="border-2 border-border hover:border-electric/50 transition-colors bg-card">
+                      <Card id={`activity-${entry.id}`} className="border-2 border-border hover:border-electric/50 transition-colors bg-card">
                         <CollapsibleTrigger asChild>
-                          <div className="flex items-center justify-between p-3 sm:p-4 cursor-pointer">
+                          <div className="flex items-center justify-between p-3 sm:p-4 cursor-pointer hover:bg-muted/30 transition-colors">
                             <div className="flex items-center gap-3 flex-1">
                               {activityType ? (
                                 <div className={cn(
@@ -2010,9 +2026,8 @@ function TimesheetForm({
                 })
               )}
             </div>
-          </AccordionContent>
-        </AccordionItem>
-      </Accordion>
+          </div>
+        </div>
 
       {/* Additional Details - Inline (not in accordion) */}
       <div className="space-y-4 pt-2">
