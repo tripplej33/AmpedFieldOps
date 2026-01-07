@@ -482,7 +482,12 @@ function CostCenterCard({
           <Badge variant="outline" className="font-mono text-xs mb-2">
             {costCenter.code}
           </Badge>
-          <h4 className="font-bold text-foreground">{costCenter.name}</h4>
+          <h4 className="font-bold text-foreground">
+            {costCenter.name}
+            {costCenter.client_po_number && (
+              <span className="text-muted-foreground font-normal"> - {costCenter.client_po_number}</span>
+            )}
+          </h4>
           {costCenter.project_name && (
             <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
               <Briefcase className="w-3 h-3" />

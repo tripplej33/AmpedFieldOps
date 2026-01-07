@@ -520,15 +520,15 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
                           <div>
                             <div className="flex items-center gap-2">
                               <Badge variant="outline" className="font-mono text-xs">{cc.code}</Badge>
-                              <span className="font-semibold">{cc.name}</span>
+                              <span className="font-semibold">
+                                {cc.name}
+                                {cc.client_po_number && (
+                                  <span className="text-muted-foreground font-normal"> - {cc.client_po_number}</span>
+                                )}
+                              </span>
                             </div>
                             {cc.description && (
                               <p className="text-xs text-muted-foreground mt-1">{cc.description}</p>
-                            )}
-                            {cc.client_po_number && (
-                              <p className="text-xs text-muted-foreground mt-1 font-mono">
-                                Client PO: {cc.client_po_number}
-                              </p>
                             )}
                           </div>
                           {(project.status === 'quoted' || project.status === 'in-progress') && (

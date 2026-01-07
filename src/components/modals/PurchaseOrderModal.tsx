@@ -345,7 +345,7 @@ export default function PurchaseOrderModal({ projectId: initialProjectId, open, 
                         ) : (
                           costCenters.map(cc => (
                             <SelectItem key={cc.id} value={cc.id}>
-                              {cc.code} - {cc.name}
+                              {cc.code} - {cc.name}{cc.client_po_number ? ` - ${cc.client_po_number}` : ''}
                             </SelectItem>
                           ))
                         )}

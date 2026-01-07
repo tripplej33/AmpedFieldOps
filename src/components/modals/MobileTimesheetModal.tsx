@@ -366,7 +366,7 @@ export default function MobileTimesheetModal({ open, onOpenChange }: MobileTimes
                 ) : (
                   costCenters.filter(cc => cc.id).map((cc) => (
                     <SelectItem key={cc.id} value={cc.id}>
-                      <span className="font-mono">{cc.code}</span> - {cc.name}
+                      <span className="font-mono">{cc.code}</span> - {cc.name}{cc.client_po_number ? ` - ${cc.client_po_number}` : ''}
                     </SelectItem>
                   ))
                 )}
