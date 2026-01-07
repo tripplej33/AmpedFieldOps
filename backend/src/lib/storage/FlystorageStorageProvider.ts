@@ -103,7 +103,7 @@ export class FlystorageStorageProvider implements IStorageProvider {
 
       // Dynamic import
       const { FileStorage } = require('@flystorage/file-storage');
-      const { S3StorageAdapter } = require('@flystorage/s3');
+      const { S3StorageAdapter } = require('@flystorage/aws-s3');
       const { S3Client } = require('@aws-sdk/client-s3');
 
       const s3Client = new S3Client({
