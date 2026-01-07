@@ -121,7 +121,12 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
     const paginatedResponse = createPaginatedResponse(result.rows, total, page, limit);
     res.json(paginatedResponse);
   } catch (error: any) {
-    log.error('Get timesheets error', error, { userId: req.user?.id });
+    log.error('Get timesheets error', error, { 
+      userId: req.user?.id, 
+      query: req.query,
+      errorMessage: error?.message,
+      errorStack: error?.stack 
+    });
     res.status(500).json({ 
       error: 'Failed to fetch timesheets',
       details: process.env.NODE_ENV === 'development' ? error.message : undefined
@@ -173,25 +178,31 @@ router.get('/:id', authenticate, async (req: AuthRequest, res: Response) => {
 // Create timesheet (handles both JSON and FormData with images)
 router.post('/', authenticate, uploadLimiter, 
   (req, res, next) => {
-    // Handle multer errors with better messages
-    projectUpload.array('images', 5)(req, res, (err) => {
-      if (err) {
-        if (err instanceof multer.MulterError) {
-          if (err.code === 'LIMIT_FILE_COUNT') {
-            return res.status(400).json({ error: 'Maximum 5 images allowed per timesheet' });
+    // Only use multer for multipart/form-data requests
+    if (req.headers['content-type']?.includes('multipart/form-data')) {
+      // Handle multer errors with better messages
+      projectUpload.array('images', 5)(req, res, (err) => {
+        if (err) {
+          if (err instanceof multer.MulterError) {
+            if (err.code === 'LIMIT_FILE_COUNT') {
+              return res.status(400).json({ error: 'Maximum 5 images allowed per timesheet' });
+            }
+            if (err.code === 'LIMIT_FILE_SIZE') {
+              return res.status(400).json({ error: 'File size exceeds 10MB limit. Please compress your images.' });
+            }
+            if (err.code === 'LIMIT_UNEXPECTED_FILE') {
+              return res.status(400).json({ error: 'Unexpected file field. Use "images" field for file uploads.' });
+            }
           }
-          if (err.code === 'LIMIT_FILE_SIZE') {
-            return res.status(400).json({ error: 'File size exceeds 10MB limit. Please compress your images.' });
-          }
-          if (err.code === 'LIMIT_UNEXPECTED_FILE') {
-            return res.status(400).json({ error: 'Unexpected file field. Use "images" field for file uploads.' });
-          }
+          // Other multer errors (file type validation, etc.)
+          return res.status(400).json({ error: err.message || 'File upload validation failed' });
         }
-        // Other multer errors (file type validation, etc.)
-        return res.status(400).json({ error: err.message || 'File upload validation failed' });
-      }
+        next();
+      });
+    } else {
+      // For JSON requests, skip multer
       next();
-    });
+    }
   },
   async (req: AuthRequest, res: Response) => {
     // Check if this is FormData (has files) or JSON
@@ -301,9 +312,14 @@ router.post('/', authenticate, uploadLimiter,
       );
 
       res.status(201).json(result.rows[0]);
-    } catch (error) {
+    } catch (error: any) {
       log.error('Create timesheet error', error, { userId: req.user!.id, project_id });
-      res.status(500).json({ error: 'Failed to create timesheet' });
+      const errorMessage = error?.message || 'Failed to create timesheet';
+      const errorDetails = process.env.NODE_ENV === 'development' ? errorMessage : undefined;
+      res.status(500).json({ 
+        error: 'Failed to create timesheet',
+        details: errorDetails
+      });
     }
   }
 );
