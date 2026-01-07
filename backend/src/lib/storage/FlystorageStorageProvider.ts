@@ -45,20 +45,40 @@ export class FlystorageStorageProvider implements IStorageProvider {
       // Note: This is only needed for local storage. With memory storage for uploads,
       // files are streamed directly to storage, but we still need the base directory
       // for file retrieval and serving.
-      try {
-        if (!fs.existsSync(basePath)) {
+      // In Docker, the directory should already exist from the Dockerfile, but we
+      // try to create it if it doesn't exist (e.g., in development or if volume mount fails)
+      if (!fs.existsSync(basePath)) {
+        try {
           fs.mkdirSync(basePath, { recursive: true });
+          log.info('Created base storage directory', { basePath });
+        } catch (mkdirError: any) {
+          // If directory creation fails, check if it exists now (race condition)
+          // or if we're in a read-only environment
+          if (!fs.existsSync(basePath)) {
+            log.error('Failed to create base storage directory', mkdirError, {
+              basePath,
+              resolvedPath: path.resolve(basePath),
+              cwd: process.cwd(),
+              errorCode: mkdirError.code,
+              errorMessage: mkdirError.message
+            });
+            throw new Error(`Storage directory does not exist and could not be created: ${mkdirError.message} (code: ${mkdirError.code || 'unknown'})`);
+          } else {
+            // Directory was created by another process, that's fine
+            log.info('Base storage directory exists (created by another process)', { basePath });
+          }
         }
-      } catch (mkdirError: any) {
-        // If directory creation fails, log warning but continue
-        // The directory might already exist or permissions might be set differently
-        log.warn('Could not create base storage directory (may already exist)', {
-          basePath,
-          error: mkdirError.message
-        });
-        // Verify directory exists or is accessible
-        if (!fs.existsSync(basePath)) {
-          throw new Error(`Storage directory does not exist and could not be created: ${mkdirError.message}`);
+      } else {
+        // Directory exists, verify it's accessible
+        try {
+          fs.accessSync(basePath, fs.constants.R_OK | fs.constants.W_OK);
+        } catch (accessError: any) {
+          log.error('Base storage directory exists but is not accessible', accessError, {
+            basePath,
+            errorCode: accessError.code,
+            errorMessage: accessError.message
+          });
+          throw new Error(`Storage directory exists but is not accessible: ${accessError.message} (code: ${accessError.code || 'unknown'})`);
         }
       }
 
