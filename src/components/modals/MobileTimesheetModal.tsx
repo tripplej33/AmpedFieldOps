@@ -70,11 +70,15 @@ export default function MobileTimesheetModal({ open, onOpenChange }: MobileTimes
         api.getClients({ status: 'active' }),
         api.getActivityTypes(true),
       ]);
-      setClients(clientsResponse.data || []);
-      setActivityTypes(activityData);
+      const clientsList = clientsResponse.data || (Array.isArray(clientsResponse) ? clientsResponse : []);
+      setClients(Array.isArray(clientsList) ? clientsList.filter(c => c.id) : []);
+      setActivityTypes(Array.isArray(activityData) ? activityData.filter(a => a.id) : []);
       setCostCenters([]); // Cost centers are now loaded per-project
     } catch (error) {
+      console.error('Failed to load form data:', error);
       toast.error('Failed to load form data');
+      setClients([]);
+      setActivityTypes([]);
     } finally {
       setIsLoading(false);
     }
@@ -90,8 +94,9 @@ export default function MobileTimesheetModal({ open, onOpenChange }: MobileTimes
       try {
         const projectsResponse = await api.getProjects({ client_id: clientId, limit: 100 });
         const projectsData = projectsResponse.data || (Array.isArray(projectsResponse) ? projectsResponse : []);
-        setProjects(Array.isArray(projectsData) ? projectsData : []);
+        setProjects(Array.isArray(projectsData) ? projectsData.filter(p => p.id) : []);
       } catch (error) {
+        console.error('Failed to load projects:', error);
         setProjects([]);
       }
     } else {
@@ -106,8 +111,9 @@ export default function MobileTimesheetModal({ open, onOpenChange }: MobileTimes
     if (projectId) {
       try {
         const costCenterData = await api.getCostCenters(true, projectId);
-        setCostCenters(costCenterData);
+        setCostCenters(Array.isArray(costCenterData) ? costCenterData.filter(cc => cc.id) : []);
       } catch (error) {
+        console.error('Failed to load cost centers:', error);
         setCostCenters([]);
       }
     } else {
@@ -301,11 +307,15 @@ export default function MobileTimesheetModal({ open, onOpenChange }: MobileTimes
                 <SelectValue placeholder="Select client" />
               </SelectTrigger>
               <SelectContent>
-                {clients.filter(client => client.id).map((client) => (
-                  <SelectItem key={client.id} value={client.id}>
-                    {client.name}
-                  </SelectItem>
-                ))}
+                {clients.length === 0 ? (
+                  <SelectItem value="__empty__" disabled>No active clients available</SelectItem>
+                ) : (
+                  clients.filter(client => client.id).map((client) => (
+                    <SelectItem key={client.id} value={client.id}>
+                      {client.name}
+                    </SelectItem>
+                  ))
+                )}
               </SelectContent>
             </Select>
           </div>
@@ -324,11 +334,15 @@ export default function MobileTimesheetModal({ open, onOpenChange }: MobileTimes
                 <SelectValue placeholder="Select project" />
               </SelectTrigger>
               <SelectContent>
-                {filteredProjects.filter(project => project.id).map((project) => (
-                  <SelectItem key={project.id} value={project.id}>
-                    {project.name}
-                  </SelectItem>
-                ))}
+                {filteredProjects.length === 0 ? (
+                  <SelectItem value="__empty__" disabled>No projects for this client</SelectItem>
+                ) : (
+                  filteredProjects.filter(project => project.id).map((project) => (
+                    <SelectItem key={project.id} value={project.id}>
+                      {project.name}
+                    </SelectItem>
+                  ))
+                )}
               </SelectContent>
             </Select>
           </div>
@@ -350,8 +364,8 @@ export default function MobileTimesheetModal({ open, onOpenChange }: MobileTimes
                 {costCenters.length === 0 ? (
                   <SelectItem value="__none__" disabled>No cost centers for this project</SelectItem>
                 ) : (
-                  costCenters.map((cc) => (
-                    <SelectItem key={cc.id} value={cc.id || `cc-${cc.code}`}>
+                  costCenters.filter(cc => cc.id).map((cc) => (
+                    <SelectItem key={cc.id} value={cc.id}>
                       <span className="font-mono">{cc.code}</span> - {cc.name}
                     </SelectItem>
                   ))
@@ -366,7 +380,12 @@ export default function MobileTimesheetModal({ open, onOpenChange }: MobileTimes
               Activity Type *
             </Label>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {activityTypes.map((activity) => {
+              {activityTypes.length === 0 ? (
+                <div className="col-span-2 p-4 text-center text-muted-foreground text-sm border border-dashed border-muted rounded-lg">
+                  No activity types available
+                </div>
+              ) : (
+                activityTypes.map((activity) => {
                 const IconComponent = iconMap[activity.icon] || Wrench;
                 return (
                   <button
@@ -383,7 +402,8 @@ export default function MobileTimesheetModal({ open, onOpenChange }: MobileTimes
                     <span className="text-xs font-medium">{activity.name}</span>
                   </button>
                 );
-              })}
+              })
+              )}
             </div>
           </div>
 

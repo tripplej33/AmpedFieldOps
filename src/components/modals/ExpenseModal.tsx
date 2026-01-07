@@ -55,9 +55,12 @@ export default function ExpenseModal({ projectId: initialProjectId, open, onOpen
   const loadProjects = async () => {
     try {
       const projectsData = await api.getProjects();
-      setProjects(Array.isArray(projectsData) ? projectsData : []);
+      const projectsList = projectsData.data || (Array.isArray(projectsData) ? projectsData : []);
+      setProjects(Array.isArray(projectsList) ? projectsList.filter(p => p.id) : []);
     } catch (error) {
       console.error('Failed to load projects:', error);
+      toast.error('Failed to load projects');
+      setProjects([]);
     }
   };
 
@@ -78,17 +81,9 @@ export default function ExpenseModal({ projectId: initialProjectId, open, onOpen
 
   const loadProjectCostCenters = async (projId: string) => {
     try {
-      // Try to get cost centers from projects list first
-      let project = projects.find(p => p.id === projId);
-      if (!project) {
-        const allProjects = await api.getProjects();
-        project = Array.isArray(allProjects) ? allProjects.find((p: Project) => p.id === projId) : undefined;
-      }
-      if (project && project.cost_centers) {
-        setCostCenters(Array.isArray(project.cost_centers) ? project.cost_centers : []);
-      } else {
-        setCostCenters([]);
-      }
+      // Load cost centers directly from API for the project
+      const costCenterData = await api.getCostCenters(true, projId);
+      setCostCenters(Array.isArray(costCenterData) ? costCenterData.filter(cc => cc.id) : []);
     } catch (error) {
       console.error('Failed to load cost centers:', error);
       setCostCenters([]);
@@ -163,11 +158,15 @@ export default function ExpenseModal({ projectId: initialProjectId, open, onOpen
                 <SelectValue placeholder="Select project (optional)" />
               </SelectTrigger>
               <SelectContent>
-                {projects.map(project => (
-                  <SelectItem key={project.id} value={project.id}>
-                    {project.code} - {project.name}
-                  </SelectItem>
-                ))}
+                {projects.length === 0 ? (
+                  <SelectItem value="__empty__" disabled>No projects available</SelectItem>
+                ) : (
+                  projects.map(project => (
+                    <SelectItem key={project.id} value={project.id}>
+                      {project.code} - {project.name}
+                    </SelectItem>
+                  ))
+                )}
               </SelectContent>
             </Select>
             {selectedProject && (
@@ -178,22 +177,27 @@ export default function ExpenseModal({ projectId: initialProjectId, open, onOpen
           </div>
 
           {/* Cost Center (only if project selected) */}
-          {formData.project_id && costCenters.length > 0 && (
+          {formData.project_id && (
             <div>
               <Label className="font-mono text-xs uppercase tracking-wider">Cost Center (Optional)</Label>
               <Select
                 value={formData.cost_center_id || undefined}
                 onValueChange={(value) => setFormData({ ...formData, cost_center_id: value || '' })}
+                disabled={costCenters.length === 0}
               >
                 <SelectTrigger className="mt-2">
-                  <SelectValue placeholder="Select cost center (optional)" />
+                  <SelectValue placeholder={costCenters.length === 0 ? "No cost centers for this project" : "Select cost center (optional)"} />
                 </SelectTrigger>
                 <SelectContent>
-                  {costCenters.map(cc => (
-                    <SelectItem key={cc.id} value={cc.id}>
-                      {cc.code} - {cc.name}
-                    </SelectItem>
-                  ))}
+                  {costCenters.length === 0 ? (
+                    <SelectItem value="__none__" disabled>No cost centers available</SelectItem>
+                  ) : (
+                    costCenters.map(cc => (
+                      <SelectItem key={cc.id} value={cc.id}>
+                        {cc.code} - {cc.name}
+                      </SelectItem>
+                    ))
+                  )}
                 </SelectContent>
               </Select>
             </div>

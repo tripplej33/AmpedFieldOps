@@ -79,9 +79,11 @@ export default function CostCenters() {
   const loadProjects = async () => {
     try {
       const data = await api.getProjects();
-      setProjects(Array.isArray(data) ? data : []);
+      const projectsList = data.data || (Array.isArray(data) ? data : []);
+      setProjects(Array.isArray(projectsList) ? projectsList.filter(p => p.id) : []);
     } catch (error) {
       console.error('Failed to load projects:', error);
+      toast.error('Failed to load projects');
       setProjects([]);
     }
   };
@@ -403,17 +405,21 @@ export default function CostCenters() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">Global (No Project)</SelectItem>
-                  {projects.map((project) => (
-                    <SelectItem key={project.id} value={project.id}>
-                      <div className="flex items-center gap-2">
-                        <Briefcase className="w-4 h-4" />
-                        {project.name}
-                        <span className="text-muted-foreground font-mono text-xs">
-                          {project.code}
-                        </span>
-                      </div>
-                    </SelectItem>
-                  ))}
+                  {projects.length === 0 ? (
+                    <SelectItem value="__empty__" disabled>No projects available</SelectItem>
+                  ) : (
+                    projects.map((project) => (
+                      <SelectItem key={project.id} value={project.id}>
+                        <div className="flex items-center gap-2">
+                          <Briefcase className="w-4 h-4" />
+                          {project.name}
+                          <span className="text-muted-foreground font-mono text-xs">
+                            {project.code}
+                          </span>
+                        </div>
+                      </SelectItem>
+                    ))
+                  )}
                 </SelectContent>
               </Select>
             </div>

@@ -129,9 +129,11 @@ export default function Timesheets() {
   const loadUsers = async () => {
     try {
       const data = await api.getUsers();
-      setUsers(Array.isArray(data) ? data : []);
+      const usersList = data.data || (Array.isArray(data) ? data : []);
+      setUsers(Array.isArray(usersList) ? usersList.filter(u => u.id) : []);
     } catch (error) {
       console.error('Failed to load users:', error);
+      toast.error('Failed to load users');
       setUsers([]);
     }
   };
@@ -145,11 +147,12 @@ export default function Timesheets() {
       
       // Handle paginated clients response
       const clientsData = clientsResponse.data || (Array.isArray(clientsResponse) ? clientsResponse : []);
-      setClients(Array.isArray(clientsData) ? clientsData : []);
-      setActivityTypes(Array.isArray(activityData) ? activityData : []);
+      setClients(Array.isArray(clientsData) ? clientsData.filter(c => c.id) : []);
+      setActivityTypes(Array.isArray(activityData) ? activityData.filter(a => a.id) : []);
       setCostCenters([]); // Cost centers are now loaded per-project
     } catch (error) {
       console.error('Failed to load form data:', error);
+      toast.error('Failed to load form data');
       setClients([]);
       setActivityTypes([]);
       setCostCenters([]);
@@ -163,7 +166,7 @@ export default function Timesheets() {
       try {
         const projectsResponse = await api.getProjects({ client_id: clientId, limit: 100 });
         const projectsData = projectsResponse.data || (Array.isArray(projectsResponse) ? projectsResponse : []);
-        setProjects(Array.isArray(projectsData) ? projectsData : []);
+        setProjects(Array.isArray(projectsData) ? projectsData.filter(p => p.id) : []);
       } catch (error) {
         setProjects([]);
       }
@@ -173,11 +176,19 @@ export default function Timesheets() {
   };
 
   const handleProjectChange = async (projectId: string) => {
-    setFormData({ ...formData, project_id: projectId });
+    // Reset cost centers in all activity entries when project changes
+    setFormData(prev => ({
+      ...prev,
+      project_id: projectId,
+      activity_entries: prev.activity_entries.map(entry => ({
+        ...entry,
+        cost_center_id: '' // Reset cost center when project changes
+      }))
+    }));
     if (projectId) {
       try {
         const costCenterData = await api.getCostCenters(true, projectId);
-        setCostCenters(Array.isArray(costCenterData) ? costCenterData : []);
+        setCostCenters(Array.isArray(costCenterData) ? costCenterData.filter(cc => cc.id) : []);
       } catch (error) {
         setCostCenters([]);
       }
@@ -1116,11 +1127,15 @@ function TimesheetForm({
             <SelectValue placeholder="Select client" />
           </SelectTrigger>
           <SelectContent>
-            {clients.map((client) => (
-              <SelectItem key={client.id} value={client.id.toString()}>
-                {client.name}
-              </SelectItem>
-            ))}
+            {clients.length === 0 ? (
+              <SelectItem value="__empty__" disabled>No clients available</SelectItem>
+            ) : (
+              clients.map((client) => (
+                <SelectItem key={client.id} value={client.id.toString()}>
+                  {client.name}
+                </SelectItem>
+              ))
+            )}
           </SelectContent>
         </Select>
       </div>
@@ -1136,11 +1151,15 @@ function TimesheetForm({
             <SelectValue placeholder="Select project" />
           </SelectTrigger>
           <SelectContent>
-            {projects.filter(project => project.id).map((project) => (
-              <SelectItem key={project.id} value={project.id.toString()}>
-                {project.name}
-              </SelectItem>
-            ))}
+            {projects.length === 0 ? (
+              <SelectItem value="__empty__" disabled>No projects for this client</SelectItem>
+            ) : (
+              projects.filter(project => project.id).map((project) => (
+                <SelectItem key={project.id} value={project.id.toString()}>
+                  {project.name}
+                </SelectItem>
+              ))
+            )}
           </SelectContent>
         </Select>
       </div>
@@ -1206,11 +1225,15 @@ function TimesheetForm({
                       <SelectValue placeholder="Select activity" />
                     </SelectTrigger>
                     <SelectContent>
-                      {activityTypes.filter(type => type.id).map((type) => (
-                        <SelectItem key={type.id} value={type.id.toString()}>
-                          {type.name}
-                        </SelectItem>
-                      ))}
+                      {activityTypes.length === 0 ? (
+                        <SelectItem value="__empty__" disabled>No activity types available</SelectItem>
+                      ) : (
+                        activityTypes.filter(type => type.id).map((type) => (
+                          <SelectItem key={type.id} value={type.id.toString()}>
+                            {type.name}
+                          </SelectItem>
+                        ))
+                      )}
                     </SelectContent>
                   </Select>
                 </div>

@@ -198,15 +198,11 @@ export default function Projects() {
       const response = await api.getClients({ limit: 100 });
       
       // Handle both paginated and non-paginated responses
-      if (response.data && Array.isArray(response.data)) {
-        setClients(response.data);
-      } else if (Array.isArray(response)) {
-        setClients(response);
-      } else {
-        setClients([]);
-      }
+      const clientsList = response.data || (Array.isArray(response) ? response : []);
+      setClients(Array.isArray(clientsList) ? clientsList.filter(c => c.id) : []);
     } catch (error) {
       console.error('Failed to load clients:', error);
+      toast.error('Failed to load clients');
       setClients([]);
     }
   };
@@ -442,11 +438,15 @@ export default function Projects() {
                   <SelectValue placeholder="Select a client" />
                 </SelectTrigger>
                 <SelectContent>
-                  {clients.filter(client => client.id).map((client) => (
-                    <SelectItem key={client.id} value={client.id.toString()}>
-                      {client.name}
-                    </SelectItem>
-                  ))}
+                  {clients.length === 0 ? (
+                    <SelectItem value="__empty__" disabled>No clients available</SelectItem>
+                  ) : (
+                    clients.filter(client => client.id).map((client) => (
+                      <SelectItem key={client.id} value={client.id.toString()}>
+                        {client.name}
+                      </SelectItem>
+                    ))
+                  )}
                 </SelectContent>
               </Select>
             </div>

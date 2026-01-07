@@ -67,19 +67,24 @@ export default function PurchaseOrderModal({ projectId: initialProjectId, open, 
     try {
       const clients = await api.getClients();
       // In this system, suppliers are stored as clients (could add is_supplier flag in future)
-      setSuppliers(Array.isArray(clients) ? clients : []);
+      const clientsList = clients.data || (Array.isArray(clients) ? clients : []);
+      setSuppliers(Array.isArray(clientsList) ? clientsList.filter(c => c.id) : []);
     } catch (error) {
       console.error('Failed to load suppliers:', error);
       toast.error('Failed to load suppliers');
+      setSuppliers([]);
     }
   };
 
   const loadProjects = async () => {
     try {
       const projectsData = await api.getProjects();
-      setProjects(Array.isArray(projectsData) ? projectsData : []);
+      const projectsList = projectsData.data || (Array.isArray(projectsData) ? projectsData : []);
+      setProjects(Array.isArray(projectsList) ? projectsList.filter(p => p.id) : []);
     } catch (error) {
       console.error('Failed to load projects:', error);
+      toast.error('Failed to load projects');
+      setProjects([]);
     }
   };
 
@@ -101,17 +106,9 @@ export default function PurchaseOrderModal({ projectId: initialProjectId, open, 
 
   const loadProjectCostCenters = async (projId: string) => {
     try {
-      // Try to get cost centers from projects list first
-      let project = projects.find(p => p.id === projId);
-      if (!project) {
-        const allProjects = await api.getProjects();
-        project = Array.isArray(allProjects) ? allProjects.find((p: Project) => p.id === projId) : undefined;
-      }
-      if (project && project.cost_centers) {
-        setCostCenters(Array.isArray(project.cost_centers) ? project.cost_centers : []);
-      } else {
-        setCostCenters([]);
-      }
+      // Load cost centers directly from API for the project
+      const costCenterData = await api.getCostCenters(true, projId);
+      setCostCenters(Array.isArray(costCenterData) ? costCenterData.filter(cc => cc.id) : []);
     } catch (error) {
       console.error('Failed to load cost centers:', error);
       setCostCenters([]);
@@ -220,11 +217,15 @@ export default function PurchaseOrderModal({ projectId: initialProjectId, open, 
                   <SelectValue placeholder="Select supplier" />
                 </SelectTrigger>
                 <SelectContent>
-                  {suppliers.map(supplier => (
-                    <SelectItem key={supplier.id} value={supplier.id}>
-                      {supplier.name}
-                    </SelectItem>
-                  ))}
+                  {suppliers.length === 0 ? (
+                    <SelectItem value="__empty__" disabled>No suppliers available</SelectItem>
+                  ) : (
+                    suppliers.map(supplier => (
+                      <SelectItem key={supplier.id} value={supplier.id}>
+                        {supplier.name}
+                      </SelectItem>
+                    ))
+                  )}
                 </SelectContent>
               </Select>
             </div>
@@ -240,11 +241,15 @@ export default function PurchaseOrderModal({ projectId: initialProjectId, open, 
                   <SelectValue placeholder="Select project" />
                 </SelectTrigger>
                 <SelectContent>
-                  {projects.map(project => (
-                    <SelectItem key={project.id} value={project.id}>
-                      {project.code} - {project.name}
-                    </SelectItem>
-                  ))}
+                  {projects.length === 0 ? (
+                    <SelectItem value="__empty__" disabled>No projects available</SelectItem>
+                  ) : (
+                    projects.map(project => (
+                      <SelectItem key={project.id} value={project.id}>
+                        {project.code} - {project.name}
+                      </SelectItem>
+                    ))
+                  )}
                 </SelectContent>
               </Select>
               {selectedProject && (
@@ -335,11 +340,15 @@ export default function PurchaseOrderModal({ projectId: initialProjectId, open, 
                         <SelectValue placeholder="Select (optional)" />
                       </SelectTrigger>
                       <SelectContent>
-                        {costCenters.map(cc => (
-                          <SelectItem key={cc.id} value={cc.id}>
-                            {cc.code}
-                          </SelectItem>
-                        ))}
+                        {costCenters.length === 0 ? (
+                          <SelectItem value="__none__" disabled>No cost centers for this project</SelectItem>
+                        ) : (
+                          costCenters.map(cc => (
+                            <SelectItem key={cc.id} value={cc.id}>
+                              {cc.code} - {cc.name}
+                            </SelectItem>
+                          ))
+                        )}
                       </SelectContent>
                     </Select>
                   </div>

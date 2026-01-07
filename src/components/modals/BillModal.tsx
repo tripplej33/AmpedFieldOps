@@ -63,28 +63,36 @@ export default function BillModal({ purchaseOrderId, open, onOpenChange, onBillC
   const loadSuppliers = async () => {
     try {
       const clients = await api.getClients();
-      setSuppliers(Array.isArray(clients) ? clients : []);
+      const clientsList = clients.data || (Array.isArray(clients) ? clients : []);
+      setSuppliers(Array.isArray(clientsList) ? clientsList.filter(c => c.id) : []);
     } catch (error) {
       console.error('Failed to load suppliers:', error);
       toast.error('Failed to load suppliers');
+      setSuppliers([]);
     }
   };
 
   const loadProjects = async () => {
     try {
       const projectsData = await api.getProjects();
-      setProjects(Array.isArray(projectsData) ? projectsData : []);
+      const projectsList = projectsData.data || (Array.isArray(projectsData) ? projectsData : []);
+      setProjects(Array.isArray(projectsList) ? projectsList.filter(p => p.id) : []);
     } catch (error) {
       console.error('Failed to load projects:', error);
+      toast.error('Failed to load projects');
+      setProjects([]);
     }
   };
 
   const loadPurchaseOrders = async () => {
     try {
       const pos = await api.getPurchaseOrders();
-      setPurchaseOrders(Array.isArray(pos) ? pos : []);
+      const posList = Array.isArray(pos) ? pos : [];
+      setPurchaseOrders(posList.filter(po => po.id));
     } catch (error) {
       console.error('Failed to load purchase orders:', error);
+      toast.error('Failed to load purchase orders');
+      setPurchaseOrders([]);
     }
   };
 
@@ -210,11 +218,15 @@ export default function BillModal({ purchaseOrderId, open, onOpenChange, onBillC
                   <SelectValue placeholder="Select supplier" />
                 </SelectTrigger>
                 <SelectContent>
-                  {suppliers.map(supplier => (
-                    <SelectItem key={supplier.id} value={supplier.id}>
-                      {supplier.name}
-                    </SelectItem>
-                  ))}
+                  {suppliers.length === 0 ? (
+                    <SelectItem value="__empty__" disabled>No suppliers available</SelectItem>
+                  ) : (
+                    suppliers.map(supplier => (
+                      <SelectItem key={supplier.id} value={supplier.id}>
+                        {supplier.name}
+                      </SelectItem>
+                    ))
+                  )}
                 </SelectContent>
               </Select>
             </div>
@@ -230,13 +242,17 @@ export default function BillModal({ purchaseOrderId, open, onOpenChange, onBillC
                   <SelectValue placeholder="Select PO (optional)" />
                 </SelectTrigger>
                 <SelectContent>
-                  {purchaseOrders
-                    .filter(po => po.status !== 'BILLED')
-                    .map(po => (
-                      <SelectItem key={po.id} value={po.id}>
-                        {po.po_number} - {po.supplier_name}
-                      </SelectItem>
-                    ))}
+                  {purchaseOrders.filter(po => po.status !== 'BILLED').length === 0 ? (
+                    <SelectItem value="__empty__" disabled>No unbilled purchase orders available</SelectItem>
+                  ) : (
+                    purchaseOrders
+                      .filter(po => po.status !== 'BILLED')
+                      .map(po => (
+                        <SelectItem key={po.id} value={po.id}>
+                          {po.po_number} - {po.supplier_name}
+                        </SelectItem>
+                      ))
+                  )}
                 </SelectContent>
               </Select>
               {selectedPO && (
@@ -259,11 +275,15 @@ export default function BillModal({ purchaseOrderId, open, onOpenChange, onBillC
                   <SelectValue placeholder="Select project (optional)" />
                 </SelectTrigger>
                 <SelectContent>
-                  {projects.map(project => (
-                    <SelectItem key={project.id} value={project.id}>
-                      {project.code} - {project.name}
-                    </SelectItem>
-                  ))}
+                  {projects.length === 0 ? (
+                    <SelectItem value="__empty__" disabled>No projects available</SelectItem>
+                  ) : (
+                    projects.map(project => (
+                      <SelectItem key={project.id} value={project.id}>
+                        {project.code} - {project.name}
+                      </SelectItem>
+                    ))
+                  )}
                 </SelectContent>
               </Select>
             </div>

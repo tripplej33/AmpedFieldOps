@@ -150,9 +150,12 @@ export default function Financials() {
   const loadClients = async () => {
     try {
       const data = await api.getClients();
-      setClients(Array.isArray(data) ? data : []);
+      const clientsList = data.data || (Array.isArray(data) ? data : []);
+      setClients(Array.isArray(clientsList) ? clientsList.filter(c => c.id) : []);
     } catch (error) {
       console.error('Failed to load clients:', error);
+      toast.error('Failed to load clients');
+      setClients([]);
     }
   };
 
@@ -163,9 +166,11 @@ export default function Financials() {
     }
     try {
       const data = await api.getProjects({ client_id: clientId });
-      setProjects(Array.isArray(data) ? data : []);
+      const projectsList = data.data || (Array.isArray(data) ? data : []);
+      setProjects(Array.isArray(projectsList) ? projectsList.filter(p => p.id) : []);
     } catch (error) {
       console.error('Failed to load projects:', error);
+      toast.error('Failed to load projects');
       setProjects([]);
     }
   };
@@ -1088,11 +1093,15 @@ export default function Financials() {
                     <SelectValue placeholder="Select client" />
                   </SelectTrigger>
                   <SelectContent>
-                    {clients.map(client => (
-                      <SelectItem key={client.id} value={client.id}>
-                        {client.name}
-                      </SelectItem>
-                    ))}
+                    {clients.length === 0 ? (
+                      <SelectItem value="__empty__" disabled>No clients available</SelectItem>
+                    ) : (
+                      clients.map(client => (
+                        <SelectItem key={client.id} value={client.id}>
+                          {client.name}
+                        </SelectItem>
+                      ))
+                    )}
                   </SelectContent>
                 </Select>
               </div>
@@ -1108,11 +1117,15 @@ export default function Financials() {
                     <SelectValue placeholder="Select project" />
                   </SelectTrigger>
                   <SelectContent>
-                    {projects.map(project => (
-                      <SelectItem key={project.id} value={project.id}>
-                        {project.name}
-                      </SelectItem>
-                    ))}
+                    {projects.length === 0 ? (
+                      <SelectItem value="__empty__" disabled>No projects for this client</SelectItem>
+                    ) : (
+                      projects.map(project => (
+                        <SelectItem key={project.id} value={project.id}>
+                          {project.name}
+                        </SelectItem>
+                      ))
+                    )}
                   </SelectContent>
                 </Select>
               </div>
@@ -1273,11 +1286,15 @@ export default function Financials() {
                     <SelectValue placeholder="Select client" />
                   </SelectTrigger>
                   <SelectContent>
-                    {clients.map(client => (
-                      <SelectItem key={client.id} value={client.id}>
-                        {client.name}
-                      </SelectItem>
-                    ))}
+                    {clients.length === 0 ? (
+                      <SelectItem value="__empty__" disabled>No clients available</SelectItem>
+                    ) : (
+                      clients.map(client => (
+                        <SelectItem key={client.id} value={client.id}>
+                          {client.name}
+                        </SelectItem>
+                      ))
+                    )}
                   </SelectContent>
                 </Select>
               </div>
@@ -1294,11 +1311,15 @@ export default function Financials() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="__all__">All projects</SelectItem>
-                    {projects.map(project => (
-                      <SelectItem key={project.id} value={project.id}>
-                        {project.name}
-                      </SelectItem>
-                    ))}
+                    {projects.length === 0 ? (
+                      <SelectItem value="__empty__" disabled>No projects for this client</SelectItem>
+                    ) : (
+                      projects.map(project => (
+                        <SelectItem key={project.id} value={project.id}>
+                          {project.name}
+                        </SelectItem>
+                      ))
+                    )}
                   </SelectContent>
                 </Select>
               </div>
