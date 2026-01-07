@@ -2178,6 +2178,7 @@ function TimesheetForm({
               className="hidden"
             />
           </div>
+        </div>
       </div>
 
       {/* Sticky Action Buttons */}
