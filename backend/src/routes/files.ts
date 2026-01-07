@@ -374,12 +374,13 @@ router.delete('/:id', authenticate, requirePermission('can_edit_projects'), asyn
   const storage = await StorageFactory.getInstance();
   
   // Extract storage path from file_path
-  let storagePath: string;
+  let storagePath: string | undefined;
   if (file.file_path.startsWith('http://') || file.file_path.startsWith('https://')) {
     // S3 signed URL - extract key from URL or use file_path as-is for deletion
     // For S3, we need the key, not the URL. Store key separately or extract from URL
     // For now, if it's a URL, we can't delete it (would need to store S3 key separately)
     log.warn('Cannot delete file with S3 URL - key not stored', { fileId: req.params.id, filePath: file.file_path });
+    storagePath = undefined;
   } else {
     // Local path - extract relative path
     storagePath = resolveStoragePath(file.file_path);
