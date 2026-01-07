@@ -3914,7 +3914,7 @@ router.get('/purchase-orders', authenticate, requirePermission('can_view_financi
       // Continue anyway - tables might already exist
     }
     
-    const { project_id, supplier_id, status, date_from, date_to } = req.query;
+    const { project_id, supplier_id, status, date_from, date_to, cost_center_id } = req.query;
 
     const pos = await getPurchaseOrders({
       project_id: project_id as string,
@@ -3922,6 +3922,7 @@ router.get('/purchase-orders', authenticate, requirePermission('can_view_financi
       status: status as string,
       date_from: date_from as string,
       date_to: date_to as string,
+      cost_center_id: cost_center_id as string,
     });
 
     res.json(pos);
@@ -3946,6 +3947,45 @@ router.get('/purchase-orders/project/:project_id', authenticate, requirePermissi
     res.json(pos);
   } catch (error) {
     console.error('Failed to fetch purchase orders:', error);
+    res.status(500).json({ error: 'Failed to fetch purchase orders' });
+  }
+});
+
+router.get('/purchase-orders/cost-center/:cost_center_id', authenticate, requirePermission('can_view_financials'), async (req: AuthRequest, res: Response) => {
+  try {
+    // Ensure tables exist before querying
+    try {
+      await ensureXeroTables();
+    } catch (ensureError: any) {
+      console.warn('[Xero] Failed to ensure tables exist:', ensureError.message);
+    }
+
+    const pos = await getPurchaseOrders({ cost_center_id: req.params.cost_center_id });
+    
+    // For each PO, get the line items that match this cost center
+    const posWithLineItems = await Promise.all(pos.map(async (po) => {
+      const lineItemsResult = await query(
+        `SELECT li.*, cc.code as cost_center_code, cc.name as cost_center_name
+         FROM xero_purchase_order_line_items li
+         LEFT JOIN cost_centers cc ON li.cost_center_id = cc.id
+         WHERE li.po_id = $1 AND li.cost_center_id = $2
+         ORDER BY li.created_at`,
+        [po.id, req.params.cost_center_id]
+      );
+      
+      // Calculate total amount for this cost center's line items
+      const costCenterTotal = lineItemsResult.rows.reduce((sum, item) => sum + parseFloat(item.line_amount || 0), 0);
+      
+      return {
+        ...po,
+        cost_center_line_items: lineItemsResult.rows,
+        cost_center_total: costCenterTotal,
+      };
+    }));
+
+    res.json(posWithLineItems);
+  } catch (error: any) {
+    console.error('Failed to fetch purchase orders by cost center:', error);
     res.status(500).json({ error: 'Failed to fetch purchase orders' });
   }
 });

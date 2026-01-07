@@ -158,17 +158,24 @@ export async function getPurchaseOrders(filters: {
   status?: string;
   date_from?: string;
   date_to?: string;
+  cost_center_id?: string;
 }): Promise<any[]> {
   let sql = `
-    SELECT po.*,
+    SELECT DISTINCT po.*,
       c.name as supplier_name,
       p.code as project_code,
       p.name as project_name
     FROM xero_purchase_orders po
     LEFT JOIN clients c ON po.supplier_id = c.id
     LEFT JOIN projects p ON po.project_id = p.id
-    WHERE 1=1
   `;
+  
+  // If filtering by cost_center_id, need to JOIN with line items
+  if (filters.cost_center_id) {
+    sql += ` INNER JOIN xero_purchase_order_line_items li ON po.id = li.po_id `;
+  }
+  
+  sql += ` WHERE 1=1 `;
   const params: any[] = [];
   let paramCount = 1;
 
@@ -195,6 +202,11 @@ export async function getPurchaseOrders(filters: {
   if (filters.date_to) {
     sql += ` AND po.date <= $${paramCount++}`;
     params.push(filters.date_to);
+  }
+
+  if (filters.cost_center_id) {
+    sql += ` AND li.cost_center_id = $${paramCount++}`;
+    params.push(filters.cost_center_id);
   }
 
   sql += ' ORDER BY po.date DESC, po.created_at DESC';

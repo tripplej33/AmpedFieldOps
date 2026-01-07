@@ -909,6 +909,10 @@ class ApiClient {
     return this.request<any[]>(`/api/xero/purchase-orders/project/${projectId}`);
   }
 
+  async getPurchaseOrdersByCostCenter(costCenterId: string) {
+    return this.request<any[]>(`/api/xero/purchase-orders/cost-center/${costCenterId}`);
+  }
+
   async createPurchaseOrder(data: { supplier_id: string; project_id: string; date: string; delivery_date?: string; line_items: Array<{ description: string; quantity: number; unit_amount: number; account_code?: string; cost_center_id?: string; item_id?: string }>; notes?: string; currency?: string }) {
     const response = await fetch(`${API_URL}/api/xero/purchase-orders`, {
       method: 'POST',

@@ -23,6 +23,7 @@ import { FileUpload } from '@/components/ui/file-upload';
 import { DocumentViewer } from '@/components/ui/document-viewer';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import CostCenterDetailModal from '@/components/modals/CostCenterDetailModal';
 
 interface ProjectDetailModalProps {
   project: Project | null;
@@ -47,6 +48,10 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
   const [uploadFiles, setUploadFiles] = useState<File[]>([]);
   const [uploadProgress, setUploadProgress] = useState<Record<number, number>>({});
   const [isUploading, setIsUploading] = useState(false);
+  
+  // Cost Center detail modal
+  const [selectedCostCenter, setSelectedCostCenter] = useState<CostCenter | null>(null);
+  const [costCenterModalOpen, setCostCenterModalOpen] = useState(false);
   
   // Cost Center form
   const [showCostCenterForm, setShowCostCenterForm] = useState(false);
@@ -537,7 +542,14 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
                     const used = cc.actual_cost || cc.total_cost || 0;
                     const pct = cc.budget > 0 ? (used / cc.budget) * 100 : 0;
                     return (
-                      <Card key={cc.id} className="p-4 bg-card border-border">
+                      <Card 
+                        key={cc.id} 
+                        className="p-4 bg-card border-border hover:border-electric transition-colors cursor-pointer"
+                        onClick={() => {
+                          setSelectedCostCenter(cc);
+                          setCostCenterModalOpen(true);
+                        }}
+                      >
                         <div className="flex items-start justify-between mb-2">
                           <div>
                             <div className="flex items-center gap-2">
@@ -549,7 +561,7 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
                             )}
                           </div>
                           {(project.status === 'quoted' || project.status === 'in-progress') && (
-                            <div className="flex gap-1">
+                            <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
                               <Button
                                 variant="ghost"
                                 size="sm"
@@ -1156,6 +1168,21 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
           file={selectedFile}
           open={!!selectedFile}
           onOpenChange={(open) => !open && setSelectedFile(null)}
+        />
+      )}
+
+      {/* Cost Center Detail Modal */}
+      {selectedCostCenter && (
+        <CostCenterDetailModal
+          costCenter={selectedCostCenter}
+          project={project}
+          open={costCenterModalOpen}
+          onOpenChange={(open) => {
+            setCostCenterModalOpen(open);
+            if (!open) {
+              setSelectedCostCenter(null);
+            }
+          }}
         />
       )}
     </>
