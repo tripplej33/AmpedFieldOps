@@ -212,13 +212,28 @@ router.post('/', authenticate, uploadLimiter,
   // Extract and validate required fields from body (works for both JSON and FormData)
   const project_id = req.body.project_id;
   const timesheetDate = req.body.date;
-  const timesheetHours = parseFloat(req.body.hours);
+  const hoursValue = req.body.hours;
   const timesheetActivityTypeId = req.body.activity_type_id;
   const timesheetCostCenterId = req.body.cost_center_id;
   
   // Manual validation (since express-validator doesn't work well with FormData)
-  if (!project_id || !timesheetDate || !timesheetHours || !timesheetActivityTypeId || !timesheetCostCenterId) {
-    return res.status(400).json({ error: 'Missing required fields: project_id, date, hours, activity_type_id, cost_center_id' });
+  if (!project_id || !timesheetDate || hoursValue === undefined || hoursValue === null || !timesheetActivityTypeId || !timesheetCostCenterId) {
+    const missing = [];
+    if (!project_id) missing.push('project_id');
+    if (!timesheetDate) missing.push('date');
+    if (hoursValue === undefined || hoursValue === null) missing.push('hours');
+    if (!timesheetActivityTypeId) missing.push('activity_type_id');
+    if (!timesheetCostCenterId) missing.push('cost_center_id');
+    return res.status(400).json({ 
+      error: 'Missing required fields',
+      missing_fields: missing,
+      details: `Missing: ${missing.join(', ')}`
+    });
+  }
+  
+  const timesheetHours = parseFloat(hoursValue);
+  if (isNaN(timesheetHours)) {
+    return res.status(400).json({ error: 'Invalid hours value. Must be a number.' });
   }
   
   if (timesheetHours < 0.25 || timesheetHours > 24) {
@@ -313,12 +328,39 @@ router.post('/', authenticate, uploadLimiter,
 
       res.status(201).json(result.rows[0]);
     } catch (error: any) {
-      log.error('Create timesheet error', error, { userId: req.user!.id, project_id });
-      const errorMessage = error?.message || 'Failed to create timesheet';
-      const errorDetails = process.env.NODE_ENV === 'development' ? errorMessage : undefined;
-      res.status(500).json({ 
-        error: 'Failed to create timesheet',
-        details: errorDetails
+      log.error('Create timesheet error', error, { 
+        userId: req.user!.id, 
+        project_id,
+        errorMessage: error?.message,
+        errorStack: error?.stack,
+        errorCode: error?.code,
+        body: req.body
+      });
+      
+      // Provide more specific error messages
+      let errorMessage = 'Failed to create timesheet';
+      let statusCode = 500;
+      
+      if (error?.code === '23503') { // Foreign key violation
+        errorMessage = 'Invalid project, activity type, or cost center';
+        statusCode = 400;
+      } else if (error?.code === '23505') { // Unique violation
+        errorMessage = 'Timesheet already exists';
+        statusCode = 409;
+      } else if (error?.code === '23502') { // Not null violation
+        errorMessage = 'Missing required field';
+        statusCode = 400;
+      } else if (error?.message) {
+        errorMessage = error.message;
+      }
+      
+      res.status(statusCode).json({ 
+        error: errorMessage,
+        details: process.env.NODE_ENV === 'development' ? {
+          message: error?.message,
+          code: error?.code,
+          stack: error?.stack
+        } : undefined
       });
     }
   }

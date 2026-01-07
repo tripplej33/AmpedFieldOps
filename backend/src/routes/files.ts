@@ -244,7 +244,8 @@ router.post(
     }
 
     // Generate proper relative file path for storage
-    // req.file.path is absolute, we need relative from uploads root
+    // req.file.path is now in the final project directory after being moved
+    // We need relative from uploads root
     const uploadsRoot = path.join(process.cwd(), 'uploads');
     const relativePath = path.relative(uploadsRoot, req.file.path).replace(/\\/g, '/'); // Normalize to forward slashes
     

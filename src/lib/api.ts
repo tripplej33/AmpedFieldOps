@@ -441,6 +441,7 @@ class ApiClient {
       formData.append('date', data.date);
       formData.append('hours', data.hours.toString());
       if (data.notes) formData.append('notes', data.notes);
+      if (data.location) formData.append('location', data.location);
       
       data.image_files.forEach((file: File, index: number) => {
         formData.append(`images`, file);
