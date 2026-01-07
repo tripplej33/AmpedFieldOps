@@ -131,6 +131,17 @@ export default function Timesheets() {
   // View controls
   const [viewDate, setViewDate] = useState(new Date());
   const [selectedUserId, setSelectedUserId] = useState<string>('all');
+  const [viewMode, setViewMode] = useState<'week' | 'month'>('week');
+  const [selectedDateRange, setSelectedDateRange] = useState<{ from: Date; to: Date }>(() => {
+    const today = new Date();
+    const weekStart = getWeekStart(today);
+    const weekEnd = getWeekEnd(today);
+    return { from: weekStart, to: weekEnd };
+  });
+  
+  // Details modal state
+  const [detailsModalOpen, setDetailsModalOpen] = useState(false);
+  const [selectedTimesheet, setSelectedTimesheet] = useState<TimesheetEntry | null>(null);
 
   // Image viewer state
   const [imageViewerOpen, setImageViewerOpen] = useState(false);
@@ -175,7 +186,8 @@ export default function Timesheets() {
 
   useEffect(() => {
     loadTimesheets();
-  }, [selectedUserId, selectedDateRange]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedUserId, selectedDateRange.from.toISOString(), selectedDateRange.to.toISOString()]);
 
   useEffect(() => {
     loadFormData();
