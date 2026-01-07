@@ -24,7 +24,7 @@ export default function CreateSafetyDocumentModal({
 }: CreateSafetyDocumentModalProps) {
   const [documentType, setDocumentType] = useState<'jsa' | 'electrical_compliance' | 'electrical_safety_certificate'>('jsa');
   const [projectId, setProjectId] = useState<string>('');
-  const [costCenterId, setCostCenterId] = useState<string>('');
+  const [costCenterId, setCostCenterId] = useState<string>('__none__');
   const [title, setTitle] = useState<string>('');
   const [status, setStatus] = useState<'draft' | 'completed' | 'approved'>('draft');
   
@@ -53,6 +53,7 @@ export default function CreateSafetyDocumentModal({
       setSelectedProject(null);
       setSelectedClient(null);
       setCostCenters([]);
+      setCostCenterId('__none__');
       // Reset autofilled data
       setJsaData({});
       setComplianceData({});
@@ -134,6 +135,8 @@ export default function CreateSafetyDocumentModal({
         // Pre-select first cost center if available
         if (costCenterData && Array.isArray(costCenterData) && costCenterData.length > 0) {
           setCostCenterId(costCenterData[0].id);
+        } else {
+          setCostCenterId('__none__');
         }
       } catch (error) {
         console.error('Failed to load cost centers:', error);
@@ -183,7 +186,7 @@ export default function CreateSafetyDocumentModal({
     try {
       await api.createSafetyDocument({
         project_id: projectId,
-        cost_center_id: costCenterId || undefined,
+        cost_center_id: costCenterId && costCenterId !== '__none__' ? costCenterId : undefined,
         document_type: documentType,
         title: title.trim(),
         data: documentData,
@@ -205,7 +208,7 @@ export default function CreateSafetyDocumentModal({
 
   const resetForm = () => {
     setProjectId('');
-    setCostCenterId('');
+    setCostCenterId('__none__');
     setTitle('');
     setStatus('draft');
     setDocumentType('jsa');
@@ -287,7 +290,7 @@ export default function CreateSafetyDocumentModal({
                   <SelectValue placeholder="Select a cost center" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">None</SelectItem>
+                  <SelectItem value="__none__">None</SelectItem>
                   {costCenters.map((cc) => (
                     <SelectItem key={cc.id} value={cc.id}>
                       {cc.code} - {cc.name}
@@ -338,7 +341,7 @@ export default function CreateSafetyDocumentModal({
               {(documentType === 'electrical_compliance' || documentType === 'electrical_safety_certificate') && (
                 <ComplianceCreateForm
                   projectId={projectId}
-                  costCenterId={costCenterId || undefined}
+                  costCenterId={costCenterId && costCenterId !== '__none__' ? costCenterId : undefined}
                   documentType={documentType}
                   initialData={documentType === 'electrical_safety_certificate' ? safetyCertData : complianceData}
                   onSubmit={handleComplianceSubmit}
