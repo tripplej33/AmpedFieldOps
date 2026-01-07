@@ -1262,36 +1262,40 @@ class ApiClient {
   // Storage Settings
   async getStorageSettings() {
     return this.request<{
-      driver: 'local' | 's3';
+      driver: 'local' | 's3' | 'google-drive';
       basePath?: string;
       s3Bucket?: string;
       s3Region?: string;
       s3AccessKeyId?: string;
       s3SecretAccessKey?: string;
       s3Endpoint?: string;
+      googleDriveFolderId?: string;
+      googleDriveConnected?: boolean;
     }>('/api/settings/storage');
   }
 
   async updateStorageSettings(data: {
-    driver: 'local' | 's3';
+    driver: 'local' | 's3' | 'google-drive';
     basePath?: string;
     s3Bucket?: string;
     s3Region?: string;
     s3AccessKeyId?: string;
     s3SecretAccessKey?: string;
     s3Endpoint?: string;
+    googleDriveFolderId?: string;
   }) {
     return this.request('/api/settings/storage', { method: 'PUT', body: data });
   }
 
   async testStorageConnection(data: {
-    driver: 'local' | 's3';
+    driver: 'local' | 's3' | 'google-drive';
     basePath?: string;
     s3Bucket?: string;
     s3Region?: string;
     s3AccessKeyId?: string;
     s3SecretAccessKey?: string;
     s3Endpoint?: string;
+    googleDriveFolderId?: string;
   }) {
     return this.request<{ success: boolean; message: string }>('/api/settings/storage/test', { method: 'POST', body: data });
   }

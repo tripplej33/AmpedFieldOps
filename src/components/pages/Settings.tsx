@@ -49,13 +49,15 @@ export default function Settings() {
   
   // Storage Settings state (new unified storage abstraction)
   const [storageSettings, setStorageSettings] = useState<{
-    driver: 'local' | 's3';
+    driver: 'local' | 's3' | 'google-drive';
     basePath?: string;
     s3Bucket?: string;
     s3Region?: string;
     s3AccessKeyId?: string;
     s3SecretAccessKey?: string;
     s3Endpoint?: string;
+    googleDriveFolderId?: string;
+    googleDriveConnected?: boolean;
   }>({
     driver: 'local',
     basePath: 'uploads',
@@ -282,7 +284,11 @@ export default function Settings() {
       // Load storage settings
       try {
         const storageData = await api.getStorageSettings();
-        setStorageSettings(storageData);
+        setStorageSettings({
+          ...storageData,
+          // Ensure googleDriveConnected is set from API response
+          googleDriveConnected: storageData.googleDriveConnected ?? false
+        });
       } catch (error) {
         // Storage settings might not exist yet, use defaults
         console.log('Storage settings not found, using defaults');
@@ -1425,7 +1431,7 @@ export default function Settings() {
                   <div>
                     <h3 className="text-lg font-bold mb-1">Storage Configuration</h3>
                     <p className="text-sm text-muted-foreground">
-                      Configure where files and images are stored. Choose between local filesystem or AWS S3-compatible storage.
+                      Configure where files and images are stored. Choose between local filesystem, AWS S3-compatible storage, or Google Drive.
                     </p>
                   </div>
                 </div>
@@ -1453,7 +1459,7 @@ export default function Settings() {
                     <Label className="font-mono text-xs uppercase tracking-wider mb-3 block">
                       Storage Driver
                     </Label>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-3 gap-4">
                       <button
                         type="button"
                         onClick={() => setStorageSettings(prev => ({ ...prev, driver: 'local' }))}
@@ -1484,6 +1490,21 @@ export default function Settings() {
                           Scalable cloud storage
                         </div>
                       </button>
+                      <button
+                        type="button"
+                        onClick={() => setStorageSettings(prev => ({ ...prev, driver: 'google-drive' }))}
+                        className={cn(
+                          "p-4 rounded-lg border-2 transition-all text-left",
+                          storageSettings.driver === 'google-drive'
+                            ? "border-electric bg-electric/10"
+                            : "border-border hover:border-electric/50"
+                        )}
+                      >
+                        <div className="font-semibold mb-1">Google Drive</div>
+                        <div className="text-xs text-muted-foreground">
+                          Cloud storage via Google
+                        </div>
+                      </button>
                     </div>
                   </div>
 
@@ -1505,6 +1526,108 @@ export default function Settings() {
                       Base directory path for file storage (relative to storage root)
                     </p>
                   </div>
+
+                  {/* Google Drive Configuration */}
+                  {storageSettings.driver === 'google-drive' && (
+                    <div className="space-y-4 p-4 rounded-lg bg-muted/20 border border-border">
+                      <h4 className="text-sm font-bold font-mono uppercase tracking-wider">Google Drive Configuration</h4>
+                      
+                      {/* Connection Status */}
+                      <div className="flex items-center justify-between p-3 rounded-lg bg-muted/30 border border-border">
+                        <div className="flex items-center gap-2">
+                          <div className={cn(
+                            "w-2 h-2 rounded-full",
+                            storageSettings.googleDriveConnected ? "bg-voltage animate-pulse" : "bg-muted-foreground"
+                          )} />
+                          <span className={cn(
+                            "text-sm font-mono",
+                            storageSettings.googleDriveConnected ? "text-voltage" : "text-muted-foreground"
+                          )}>
+                            {storageSettings.googleDriveConnected ? 'Connected' : 'Not Connected'}
+                          </span>
+                        </div>
+                        {!storageSettings.googleDriveConnected && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              // Navigate to Integrations tab for OAuth setup
+                              const integrationsTab = document.querySelector('[value="integrations"]');
+                              if (integrationsTab) {
+                                (integrationsTab as HTMLElement).click();
+                                toast.info('Please connect Google Drive in the Integrations tab first');
+                              }
+                            }}
+                          >
+                            <Cloud className="w-4 h-4 mr-2" />
+                            Connect in Integrations
+                          </Button>
+                        )}
+                      </div>
+
+                      {!storageSettings.googleDriveConnected && (
+                        <div className="p-3 rounded-lg bg-warning/10 border border-warning/20">
+                          <p className="text-sm text-warning">
+                            ⚠️ Google Drive OAuth connection required. Please connect your Google Drive account in the <strong>Integrations</strong> tab before using Google Drive storage.
+                          </p>
+                        </div>
+                      )}
+
+                      <div>
+                        <Label className="font-mono text-xs uppercase tracking-wider">
+                          Folder ID (Optional)
+                        </Label>
+                        <Input
+                          type="text"
+                          value={storageSettings.googleDriveFolderId || ''}
+                          onChange={(e) => setStorageSettings(prev => ({ ...prev, googleDriveFolderId: e.target.value }))}
+                          placeholder="Leave empty to use basePath folder"
+                          className="mt-2 font-mono text-sm"
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Specific Google Drive folder ID to use as root. If empty, files will be stored in a folder matching the base path ({storageSettings.basePath || 'uploads'}).
+                        </p>
+                      </div>
+
+                      <div className="flex gap-2">
+                        <Button
+                          onClick={async () => {
+                            setIsTestingStorageConnection(true);
+                            setStorageConnectionStatus(null);
+                            try {
+                              const result = await api.testStorageConnection(storageSettings);
+                              setStorageConnectionStatus(result);
+                              if (result.success) {
+                                toast.success('Google Drive connection successful!');
+                              } else {
+                                toast.error(result.message || 'Connection test failed');
+                              }
+                            } catch (error: any) {
+                              const errorMsg = error.message || 'Connection test failed';
+                              setStorageConnectionStatus({ success: false, message: errorMsg });
+                              toast.error(errorMsg);
+                            } finally {
+                              setIsTestingStorageConnection(false);
+                            }
+                          }}
+                          disabled={isTestingStorageConnection || !storageSettings.googleDriveConnected}
+                          variant="outline"
+                        >
+                          {isTestingStorageConnection ? (
+                            <>
+                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                              Testing...
+                            </>
+                          ) : (
+                            <>
+                              <RefreshCw className="w-4 h-4 mr-2" />
+                              Test Connection
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                    </div>
+                  )}
 
                   {/* S3 Configuration */}
                   {storageSettings.driver === 's3' && (
@@ -1819,12 +1942,24 @@ export default function Settings() {
                     </div>
                   )}
 
+                  {/* Google Drive Storage Info */}
+                  {storageSettings.driver === 'google-drive' && storageSettings.googleDriveConnected && (
+                    <div className="p-4 rounded-lg bg-muted/20 border border-border">
+                      <p className="text-sm text-muted-foreground">
+                        Files will be stored in Google Drive. The folder structure will match your application paths (e.g., <code className="bg-muted px-1 py-0.5 rounded text-xs">{storageSettings.basePath || 'uploads'}/projects/...</code>).
+                        {storageSettings.googleDriveFolderId && (
+                          <> Using folder ID: <code className="bg-muted px-1 py-0.5 rounded text-xs">{storageSettings.googleDriveFolderId}</code></>
+                        )}
+                      </p>
+                    </div>
+                  )}
+
                   {/* Save Button */}
                   <div className="flex justify-end gap-2 pt-4 border-t border-border">
                     <Button
                       onClick={async () => {
-                        // Test connection before saving if S3
-                        if (storageSettings.driver === 's3') {
+                        // Test connection before saving if S3 or Google Drive
+                        if (storageSettings.driver === 's3' || storageSettings.driver === 'google-drive') {
                           setIsTestingStorageConnection(true);
                           try {
                             const testResult = await api.testStorageConnection(storageSettings);
@@ -1842,6 +1977,12 @@ export default function Settings() {
                           }
                         }
 
+                        // Validate Google Drive connection
+                        if (storageSettings.driver === 'google-drive' && !storageSettings.googleDriveConnected) {
+                          toast.error('Google Drive not connected. Please connect in the Integrations tab first.');
+                          return;
+                        }
+
                         setIsSavingStorage(true);
                         try {
                           await api.updateStorageSettings(storageSettings);
@@ -1855,7 +1996,8 @@ export default function Settings() {
                         }
                       }}
                       disabled={isSavingStorage || isTestingStorageConnection || 
-                        (storageSettings.driver === 's3' && (!storageSettings.s3Bucket || !storageSettings.s3AccessKeyId || !storageSettings.s3SecretAccessKey))}
+                        (storageSettings.driver === 's3' && (!storageSettings.s3Bucket || !storageSettings.s3AccessKeyId || !storageSettings.s3SecretAccessKey)) ||
+                        (storageSettings.driver === 'google-drive' && !storageSettings.googleDriveConnected)}
                       className="bg-electric text-background hover:bg-electric/90"
                     >
                       {isSavingStorage ? (
