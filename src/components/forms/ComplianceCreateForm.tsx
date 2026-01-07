@@ -102,47 +102,65 @@ export function ComplianceCreateForm({
   };
 
   const handleAddStandard = () => {
-    setFormData({
-      ...formData,
-      compliance_standards: [...(formData.compliance_standards || []), ''],
-    });
+    if (!isSafetyCertificate) {
+      const complianceData = formData as ComplianceData;
+      setFormData({
+        ...complianceData,
+        compliance_standards: [...(complianceData.compliance_standards || []), ''],
+      } as ComplianceData);
+    }
   };
 
   const handleRemoveStandard = (index: number) => {
-    setFormData({
-      ...formData,
-      compliance_standards: formData.compliance_standards?.filter((_, i) => i !== index) || [],
-    });
+    if (!isSafetyCertificate) {
+      const complianceData = formData as ComplianceData;
+      setFormData({
+        ...complianceData,
+        compliance_standards: complianceData.compliance_standards?.filter((_: string, i: number) => i !== index) || [],
+      } as ComplianceData);
+    }
   };
 
   const handleUpdateStandard = (index: number, value: string) => {
-    const updated = [...(formData.compliance_standards || [])];
-    updated[index] = value;
-    setFormData({ ...formData, compliance_standards: updated });
+    if (!isSafetyCertificate) {
+      const complianceData = formData as ComplianceData;
+      const updated = [...(complianceData.compliance_standards || [])];
+      updated[index] = value;
+      setFormData({ ...complianceData, compliance_standards: updated } as ComplianceData);
+    }
   };
 
   const handleAddTestResult = () => {
-    setFormData({
-      ...formData,
-      testing_results: [
-        ...(Array.isArray(formData.testing_results) ? formData.testing_results : []),
-        { test: '', result: '' },
-      ],
-    });
+    if (!isSafetyCertificate) {
+      const complianceData = formData as ComplianceData;
+      setFormData({
+        ...complianceData,
+        testing_results: [
+          ...(Array.isArray(complianceData.testing_results) ? complianceData.testing_results : []),
+          { test: '', result: '' },
+        ],
+      } as ComplianceData);
+    }
   };
 
   const handleRemoveTestResult = (index: number) => {
-    const results = Array.isArray(formData.testing_results) ? formData.testing_results : [];
-    setFormData({
-      ...formData,
-      testing_results: results.filter((_, i) => i !== index),
-    });
+    if (!isSafetyCertificate) {
+      const complianceData = formData as ComplianceData;
+      const results = Array.isArray(complianceData.testing_results) ? complianceData.testing_results : [];
+      setFormData({
+        ...complianceData,
+        testing_results: results.filter((_: any, i: number) => i !== index),
+      } as ComplianceData);
+    }
   };
 
   const handleUpdateTestResult = (index: number, field: 'test' | 'result', value: string) => {
-    const results = Array.isArray(formData.testing_results) ? [...formData.testing_results] : [];
-    results[index] = { ...results[index], [field]: value };
-    setFormData({ ...formData, testing_results: results });
+    if (!isSafetyCertificate) {
+      const complianceData = formData as ComplianceData;
+      const results = Array.isArray(complianceData.testing_results) ? [...complianceData.testing_results] : [];
+      results[index] = { ...results[index], [field]: value };
+      setFormData({ ...complianceData, testing_results: results } as ComplianceData);
+    }
   };
 
   const handleSubmit = async () => {
@@ -157,8 +175,6 @@ export function ComplianceCreateForm({
   if (loading) {
     return <div className="text-center py-8">Loading...</div>;
   }
-
-  const isSafetyCertificate = documentType === 'electrical_safety_certificate';
 
   return (
     <div className="space-y-6 py-4 max-h-[80vh] overflow-y-auto">
@@ -241,13 +257,16 @@ export function ComplianceCreateForm({
           />
         </div>
 
-        {formData.installation_date !== undefined && (
+        {!isSafetyCertificate && (formData as ComplianceData).installation_date !== undefined && (
           <div>
             <Label className="font-mono text-xs uppercase tracking-wider">Installation Date</Label>
             <Input
               type="date"
-              value={formData.installation_date || ''}
-              onChange={(e) => setFormData({ ...formData, installation_date: e.target.value || undefined })}
+              value={(formData as ComplianceData).installation_date || ''}
+              onChange={(e) => {
+                const complianceData = formData as ComplianceData;
+                setFormData({ ...complianceData, installation_date: e.target.value || undefined } as ComplianceData);
+              }}
               className="mt-2"
             />
           </div>
@@ -265,9 +284,9 @@ export function ComplianceCreateForm({
             </Button>
           </div>
 
-          {Array.isArray(formData.testing_results) && formData.testing_results.length > 0 ? (
+          {Array.isArray((formData as ComplianceData).testing_results) && (formData as ComplianceData).testing_results!.length > 0 ? (
             <div className="space-y-3">
-              {formData.testing_results.map((result, index) => (
+              {(formData as ComplianceData).testing_results!.map((result: { test: string; result: string }, index: number) => (
                 <Card key={index} className="p-4 border border-border">
                   <div className="flex items-start justify-between mb-3">
                     <h4 className="font-medium">Test #{index + 1}</h4>
@@ -409,18 +428,19 @@ export function ComplianceCreateForm({
       )}
 
       {/* Compliance Standards */}
-      <div className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h3 className="font-semibold text-lg">Compliance Standards</h3>
-          <Button type="button" variant="outline" size="sm" onClick={handleAddStandard}>
-            <Plus className="w-4 h-4 mr-2" />
-            Add Standard
-          </Button>
-        </div>
+      {!isSafetyCertificate && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="font-semibold text-lg">Compliance Standards</h3>
+            <Button type="button" variant="outline" size="sm" onClick={handleAddStandard}>
+              <Plus className="w-4 h-4 mr-2" />
+              Add Standard
+            </Button>
+          </div>
 
-        {formData.compliance_standards && formData.compliance_standards.length > 0 ? (
-          <div className="space-y-2">
-            {formData.compliance_standards.map((standard, index) => (
+          {(formData as ComplianceData).compliance_standards && (formData as ComplianceData).compliance_standards!.length > 0 ? (
+            <div className="space-y-2">
+              {(formData as ComplianceData).compliance_standards!.map((standard: string, index: number) => (
               <div key={index} className="flex items-center gap-2">
                 <Input
                   value={standard}
@@ -438,10 +458,11 @@ export function ComplianceCreateForm({
               </div>
             ))}
           </div>
-        ) : (
-          <p className="text-sm text-muted-foreground">No standards added. Click "Add Standard" to add one.</p>
-        )}
-      </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">No standards added. Click "Add Standard" to add one.</p>
+          )}
+        </div>
+      )}
 
       {/* Inspector Details */}
       <div className="space-y-4">
