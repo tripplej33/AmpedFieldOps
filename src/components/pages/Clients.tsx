@@ -11,7 +11,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Pagination } from '@/components/ui/pagination';
 import { api } from '@/lib/api';
 import { Client } from '@/types';
-import { Search, Plus, Phone, Mail, MapPin, Clock, Briefcase, Loader2, Users } from 'lucide-react';
+import { Search, Plus, Phone, Mail, MapPin, Clock, Briefcase, Loader2, Users, ShoppingCart, DollarSign } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { toast } from 'sonner';
 import ClientDetailModal from '@/components/modals/ClientDetailModal';
 
@@ -27,6 +28,7 @@ export default function Clients() {
   const [selectedClient, setSelectedClient] = useState<Client | null>(null);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [activeTab, setActiveTab] = useState<'customers' | 'suppliers'>('customers');
   
   // Pagination state
   const [page, setPage] = useState(1);
@@ -47,12 +49,13 @@ export default function Clients() {
     email: '',
     phone: '',
     location: '',
+    client_type: 'customer' as 'customer' | 'supplier' | 'both',
     notes: '',
   });
 
   useEffect(() => {
     loadClients();
-  }, [page, limit, searchQuery]);
+  }, [page, limit, searchQuery, activeTab]);
 
   // Handle URL parameters for opening specific client
   useEffect(() => {
@@ -75,6 +78,7 @@ export default function Clients() {
       const params: any = {
         page,
         limit,
+        client_type: activeTab === 'customers' ? 'customer' : 'supplier',
       };
       if (searchQuery) {
         params.search = searchQuery;
@@ -138,6 +142,7 @@ export default function Clients() {
       email: '',
       phone: '',
       location: '',
+      client_type: activeTab === 'customers' ? 'customer' : 'supplier',
       notes: '',
     });
     setEditingClient(null);
@@ -171,6 +176,7 @@ export default function Clients() {
       email: client.email,
       phone: client.phone || '',
       location: client.location || '',
+      client_type: client.client_type || 'customer',
       notes: client.notes || '',
     });
     setEditModalOpen(true);
@@ -209,11 +215,6 @@ export default function Clients() {
     }
   };
 
-  const filteredClients = clients.filter((client) =>
-    client.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (client.contact_name || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
-    (client.location || '').toLowerCase().includes(searchQuery.toLowerCase())
-  );
 
   if (isLoading) {
     return (
@@ -259,9 +260,23 @@ export default function Clients() {
           </Button>
         </div>
 
-        {/* Clients Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {clients.map((client) => (
+        {/* Tabs */}
+        <Tabs value={activeTab} onValueChange={(v) => { setActiveTab(v as 'customers' | 'suppliers'); setPage(1); }}>
+          <TabsList className="grid w-full max-w-md grid-cols-2 mb-6">
+            <TabsTrigger value="customers">
+              <Users className="w-4 h-4 mr-2" />
+              Customers
+            </TabsTrigger>
+            <TabsTrigger value="suppliers">
+              <ShoppingCart className="w-4 h-4 mr-2" />
+              Suppliers
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="customers" className="space-y-6">
+            {/* Customers Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {clients.map((client) => (
             <Card
               key={client.id}
               className="p-6 bg-card border-border hover:border-electric transition-all cursor-pointer group"
@@ -302,29 +317,57 @@ export default function Clients() {
 
               {/* Stats */}
               <div className="grid grid-cols-3 gap-3 p-3 rounded-lg bg-muted/30">
-                <div className="text-center">
-                  <div className="flex items-center justify-center gap-1 mb-1">
-                    <Briefcase className="w-3 h-3 text-electric" />
-                  </div>
-                  <p className="text-lg font-bold font-mono text-foreground">{client.active_projects || 0}</p>
-                  <p className="text-xs text-muted-foreground">Projects</p>
-                </div>
-                <div className="text-center">
-                  <div className="flex items-center justify-center gap-1 mb-1">
-                    <Clock className="w-3 h-3 text-electric" />
-                  </div>
-                  <p className="text-lg font-bold font-mono text-foreground">{client.total_hours || 0}</p>
-                  <p className="text-xs text-muted-foreground">Hours</p>
-                </div>
-                <div className="text-center">
-                  <p className="text-xs text-muted-foreground mb-1">Last Contact</p>
-                  <p className="text-xs font-mono text-foreground">
-                    {client.last_contact ? new Date(client.last_contact).toLocaleDateString('en-US', {
-                      month: 'short',
-                      day: 'numeric',
-                    }) : '-'}
-                  </p>
-                </div>
+                {activeTab === 'customers' ? (
+                  <>
+                    <div className="text-center">
+                      <div className="flex items-center justify-center gap-1 mb-1">
+                        <Briefcase className="w-3 h-3 text-electric" />
+                      </div>
+                      <p className="text-lg font-bold font-mono text-foreground">{client.active_projects || 0}</p>
+                      <p className="text-xs text-muted-foreground">Projects</p>
+                    </div>
+                    <div className="text-center">
+                      <div className="flex items-center justify-center gap-1 mb-1">
+                        <Clock className="w-3 h-3 text-electric" />
+                      </div>
+                      <p className="text-lg font-bold font-mono text-foreground">{client.total_hours || 0}</p>
+                      <p className="text-xs text-muted-foreground">Hours</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="text-xs text-muted-foreground mb-1">Last Contact</p>
+                      <p className="text-xs font-mono text-foreground">
+                        {client.last_contact ? new Date(client.last_contact).toLocaleDateString('en-US', {
+                          month: 'short',
+                          day: 'numeric',
+                        }) : '-'}
+                      </p>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="text-center">
+                      <div className="flex items-center justify-center gap-1 mb-1">
+                        <ShoppingCart className="w-3 h-3 text-electric" />
+                      </div>
+                      <p className="text-lg font-bold font-mono text-foreground">{client.total_purchase_orders || 0}</p>
+                      <p className="text-xs text-muted-foreground">POs</p>
+                    </div>
+                    <div className="text-center">
+                      <div className="flex items-center justify-center gap-1 mb-1">
+                        <Briefcase className="w-3 h-3 text-electric" />
+                      </div>
+                      <p className="text-lg font-bold font-mono text-foreground">{client.total_bills || 0}</p>
+                      <p className="text-xs text-muted-foreground">Bills</p>
+                    </div>
+                    <div className="text-center">
+                      <div className="flex items-center justify-center gap-1 mb-1">
+                        <DollarSign className="w-3 h-3 text-electric" />
+                      </div>
+                      <p className="text-lg font-bold font-mono text-foreground">${(client.total_spent || 0).toLocaleString()}</p>
+                      <p className="text-xs text-muted-foreground">Spent</p>
+                    </div>
+                  </>
+                )}
               </div>
 
               {/* Quick Actions */}
@@ -365,28 +408,155 @@ export default function Clients() {
                 </Button>
               </div>
             </Card>
-          ))}
-        </div>
+              ))}
+            </div>
 
-        {filteredClients.length === 0 && (
-          <Card className="p-12 text-center bg-card border-border">
-            {clients.length === 0 ? (
-              <>
-                <Users className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
-                <p className="text-muted-foreground mb-4">No clients yet. Add your first client to get started.</p>
-                <Button 
-                  className="bg-electric text-background hover:bg-electric/90"
-                  onClick={handleCreateClient}
-                >
-                  <Plus className="w-4 h-4 mr-2" />
-                  Add First Client
-                </Button>
-              </>
-            ) : (
-              <p className="text-muted-foreground">No clients found matching your search.</p>
+            {/* Pagination for Customers */}
+            {pagination.totalPages > 1 && (
+              <div className="flex justify-center mt-6">
+                <Pagination
+                  currentPage={pagination.page}
+                  totalPages={pagination.totalPages}
+                  onPageChange={setPage}
+                />
+              </div>
             )}
-          </Card>
-        )}
+          </TabsContent>
+
+          <TabsContent value="suppliers" className="space-y-6">
+            {/* Suppliers Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {clients.map((client) => (
+                <Card
+                  key={client.id}
+                  className="p-6 bg-card border-border hover:border-electric transition-all cursor-pointer group"
+                  onClick={() => {
+                    setSelectedClient(client);
+                    setDetailModalOpen(true);
+                  }}
+                >
+                  <div className="flex items-start justify-between mb-4">
+                    <div>
+                      <h3 className="font-bold text-lg text-foreground group-hover:text-electric transition-colors">
+                        {client.name}
+                      </h3>
+                      <p className="text-sm text-muted-foreground mt-1">{client.contact_name}</p>
+                    </div>
+                    <Badge
+                      variant={client.status === 'active' ? 'default' : 'secondary'}
+                      className={client.status === 'active' ? 'bg-voltage/20 text-voltage border-voltage/30' : ''}
+                    >
+                      {client.status}
+                    </Badge>
+                  </div>
+
+                  <div className="space-y-3 mb-5">
+                    <div className="flex items-center gap-2 text-sm">
+                      <Mail className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                      <span className="text-muted-foreground truncate">{client.email}</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm">
+                      <Phone className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                      <span className="text-muted-foreground font-mono">{client.phone}</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-sm">
+                      <MapPin className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                      <span className="text-muted-foreground truncate">{client.location}</span>
+                    </div>
+                  </div>
+
+                  {/* Stats */}
+                  <div className="grid grid-cols-3 gap-3 p-3 rounded-lg bg-muted/30">
+                    <div className="text-center">
+                      <div className="flex items-center justify-center gap-1 mb-1">
+                        <ShoppingCart className="w-3 h-3 text-electric" />
+                      </div>
+                      <p className="text-lg font-bold font-mono text-foreground">{client.total_purchase_orders || 0}</p>
+                      <p className="text-xs text-muted-foreground">POs</p>
+                    </div>
+                    <div className="text-center">
+                      <div className="flex items-center justify-center gap-1 mb-1">
+                        <Briefcase className="w-3 h-3 text-electric" />
+                      </div>
+                      <p className="text-lg font-bold font-mono text-foreground">{client.total_bills || 0}</p>
+                      <p className="text-xs text-muted-foreground">Bills</p>
+                    </div>
+                    <div className="text-center">
+                      <div className="flex items-center justify-center gap-1 mb-1">
+                        <DollarSign className="w-3 h-3 text-electric" />
+                      </div>
+                      <p className="text-lg font-bold font-mono text-foreground">${(client.total_spent || 0).toLocaleString()}</p>
+                      <p className="text-xs text-muted-foreground">Spent</p>
+                    </div>
+                  </div>
+
+                  {/* Quick Actions */}
+                  <div className="mt-4 flex gap-2">
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="flex-1 text-xs"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedClient(client);
+                        setDetailModalOpen(true);
+                      }}
+                    >
+                      View Profile
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="flex-1 text-xs"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleEdit(client);
+                      }}
+                    >
+                      Edit
+                    </Button>
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="flex-1 text-xs text-destructive hover:text-destructive"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleDelete(client);
+                      }}
+                    >
+                      Delete
+                    </Button>
+                  </div>
+                </Card>
+              ))}
+
+              {clients.length === 0 && (
+                <Card className="p-12 text-center bg-card border-border col-span-full">
+                  <ShoppingCart className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+                  <p className="text-muted-foreground mb-4">No suppliers yet. Add your first supplier to get started.</p>
+                  <Button 
+                    className="bg-electric text-background hover:bg-electric/90"
+                    onClick={handleCreateClient}
+                  >
+                    <Plus className="w-4 h-4 mr-2" />
+                    Add First Supplier
+                  </Button>
+                </Card>
+              )}
+            </div>
+
+            {/* Pagination for Suppliers */}
+            {pagination.totalPages > 1 && (
+              <div className="flex justify-center mt-6">
+                <Pagination
+                  currentPage={pagination.page}
+                  totalPages={pagination.totalPages}
+                  onPageChange={setPage}
+                />
+              </div>
+            )}
+          </TabsContent>
+        </Tabs>
       </div>
 
       {/* Create Client Modal */}
@@ -464,6 +634,25 @@ export default function Clients() {
                 placeholder="Auckland, New Zealand"
                 className="mt-2"
               />
+            </div>
+
+            <div>
+              <Label htmlFor="client_type" className="font-mono text-xs uppercase tracking-wider">
+                Client Type
+              </Label>
+              <Select
+                value={formData.client_type}
+                onValueChange={(value) => setFormData({ ...formData, client_type: value as 'customer' | 'supplier' | 'both' })}
+              >
+                <SelectTrigger className="mt-2">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="customer">Customer</SelectItem>
+                  <SelectItem value="supplier">Supplier</SelectItem>
+                  <SelectItem value="both">Both (Customer & Supplier)</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             <div>
@@ -574,6 +763,25 @@ export default function Clients() {
                 placeholder="Auckland, New Zealand"
                 className="mt-2"
               />
+            </div>
+
+            <div>
+              <Label htmlFor="edit_client_type" className="font-mono text-xs uppercase tracking-wider">
+                Client Type
+              </Label>
+              <Select
+                value={formData.client_type}
+                onValueChange={(value) => setFormData({ ...formData, client_type: value as 'customer' | 'supplier' | 'both' })}
+              >
+                <SelectTrigger className="mt-2">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="customer">Customer</SelectItem>
+                  <SelectItem value="supplier">Supplier</SelectItem>
+                  <SelectItem value="both">Both (Customer & Supplier)</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             <div>

@@ -226,6 +226,12 @@ export default function CostCenterDetailModal({
             {costCenter.description && (
               <p className="text-sm text-muted-foreground mt-3">{costCenter.description}</p>
             )}
+            {costCenter.client_po_number && (
+              <div className="mt-3 pt-3 border-t border-border">
+                <p className="text-xs font-mono text-muted-foreground uppercase mb-1">Client PO Number</p>
+                <p className="text-sm font-mono font-semibold text-electric">{costCenter.client_po_number}</p>
+              </div>
+            )}
           </Card>
 
           {/* Tabs */}

@@ -91,6 +91,7 @@ CREATE TABLE IF NOT EXISTS clients (
   billing_address TEXT,
   billing_email VARCHAR(255),
   xero_contact_id VARCHAR(100),
+  client_type VARCHAR(20) DEFAULT 'customer' CHECK (client_type IN ('customer', 'supplier', 'both')),
   status VARCHAR(20) DEFAULT 'active' CHECK (status IN ('active', 'inactive')),
   notes TEXT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -541,6 +542,29 @@ ADD COLUMN IF NOT EXISTS client_po_number VARCHAR(255);
 -- Add reference column to xero_invoices table if it doesn't exist (for client PO numbers)
 ALTER TABLE xero_invoices 
 ADD COLUMN IF NOT EXISTS reference VARCHAR(500);
+
+-- Add client_type column to clients table if it doesn't exist
+ALTER TABLE clients 
+ADD COLUMN IF NOT EXISTS client_type VARCHAR(20) DEFAULT 'customer' CHECK (client_type IN ('customer', 'supplier', 'both'));
+
+-- Auto-update client_type based on usage (customers have projects, suppliers have POs/bills)
+-- This is a one-time update for existing data
+DO $$
+BEGIN
+  -- Update clients that are suppliers (have POs or bills) but not customers
+  UPDATE clients c
+  SET client_type = CASE
+    WHEN EXISTS (SELECT 1 FROM xero_purchase_orders po WHERE po.supplier_id = c.id)
+      OR EXISTS (SELECT 1 FROM xero_bills b WHERE b.supplier_id = c.id)
+    THEN
+      CASE
+        WHEN EXISTS (SELECT 1 FROM projects p WHERE p.client_id = c.id) THEN 'both'
+        ELSE 'supplier'
+      END
+    ELSE 'customer'
+  END
+  WHERE client_type IS NULL OR client_type = 'customer';
+END $$;
 `;
 
 async function runMigration() {

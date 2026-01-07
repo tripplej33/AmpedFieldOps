@@ -12,6 +12,7 @@ export interface Client {
   billing_address?: string;
   billing_email?: string;
   xero_contact_id?: string;
+  client_type?: 'customer' | 'supplier' | 'both';
   status: 'active' | 'inactive';
   notes?: string;
   created_at: string;
@@ -21,6 +22,10 @@ export interface Client {
   total_hours?: number;
   last_contact?: string;
   last_activity?: string;
+  // Supplier-specific computed fields
+  total_purchase_orders?: number;
+  total_bills?: number;
+  total_spent?: number;
 }
 
 export interface CostCenter {

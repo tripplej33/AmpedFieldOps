@@ -17,7 +17,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card } from '@/components/ui/card';
 import { api } from '@/lib/api';
-import { DollarSign, Clock, Calendar, Send, TrendingUp, Wrench, Loader2, Pencil, Plus, FolderOpen, Trash2, ShoppingCart, Receipt, File, FileText, Image, Shield, Upload, Eye, Download as DownloadIcon } from 'lucide-react';
+import { DollarSign, Clock, Calendar, TrendingUp, Wrench, Loader2, Pencil, Plus, FolderOpen, Trash2, ShoppingCart, Receipt, File, FileText, Image, Shield, Upload, Eye, Download as DownloadIcon } from 'lucide-react';
 import { ProjectFinancials, ProjectFile, SafetyDocument } from '@/types';
 import { FileUpload } from '@/components/ui/file-upload';
 import { DocumentViewer } from '@/components/ui/document-viewer';
@@ -33,7 +33,6 @@ interface ProjectDetailModalProps {
 }
 
 export default function ProjectDetailModal({ project, open, onOpenChange, onProjectUpdated }: ProjectDetailModalProps) {
-  const [isSyncing, setIsSyncing] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [costCenters, setCostCenters] = useState<CostCenter[]>([]);
@@ -57,6 +56,7 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
   const [ccFormName, setCcFormName] = useState('');
   const [ccFormDescription, setCcFormDescription] = useState('');
   const [ccFormBudget, setCcFormBudget] = useState('');
+  const [ccFormClientPONumber, setCcFormClientPONumber] = useState('');
   const [isSavingCostCenter, setIsSavingCostCenter] = useState(false);
 
   // Edit form state
@@ -141,6 +141,7 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
     setCcFormName('');
     setCcFormDescription('');
     setCcFormBudget('');
+    setCcFormClientPONumber('');
     setShowCostCenterForm(false);
     setEditingCostCenter(null);
   };
@@ -151,6 +152,7 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
     setCcFormName(cc.name);
     setCcFormDescription(cc.description || '');
     setCcFormBudget(cc.budget?.toString() || '');
+    setCcFormClientPONumber(cc.client_po_number || '');
     setShowCostCenterForm(true);
   };
 
@@ -169,6 +171,7 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
           name: ccFormName,
           description: ccFormDescription,
           budget: parseFloat(ccFormBudget) || 0,
+          client_po_number: ccFormClientPONumber || null,
         });
         toast.success('Cost center updated');
       } else {
@@ -179,6 +182,7 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
           description: ccFormDescription,
           budget: parseFloat(ccFormBudget) || 0,
           project_id: project.id,
+          client_po_number: ccFormClientPONumber || null,
         });
         toast.success('Cost center added to project');
       }
@@ -235,14 +239,6 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
   // Calculate total hours from cost centers
   const totalHours = costCenters.reduce((sum, cc) => sum + (Number(cc.total_hours) || 0), 0);
 
-  const handleSendToXero = () => {
-    setIsSyncing(true);
-    // Simulate sync
-    setTimeout(() => {
-      setIsSyncing(false);
-      alert('Project sent to Xero successfully!');
-    }, 2000);
-  };
 
   if (!project) {
     return null;
@@ -474,6 +470,18 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
                         className="mt-1 h-16"
                       />
                     </div>
+                    <div>
+                      <Label className="text-xs">Client PO Number (Optional)</Label>
+                      <p className="text-xs text-muted-foreground mb-1">
+                        Client-supplied purchase order number. This will be referenced when generating invoices from timesheets.
+                      </p>
+                      <Input
+                        value={ccFormClientPONumber}
+                        onChange={(e) => setCcFormClientPONumber(e.target.value)}
+                        placeholder="PO-12345"
+                        className="mt-1"
+                      />
+                    </div>
                     <div className="flex justify-end gap-2">
                       <Button variant="outline" size="sm" onClick={resetCostCenterForm}>
                         Cancel
@@ -516,6 +524,11 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
                             </div>
                             {cc.description && (
                               <p className="text-xs text-muted-foreground mt-1">{cc.description}</p>
+                            )}
+                            {cc.client_po_number && (
+                              <p className="text-xs text-muted-foreground mt-1 font-mono">
+                                Client PO: {cc.client_po_number}
+                              </p>
                             )}
                           </div>
                           {(project.status === 'quoted' || project.status === 'in-progress') && (
@@ -890,23 +903,6 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
 
           {/* Actions */}
           <div className="flex gap-3 pt-4 border-t border-border">
-            <Button
-              onClick={handleSendToXero}
-              disabled={isSyncing || isEditing}
-              className="flex-1 bg-electric text-background hover:bg-electric/90 glow-primary"
-            >
-              {isSyncing ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-background border-t-transparent rounded-full animate-rotate mr-2" />
-                  Syncing...
-                </>
-              ) : (
-                <>
-                  <Send className="w-4 h-4 mr-2" />
-                  Send to Xero
-                </>
-              )}
-            </Button>
             <Button 
               variant="outline" 
               className="flex-1"
@@ -916,7 +912,7 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
               <Pencil className="w-4 h-4 mr-2" />
               {isEditing ? 'Cancel Edit' : 'Edit Project'}
             </Button>
-            </div>
+          </div>
           </div>
         </DialogContent>
       </Dialog>

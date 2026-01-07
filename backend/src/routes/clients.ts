@@ -11,7 +11,7 @@ const router = Router();
 // Get all clients
 router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const { status, search, sort = 'name', order = 'asc' } = req.query;
+    const { status, search, sort = 'name', order = 'asc', client_type } = req.query;
     
     // Parse pagination parameters
     const { page, limit, offset } = parsePaginationParams(req.query);
@@ -24,6 +24,14 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
     if (status) {
       whereClause += ` AND c.status = $${paramCount++}`;
       params.push(status);
+    }
+
+    if (client_type) {
+      if (client_type === 'customer') {
+        whereClause += ` AND (c.client_type IN ('customer', 'both') OR (c.client_type IS NULL AND EXISTS (SELECT 1 FROM projects p WHERE p.client_id = c.id)))`;
+      } else if (client_type === 'supplier') {
+        whereClause += ` AND (c.client_type IN ('supplier', 'both') OR (c.client_type IS NULL AND (EXISTS (SELECT 1 FROM xero_purchase_orders po WHERE po.supplier_id = c.id) OR EXISTS (SELECT 1 FROM xero_bills b WHERE b.supplier_id = c.id))))`;
+      }
     }
 
     if (search) {
@@ -46,7 +54,10 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
       SELECT c.*, 
         (SELECT COUNT(*) FROM projects p WHERE p.client_id = c.id AND p.status IN ('quoted', 'in-progress')) as active_projects,
         (SELECT COALESCE(SUM(t.hours), 0) FROM timesheets t WHERE t.client_id = c.id) as total_hours,
-        (SELECT MAX(t.date) FROM timesheets t WHERE t.client_id = c.id) as last_contact
+        (SELECT MAX(t.date) FROM timesheets t WHERE t.client_id = c.id) as last_contact,
+        (SELECT COUNT(*) FROM xero_purchase_orders po WHERE po.supplier_id = c.id) as total_purchase_orders,
+        (SELECT COUNT(*) FROM xero_bills b WHERE b.supplier_id = c.id) as total_bills,
+        (SELECT COALESCE(SUM(b.amount), 0) FROM xero_bills b WHERE b.supplier_id = c.id) as total_spent
       FROM clients c
       ${whereClause}
     `;
@@ -82,7 +93,10 @@ router.get('/:id', authenticate, async (req: AuthRequest, res: Response) => {
     const result = await query(
       `SELECT c.*, 
         (SELECT COUNT(*) FROM projects p WHERE p.client_id = c.id AND p.status IN ('quoted', 'in-progress')) as active_projects,
-        (SELECT COALESCE(SUM(t.hours), 0) FROM timesheets t WHERE t.client_id = c.id) as total_hours
+        (SELECT COALESCE(SUM(t.hours), 0) FROM timesheets t WHERE t.client_id = c.id) as total_hours,
+        (SELECT COUNT(*) FROM xero_purchase_orders po WHERE po.supplier_id = c.id) as total_purchase_orders,
+        (SELECT COUNT(*) FROM xero_bills b WHERE b.supplier_id = c.id) as total_bills,
+        (SELECT COALESCE(SUM(b.amount), 0) FROM xero_bills b WHERE b.supplier_id = c.id) as total_spent
        FROM clients c
        WHERE c.id = $1`,
       [req.params.id]
@@ -117,14 +131,14 @@ router.post('/', authenticate, requirePermission('can_manage_clients'),
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { name, contact_name, email, phone, address, location, billing_address, billing_email, notes } = req.body;
+    const { name, contact_name, email, phone, address, location, billing_address, billing_email, client_type, notes } = req.body;
 
     try {
       const result = await query(
-        `INSERT INTO clients (name, contact_name, email, phone, address, location, billing_address, billing_email, notes)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        `INSERT INTO clients (name, contact_name, email, phone, address, location, billing_address, billing_email, client_type, notes)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
          RETURNING *`,
-        [name, contact_name, email, phone, address, location, billing_address, billing_email, notes]
+        [name, contact_name, email, phone, address, location, billing_address, billing_email, client_type || 'customer', notes]
       );
 
       // Log activity
@@ -146,14 +160,14 @@ router.put('/:id', authenticate, requirePermission('can_manage_clients'),
   body('name').optional().trim().notEmpty(),
   body('email').optional().isEmail().normalizeEmail(),
   async (req: AuthRequest, res: Response) => {
-    const { name, contact_name, email, phone, address, location, billing_address, billing_email, status, notes, xero_contact_id } = req.body;
+    const { name, contact_name, email, phone, address, location, billing_address, billing_email, client_type, status, notes, xero_contact_id } = req.body;
 
     try {
       const updates: string[] = [];
       const values: any[] = [];
       let paramCount = 1;
 
-      const fields = { name, contact_name, email, phone, address, location, billing_address, billing_email, status, notes, xero_contact_id };
+      const fields = { name, contact_name, email, phone, address, location, billing_address, billing_email, client_type, status, notes, xero_contact_id };
       
       for (const [key, value] of Object.entries(fields)) {
         if (value !== undefined) {
