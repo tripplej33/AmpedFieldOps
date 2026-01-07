@@ -255,9 +255,10 @@ router.post('/', authenticate, uploadLimiter,
     
     // Upload each file to storage provider
     for (const file of files) {
+      let storagePath: string | undefined;
       try {
         // Generate partitioned path
-        const storagePath = generatePartitionedPath(file.originalname, basePath);
+        storagePath = generatePartitionedPath(file.originalname, basePath);
         
         // Stream file from memory buffer to storage provider
         const fileStream = bufferToStream(file.buffer);
@@ -272,7 +273,7 @@ router.post('/', authenticate, uploadLimiter,
         log.error(`Failed to upload ${file.originalname} to storage`, uploadError, { 
           filename: file.originalname, 
           project_id,
-          storagePath,
+          storagePath: storagePath || 'unknown',
           errorMessage: uploadError.message,
           errorStack: uploadError.stack
         });
@@ -425,9 +426,10 @@ router.put('/:id', authenticate,
       
       // Upload each new file to storage provider
       for (const file of files) {
+        let storagePath: string | undefined;
         try {
           // Generate partitioned path
-          const storagePath = generatePartitionedPath(file.originalname, basePath);
+          storagePath = generatePartitionedPath(file.originalname, basePath);
           
           // Stream file from memory buffer to storage provider
           const fileStream = bufferToStream(file.buffer);
@@ -442,7 +444,7 @@ router.put('/:id', authenticate,
           log.error(`Failed to upload ${file.originalname} to storage`, uploadError, { 
             filename: file.originalname, 
             project_id,
-            storagePath,
+            storagePath: storagePath || 'unknown',
             errorMessage: uploadError.message,
             errorStack: uploadError.stack
           });
@@ -706,9 +708,10 @@ router.post('/:id/images', authenticate,
     let imageUrls: string[] = [];
     
     for (const file of files) {
+      let storagePath: string | undefined;
       try {
         // Generate partitioned path
-        const storagePath = generatePartitionedPath(file.originalname, basePath);
+        storagePath = generatePartitionedPath(file.originalname, basePath);
         
         // Stream file from memory buffer to storage provider
         const fileStream = bufferToStream(file.buffer);
@@ -723,7 +726,7 @@ router.post('/:id/images', authenticate,
         log.error(`Failed to upload ${file.originalname} to storage`, uploadError, { 
           filename: file.originalname, 
           timesheetId: req.params.id,
-          storagePath,
+          storagePath: storagePath || 'unknown',
           errorMessage: uploadError.message,
           errorStack: uploadError.stack
         });
