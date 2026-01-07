@@ -80,8 +80,8 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
     const countSql = `
       SELECT COUNT(*) as total 
       FROM timesheets t
-      LEFT JOIN projects p ON t.project_id = p.id AND p.deleted_at IS NULL
-      LEFT JOIN clients c ON t.client_id = c.id AND c.deleted_at IS NULL
+      LEFT JOIN projects p ON t.project_id = p.id
+      LEFT JOIN clients c ON t.client_id = c.id
       ${whereClause}
     `;
     const countResult = await query(countSql, params);
@@ -103,8 +103,8 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
         t.invoice_id
       FROM timesheets t
       LEFT JOIN users u ON t.user_id = u.id
-      LEFT JOIN projects p ON t.project_id = p.id AND p.deleted_at IS NULL
-      LEFT JOIN clients c ON t.client_id = c.id AND c.deleted_at IS NULL
+      LEFT JOIN projects p ON t.project_id = p.id
+      LEFT JOIN clients c ON t.client_id = c.id
       LEFT JOIN activity_types at ON t.activity_type_id = at.id
       LEFT JOIN cost_centers cc ON t.cost_center_id = cc.id
       ${whereClause}
@@ -282,7 +282,7 @@ router.post('/', authenticate, uploadLimiter,
       // Get client_id from project if not provided
       let finalClientId = client_id;
       if (!finalClientId) {
-        const project = await query('SELECT client_id FROM projects WHERE id = $1 AND deleted_at IS NULL', [project_id]);
+        const project = await query('SELECT client_id FROM projects WHERE id = $1', [project_id]);
         if (project.rows.length > 0) {
           finalClientId = project.rows[0].client_id;
         }

@@ -27,7 +27,9 @@ router.post(
       throw new ValidationError('No file uploaded');
     }
 
-    const { project_id, cost_center_id } = req.body;
+    // Extract project_id from body (FormData fields are parsed by multer)
+    const project_id = req.body?.project_id || req.body?.projectId;
+    const cost_center_id = req.body?.cost_center_id || req.body?.costCenterId;
 
     if (!project_id) {
       // Delete uploaded file if validation fails
@@ -38,7 +40,47 @@ router.post(
           log.error('Failed to delete uploaded file after validation failure', unlinkError);
         }
       }
+      log.error('Document scan upload failed: project_id missing', { body: req.body, hasFile: !!req.file });
       throw new ValidationError('project_id is required');
+    }
+
+    // Move file from temp location to correct project directory
+    const { sanitizeProjectId } = await import('../middleware/validateProject');
+    const projectId = sanitizeProjectId(project_id);
+    const baseDir = path.resolve(__dirname, '../../uploads/projects');
+    let finalDir = path.join(baseDir, projectId, 'files');
+    
+    // If cost center is specified, add it to the path
+    if (cost_center_id) {
+      const isValidUUID = (uuid: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(uuid);
+      if (isValidUUID(cost_center_id)) {
+        const sanitizedCostCenterId = cost_center_id.replace(/\.\./g, '').replace(/\//g, '').replace(/\\/g, '');
+        finalDir = path.join(finalDir, sanitizedCostCenterId);
+      }
+    }
+    
+    // Ensure directory exists
+    if (!fs.existsSync(finalDir)) {
+      fs.mkdirSync(finalDir, { recursive: true });
+    }
+    
+    // Move file to final location
+    const finalPath = path.join(finalDir, req.file.filename);
+    try {
+      fs.renameSync(req.file.path, finalPath);
+      // Update req.file.path to reflect new location
+      req.file.path = finalPath;
+    } catch (moveError: any) {
+      log.error('Failed to move file to project directory', moveError, { project_id, tempPath: req.file.path });
+      // Try to clean up temp file
+      try {
+        if (fs.existsSync(req.file.path)) {
+          fs.unlinkSync(req.file.path);
+        }
+      } catch (cleanupError) {
+        log.error('Failed to cleanup temp file', cleanupError);
+      }
+      throw new ValidationError('Failed to save file to project directory');
     }
 
     // Check if file is an image
@@ -71,7 +113,11 @@ router.post(
         project_id,
         cost_center_id || null,
         req.file.originalname,
-        req.file.path.replace(path.join(__dirname, '../../'), ''),
+        (() => {
+          const uploadsRoot = path.join(process.cwd(), 'uploads');
+          const relativePath = path.relative(uploadsRoot, req.file.path).replace(/\\/g, '/');
+          return `/uploads/${relativePath}`;
+        })(),
         fileType,
         req.file.size,
         req.file.mimetype,
