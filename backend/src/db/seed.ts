@@ -15,11 +15,10 @@ async function seed() {
     
     // Seed Activity Types
     const activityTypes = [
-      { name: 'Installation', icon: 'Wrench', color: 'bg-electric/20 border-electric text-electric', hourly_rate: 85.00 },
-      { name: 'Repair', icon: 'Wrench', color: 'bg-warning/20 border-warning text-warning', hourly_rate: 95.00 },
-      { name: 'Maintenance', icon: 'CheckCircle', color: 'bg-voltage/20 border-voltage text-voltage', hourly_rate: 75.00 },
-      { name: 'Inspection', icon: 'Search', color: 'bg-blue-400/20 border-blue-400 text-blue-400', hourly_rate: 65.00 },
-      { name: 'Consultation', icon: 'MessageSquare', color: 'bg-purple-400/20 border-purple-400 text-purple-400', hourly_rate: 120.00 },
+      { name: 'Labour', icon: 'Briefcase', color: 'bg-electric/20 border-electric text-electric', hourly_rate: 100.00 },
+      { name: 'Travel', icon: 'Car', color: 'bg-blue-400/20 border-blue-400 text-blue-400', hourly_rate: 100.00 },
+      { name: 'Overnight Allowance', icon: 'Moon', color: 'bg-indigo-400/20 border-indigo-400 text-indigo-400', hourly_rate: 85.00 },
+      { name: 'Admin', icon: 'FileText', color: 'bg-gray-400/20 border-gray-400 text-gray-400', hourly_rate: 50.00 },
     ];
     
     for (const type of activityTypes) {
@@ -41,11 +40,7 @@ async function seed() {
     
     // Seed Cost Centers
     const costCenters = [
-      { code: 'CC-001', name: 'Residential Installation', description: 'New home electrical installations', budget: 100000 },
-      { code: 'CC-002', name: 'Commercial Wiring', description: 'Commercial building electrical work', budget: 250000 },
-      { code: 'CC-003', name: 'Maintenance & Repair', description: 'Ongoing maintenance and repairs', budget: 75000 },
-      { code: 'CC-004', name: 'Emergency Service', description: 'Emergency callout services', budget: 50000 },
-      { code: 'CC-005', name: 'Panel Upgrades', description: 'Electrical panel upgrades', budget: 80000 },
+      { code: 'CC-001', name: 'Default Cost Center', description: '', budget: 0 },
     ];
     
     for (const cc of costCenters) {
@@ -80,18 +75,45 @@ async function seed() {
     
     // Seed default permissions
     const defaultPermissions = [
-      { key: 'can_view_financials', label: 'View Financials', description: 'Access invoices, quotes, and financial data', is_system: true },
-      { key: 'can_edit_projects', label: 'Manage Projects', description: 'Create, edit, and delete projects', is_system: true },
+      // System-level permissions
       { key: 'can_manage_users', label: 'Manage Users', description: 'Add, edit, and remove users', is_system: true },
       { key: 'can_sync_xero', label: 'Xero Sync', description: 'Sync data with Xero', is_system: true },
-      { key: 'can_view_all_timesheets', label: 'View All Timesheets', description: 'View timesheets from all users', is_system: true },
       { key: 'can_edit_activity_types', label: 'Manage Activity Types', description: 'Configure activity types', is_system: true },
-      { key: 'can_manage_clients', label: 'Manage Clients', description: 'Create, edit, and delete clients', is_system: true },
       { key: 'can_manage_cost_centers', label: 'Manage Cost Centers', description: 'Configure cost centers', is_system: true },
       { key: 'can_view_reports', label: 'View Reports', description: 'Access reports section', is_system: true },
       { key: 'can_export_data', label: 'Export Data', description: 'Export data to CSV/PDF', is_system: true },
-      { key: 'can_create_timesheets', label: 'Create Timesheets', description: 'Create new timesheet entries', is_system: true },
+      // Projects - granular permissions
+      { key: 'can_view_own_projects', label: 'View Own Projects', description: 'View projects created by user', is_system: true },
+      { key: 'can_view_all_projects', label: 'View All Projects', description: 'View all projects in the system', is_system: true },
+      { key: 'can_create_projects', label: 'Create Projects', description: 'Create new projects', is_system: true },
+      { key: 'can_edit_own_projects', label: 'Edit Own Projects', description: 'Edit projects created by user', is_system: true },
+      { key: 'can_edit_all_projects', label: 'Edit All Projects', description: 'Edit any project in the system', is_system: true },
+      { key: 'can_delete_own_projects', label: 'Delete Own Projects', description: 'Delete projects created by user', is_system: true },
+      { key: 'can_delete_all_projects', label: 'Delete All Projects', description: 'Delete any project in the system', is_system: true },
+      // Clients - granular permissions
+      { key: 'can_view_own_clients', label: 'View Own Clients', description: 'View clients created by user', is_system: true },
+      { key: 'can_view_all_clients', label: 'View All Clients', description: 'View all clients in the system', is_system: true },
+      { key: 'can_create_clients', label: 'Create Clients', description: 'Create new clients', is_system: true },
+      { key: 'can_edit_own_clients', label: 'Edit Own Clients', description: 'Edit clients created by user', is_system: true },
+      { key: 'can_edit_all_clients', label: 'Edit All Clients', description: 'Edit any client in the system', is_system: true },
+      { key: 'can_delete_own_clients', label: 'Delete Own Clients', description: 'Delete clients created by user', is_system: true },
+      { key: 'can_delete_all_clients', label: 'Delete All Clients', description: 'Delete any client in the system', is_system: true },
+      // Timesheets - granular permissions
       { key: 'can_view_own_timesheets', label: 'View Own Timesheets', description: 'View own timesheet entries', is_system: true },
+      { key: 'can_view_all_timesheets', label: 'View All Timesheets', description: 'View timesheets from all users', is_system: true },
+      { key: 'can_create_timesheets', label: 'Create Timesheets', description: 'Create new timesheet entries', is_system: true },
+      { key: 'can_edit_own_timesheets', label: 'Edit Own Timesheets', description: 'Edit own timesheet entries', is_system: true },
+      { key: 'can_edit_all_timesheets', label: 'Edit All Timesheets', description: 'Edit any timesheet in the system', is_system: true },
+      { key: 'can_delete_own_timesheets', label: 'Delete Own Timesheets', description: 'Delete own timesheet entries', is_system: true },
+      { key: 'can_delete_all_timesheets', label: 'Delete All Timesheets', description: 'Delete any timesheet in the system', is_system: true },
+      // Invoices - granular permissions
+      { key: 'can_view_own_invoices', label: 'View Own Invoices', description: 'View invoices created by user', is_system: true },
+      { key: 'can_view_all_invoices', label: 'View All Invoices', description: 'View all invoices in the system', is_system: true },
+      { key: 'can_create_invoices', label: 'Create Invoices', description: 'Create new invoices and quotes', is_system: true },
+      { key: 'can_edit_own_invoices', label: 'Edit Own Invoices', description: 'Edit invoices created by user', is_system: true },
+      { key: 'can_edit_all_invoices', label: 'Edit All Invoices', description: 'Edit any invoice in the system', is_system: true },
+      { key: 'can_delete_own_invoices', label: 'Delete Own Invoices', description: 'Delete invoices created by user', is_system: true },
+      { key: 'can_delete_all_invoices', label: 'Delete All Invoices', description: 'Delete any invoice in the system', is_system: true },
     ];
     
     for (const perm of defaultPermissions) {
@@ -123,175 +145,6 @@ async function seed() {
       }
     } else {
       console.log('  ✓ Admin user already exists, skipping default admin creation');
-    }
-    
-    // Seed sample clients (only if no clients exist)
-    const existingClients = await client.query(`SELECT id FROM clients LIMIT 1`);
-    if (existingClients.rows.length === 0) {
-      const sampleClients = [
-        {
-          name: 'ABC Construction Ltd',
-          contact_name: 'John Smith',
-          email: 'john@abcconstruction.com',
-          phone: '+64 21 123 4567',
-          address: '123 Main Street, Auckland',
-          billing_address: '123 Main Street, Auckland',
-          billing_email: 'accounts@abcconstruction.com',
-          status: 'active'
-        },
-        {
-          name: 'XYZ Property Developers',
-          contact_name: 'Sarah Johnson',
-          email: 'sarah@xyzproperties.com',
-          phone: '+64 21 234 5678',
-          address: '456 Queen Street, Wellington',
-          billing_address: '456 Queen Street, Wellington',
-          billing_email: 'finance@xyzproperties.com',
-          status: 'active'
-        },
-        {
-          name: 'Metro Electrical Services',
-          contact_name: 'Mike Wilson',
-          email: 'mike@metroelectrical.co.nz',
-          phone: '+64 21 345 6789',
-          address: '789 High Street, Christchurch',
-          billing_address: '789 High Street, Christchurch',
-          billing_email: 'billing@metroelectrical.co.nz',
-          status: 'active'
-        }
-      ];
-
-      for (const sampleClient of sampleClients) {
-        await client.query(
-          `INSERT INTO clients (name, contact_name, email, phone, address, billing_address, billing_email, status)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-          [sampleClient.name, sampleClient.contact_name, sampleClient.email, sampleClient.phone, sampleClient.address, 
-           sampleClient.billing_address, sampleClient.billing_email, sampleClient.status]
-        );
-      }
-      console.log('  ✓ Sample clients seeded');
-    }
-
-    // Seed sample projects (only if no projects exist and clients exist)
-    const existingProjects = await client.query(`SELECT id FROM projects LIMIT 1`);
-    const clientsResult = await client.query(`SELECT id, name FROM clients ORDER BY created_at LIMIT 3`);
-    
-    if (existingProjects.rows.length === 0 && clientsResult.rows.length > 0) {
-      const clientIds = clientsResult.rows.map((c: any) => c.id);
-      const sampleProjects = [
-        {
-          code: 'PROJ-001',
-          name: 'Office Building Electrical Upgrade',
-          client_id: clientIds[0] || null,
-          status: 'in-progress',
-          budget: 125000,
-          description: 'Complete electrical system upgrade for 5-story office building',
-          start_date: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), // 30 days ago
-          end_date: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000) // 60 days from now
-        },
-        {
-          code: 'PROJ-002',
-          name: 'Residential Complex Wiring',
-          client_id: clientIds[1] || null,
-          status: 'quoted',
-          budget: 85000,
-          description: 'New electrical installation for 20-unit residential complex',
-          start_date: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days from now
-          end_date: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000) // 90 days from now
-        },
-        {
-          code: 'PROJ-003',
-          name: 'Commercial Maintenance Contract',
-          client_id: clientIds[2] || null,
-          status: 'in-progress',
-          budget: 45000,
-          description: 'Ongoing maintenance and repair services',
-          start_date: new Date(Date.now() - 90 * 24 * 60 * 60 * 1000), // 90 days ago
-          end_date: new Date(Date.now() + 275 * 24 * 60 * 60 * 1000) // 275 days from now (1 year contract)
-        }
-      ];
-
-      for (const project of sampleProjects) {
-        if (project.client_id) {
-          await client.query(
-            `INSERT INTO projects (code, name, client_id, status, budget, description, start_date, end_date)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-            [project.code, project.name, project.client_id, project.status, project.budget,
-             project.description, project.start_date, project.end_date]
-          );
-        }
-      }
-      console.log('  ✓ Sample projects seeded');
-    }
-
-    // Seed sample timesheets (only if no timesheets exist and we have projects, activity types, cost centers, and users)
-    const existingTimesheets = await client.query(`SELECT id FROM timesheets LIMIT 1`);
-    const projectsResult = await client.query(`SELECT id, client_id FROM projects ORDER BY created_at LIMIT 3`);
-    const activityTypesResult = await client.query(`SELECT id FROM activity_types ORDER BY created_at LIMIT 5`);
-    const costCentersResult = await client.query(`SELECT id FROM cost_centers ORDER BY created_at LIMIT 5`);
-    const usersResult = await client.query(`SELECT id FROM users WHERE role = 'admin' LIMIT 1`);
-    
-    if (existingTimesheets.rows.length === 0 && 
-        projectsResult.rows.length > 0 && 
-        activityTypesResult.rows.length > 0 && 
-        costCentersResult.rows.length > 0 && 
-        usersResult.rows.length > 0) {
-      
-      const projectIds = projectsResult.rows.map((p: any) => p.id);
-      const activityTypeIds = activityTypesResult.rows.map((a: any) => a.id);
-      const costCenterIds = costCentersResult.rows.map((c: any) => c.id);
-      const userId = usersResult.rows[0].id;
-      
-      // Generate timesheets for the last 30 days
-      const timesheets = [];
-      const today = new Date();
-      
-      for (let dayOffset = 0; dayOffset < 30; dayOffset++) {
-        const date = new Date(today);
-        date.setDate(date.getDate() - dayOffset);
-        
-        // Skip weekends (optional - you can remove this)
-        const dayOfWeek = date.getDay();
-        if (dayOfWeek === 0 || dayOfWeek === 6) continue;
-        
-        // Create 1-3 timesheets per day
-        const timesheetsPerDay = Math.floor(Math.random() * 3) + 1;
-        
-        for (let i = 0; i < timesheetsPerDay; i++) {
-          const projectId = projectIds[Math.floor(Math.random() * projectIds.length)];
-          const activityTypeId = activityTypeIds[Math.floor(Math.random() * activityTypeIds.length)];
-          const costCenterId = costCenterIds[Math.floor(Math.random() * costCenterIds.length)];
-          const hours = Math.round((Math.random() * 7 + 1) * 100) / 100; // 1-8 hours
-          
-          // Get client_id from project
-          const project = projectsResult.rows.find((p: any) => p.id === projectId);
-          const clientId = project?.client_id || null;
-          
-          timesheets.push({
-            user_id: userId,
-            project_id: projectId,
-            client_id: clientId,
-            activity_type_id: activityTypeId,
-            cost_center_id: costCenterId,
-            date: date.toISOString().split('T')[0],
-            hours: hours,
-            notes: `Work completed on ${date.toLocaleDateString()}`,
-            location: 'Site',
-            billing_status: 'unbilled'
-          });
-        }
-      }
-      
-      for (const timesheet of timesheets) {
-        await client.query(
-          `INSERT INTO timesheets (user_id, project_id, client_id, activity_type_id, cost_center_id, date, hours, notes, location, billing_status)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-          [timesheet.user_id, timesheet.project_id, timesheet.client_id, timesheet.activity_type_id,
-           timesheet.cost_center_id, timesheet.date, timesheet.hours, timesheet.notes, 
-           timesheet.location, timesheet.billing_status]
-        );
-      }
-      console.log(`  ✓ Sample timesheets seeded (${timesheets.length} entries)`);
     }
     
     await client.query('COMMIT');

@@ -9,6 +9,7 @@
     "start": "node dist/server.js",
     "migrate": "tsx src/db/migrate.ts",
     "seed": "tsx src/db/seed.ts",
+    "seed:demo": "tsx src/db/seed-demo.ts",
     "migrate:fresh": "tsx src/db/migrate.ts --fresh && tsx src/db/seed.ts",
     "test": "jest",
     "test:watch": "jest --watch",
