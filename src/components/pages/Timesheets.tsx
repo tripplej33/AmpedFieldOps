@@ -1360,7 +1360,7 @@ function TimesheetForm({
                   className="mt-2 min-h-[60px] text-sm"
                 />
               </div>
-            </div>
+            </Card>
           ))
         )}
       </div>
