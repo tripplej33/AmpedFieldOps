@@ -2,6 +2,7 @@ import { query } from '../../db';
 import { IStorageProvider } from './IStorageProvider';
 import { StorageConfig } from './types';
 import { FlystorageStorageProvider } from './FlystorageStorageProvider';
+import { GoogleDriveStorageProvider } from './GoogleDriveStorageProvider';
 import { log } from '../logger';
 
 let storageInstance: IStorageProvider | null = null;
@@ -17,7 +18,7 @@ async function getStorageConfigFromDB(): Promise<StorageConfig> {
     const result = await query(
       `SELECT key, value FROM settings 
        WHERE user_id IS NULL 
-       AND key IN ('storage_driver', 'storage_base_path', 'storage_s3_bucket', 'storage_s3_region', 'storage_s3_access_key_id', 'storage_s3_secret_access_key', 'storage_s3_endpoint')`
+       AND key IN ('storage_driver', 'storage_base_path', 'storage_s3_bucket', 'storage_s3_region', 'storage_s3_access_key_id', 'storage_s3_secret_access_key', 'storage_s3_endpoint', 'storage_google_drive_folder_id')`
     );
 
     const settings: Record<string, string> = {};
@@ -25,7 +26,7 @@ async function getStorageConfigFromDB(): Promise<StorageConfig> {
       settings[row.key] = row.value;
     });
 
-    const driver = (settings.storage_driver || 'local') as 'local' | 's3';
+    const driver = (settings.storage_driver || 'local') as 'local' | 's3' | 'google-drive';
     const config: StorageConfig = {
       driver,
       basePath: settings.storage_base_path || 'uploads',
@@ -37,6 +38,8 @@ async function getStorageConfigFromDB(): Promise<StorageConfig> {
       config.s3AccessKeyId = settings.storage_s3_access_key_id;
       config.s3SecretAccessKey = settings.storage_s3_secret_access_key;
       config.s3Endpoint = settings.storage_s3_endpoint || undefined;
+    } else if (driver === 'google-drive') {
+      config.googleDriveFolderId = settings.storage_google_drive_folder_id || undefined;
     }
 
     return config;
@@ -64,6 +67,9 @@ function decryptSetting(value: string | null): string | null {
  * Create storage provider instance from configuration
  */
 function createStorageProvider(config: StorageConfig): IStorageProvider {
+  if (config.driver === 'google-drive') {
+    return new GoogleDriveStorageProvider(config);
+  }
   return new FlystorageStorageProvider(config);
 }
 
@@ -102,7 +108,8 @@ export class StorageFactory {
       configCache.s3Region !== config.s3Region ||
       configCache.s3AccessKeyId !== config.s3AccessKeyId ||
       configCache.s3SecretAccessKey !== config.s3SecretAccessKey ||
-      configCache.s3Endpoint !== config.s3Endpoint;
+      configCache.s3Endpoint !== config.s3Endpoint ||
+      configCache.googleDriveFolderId !== config.googleDriveFolderId;
 
     // Create new instance if config changed or instance doesn't exist
     if (!storageInstance || configChanged) {
