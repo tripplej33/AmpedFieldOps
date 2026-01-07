@@ -268,11 +268,6 @@ router.post('/', authenticate, uploadLimiter,
         const fileUrl = await storage.url(storagePath);
         imageUrls.push(fileUrl);
         
-        // For S3, also store in cloud_image_urls
-        if (storage.getDriver() === 's3') {
-          cloudImageUrls.push(fileUrl);
-        }
-        
         // Delete temp file after successful upload
         try {
           if (fs.existsSync(file.path)) {
