@@ -13,9 +13,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Checkbox } from '@/components/ui/checkbox';
 import { api } from '@/lib/api';
 import { TimesheetEntry, Client, Project, ActivityType, CostCenter, User } from '@/types';
-import { Plus, Calendar, Clock, Wrench, Pencil, Trash2, Loader2, Camera, Image, X, ChevronLeft, ChevronRight, Users } from 'lucide-react';
+import { Plus, Calendar, Clock, Wrench, Pencil, Trash2, Loader2, Camera, Image, X, ChevronLeft, ChevronRight, Users, CheckCircle2, AlertCircle } from 'lucide-react';
 import ImageViewer from '@/components/modals/ImageViewer';
 import { Pagination } from '@/components/ui/pagination';
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from '@/components/ui/accordion';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
 import { useNotifications } from '@/contexts/NotificationContext';
@@ -30,6 +32,90 @@ interface ActivityTypeEntry {
   user_hours: Record<string, string>; // Hours per user for this activity type
   notes: string;
 }
+
+// Grouped timesheets structure
+interface GroupedTimesheets {
+  [userId: string]: {
+    [date: string]: TimesheetEntry[];
+  };
+}
+
+// Utility functions for date calculations and grouping
+const getWeekStart = (date: Date): Date => {
+  const d = new Date(date);
+  const day = d.getDay();
+  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
+  d.setDate(diff);
+  d.setHours(0, 0, 0, 0);
+  return d;
+};
+
+const getWeekEnd = (date: Date): Date => {
+  const weekStart = getWeekStart(date);
+  const weekEnd = new Date(weekStart);
+  weekEnd.setDate(weekEnd.getDate() + 6);
+  weekEnd.setHours(23, 59, 59, 999);
+  return weekEnd;
+};
+
+const getWeekDateRange = (date: Date): { from: string; to: string } => {
+  const weekStart = getWeekStart(date);
+  const weekEnd = getWeekEnd(date);
+  return {
+    from: weekStart.toISOString().split('T')[0],
+    to: weekEnd.toISOString().split('T')[0],
+  };
+};
+
+const getMonthDateRange = (year: number, month: number): { from: string; to: string } => {
+  const monthStart = new Date(year, month, 1);
+  const monthEnd = new Date(year, month + 1, 0);
+  return {
+    from: monthStart.toISOString().split('T')[0],
+    to: monthEnd.toISOString().split('T')[0],
+  };
+};
+
+const getWeekDates = (startDate: Date): string[] => {
+  const weekStart = getWeekStart(startDate);
+  const dates: string[] = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(weekStart);
+    d.setDate(d.getDate() + i);
+    dates.push(d.toISOString().split('T')[0]);
+  }
+  return dates;
+};
+
+const getMonthDates = (year: number, month: number): string[] => {
+  const dates: string[] = [];
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  for (let i = 1; i <= daysInMonth; i++) {
+    const d = new Date(year, month, i);
+    dates.push(d.toISOString().split('T')[0]);
+  }
+  return dates;
+};
+
+const groupTimesheetsByUserAndDate = (entries: TimesheetEntry[]): GroupedTimesheets => {
+  const grouped: GroupedTimesheets = {};
+  entries.forEach(entry => {
+    const userId = entry.user_id || 'unassigned';
+    const date = entry.date;
+    if (!grouped[userId]) {
+      grouped[userId] = {};
+    }
+    if (!grouped[userId][date]) {
+      grouped[userId][date] = [];
+    }
+    grouped[userId][date].push(entry);
+  });
+  return grouped;
+};
+
+const isToday = (date: string): boolean => {
+  return date === new Date().toISOString().split('T')[0];
+};
 
 export default function Timesheets() {
   const location = useLocation();
@@ -75,21 +161,21 @@ export default function Timesheets() {
     activity_entries: [] as ActivityTypeEntry[],
   });
 
-  // Pagination state
-  const [page, setPage] = useState(1);
-  const [limit, setLimit] = useState(20);
-  const [pagination, setPagination] = useState<{
-    page: number;
-    limit: number;
-    total: number;
-    totalPages: number;
-    hasNext: boolean;
-    hasPrev: boolean;
-  } | null>(null);
+  // Pagination state (removed for planner view - load all in date range)
+  // const [page, setPage] = useState(1);
+  // const [limit, setLimit] = useState(20);
+  // const [pagination, setPagination] = useState<{
+  //   page: number;
+  //   limit: number;
+  //   total: number;
+  //   totalPages: number;
+  //   hasNext: boolean;
+  //   hasPrev: boolean;
+  // } | null>(null);
 
   useEffect(() => {
     loadTimesheets();
-  }, [page, limit, selectedUserId]);
+  }, [selectedUserId, selectedDateRange]);
 
   useEffect(() => {
     loadFormData();
@@ -113,7 +199,24 @@ export default function Timesheets() {
   const loadTimesheets = async () => {
     setIsLoading(true);
     try {
-      const data = await api.getTimesheets();
+      const dateFrom = selectedDateRange.from.toISOString().split('T')[0];
+      const dateTo = selectedDateRange.to.toISOString().split('T')[0];
+      
+      const params: any = {
+        date_from: dateFrom,
+        date_to: dateTo,
+        limit: 1000, // Load all timesheets in date range
+      };
+      
+      if (selectedUserId !== 'all') {
+        params.user_id = selectedUserId;
+      }
+      
+      const response = await api.getTimesheets(params);
+      // API returns { data: [], pagination: {} }
+      const data = (response && typeof response === 'object' && 'data' in response) 
+        ? response.data 
+        : (Array.isArray(response) ? response : []);
       setEntries(Array.isArray(data) ? data : []);
     } catch (error: any) {
       console.error('Failed to load timesheets:', error);
@@ -301,25 +404,58 @@ export default function Timesheets() {
     setImagePreviews(prev => prev.filter((_, i) => i !== index));
   };
 
-  // Week navigation
-  const getWeekStart = (date: Date) => {
-    const d = new Date(date);
-    const day = d.getDay();
-    const diff = d.getDate() - day + (day === 0 ? -6 : 1);
-    d.setDate(diff);
-    return d;
-  };
-
+  // Date navigation
   const navigateWeek = (direction: 'prev' | 'next') => {
     setViewDate(prev => {
       const newDate = new Date(prev);
       newDate.setDate(newDate.getDate() + (direction === 'next' ? 7 : -7));
+      const weekStart = getWeekStart(newDate);
+      const weekEnd = getWeekEnd(newDate);
+      setSelectedDateRange({ from: weekStart, to: weekEnd });
+      return newDate;
+    });
+  };
+
+  const navigateMonth = (direction: 'prev' | 'next') => {
+    setViewDate(prev => {
+      const newDate = new Date(prev);
+      if (direction === 'next') {
+        newDate.setMonth(newDate.getMonth() + 1);
+      } else {
+        newDate.setMonth(newDate.getMonth() - 1);
+      }
+      const monthStart = new Date(newDate.getFullYear(), newDate.getMonth(), 1);
+      const monthEnd = new Date(newDate.getFullYear(), newDate.getMonth() + 1, 0);
+      setSelectedDateRange({ from: monthStart, to: monthEnd });
       return newDate;
     });
   };
 
   const goToToday = () => {
-    setViewDate(new Date());
+    const today = new Date();
+    setViewDate(today);
+    if (viewMode === 'week') {
+      const weekStart = getWeekStart(today);
+      const weekEnd = getWeekEnd(today);
+      setSelectedDateRange({ from: weekStart, to: weekEnd });
+    } else {
+      const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+      const monthEnd = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+      setSelectedDateRange({ from: monthStart, to: monthEnd });
+    }
+  };
+
+  const handleViewModeChange = (mode: 'week' | 'month') => {
+    setViewMode(mode);
+    if (mode === 'week') {
+      const weekStart = getWeekStart(viewDate);
+      const weekEnd = getWeekEnd(viewDate);
+      setSelectedDateRange({ from: weekStart, to: weekEnd });
+    } else {
+      const monthStart = new Date(viewDate.getFullYear(), viewDate.getMonth(), 1);
+      const monthEnd = new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 0);
+      setSelectedDateRange({ from: monthStart, to: monthEnd });
+    }
   };
 
   // Activity entry management functions
@@ -644,38 +780,268 @@ export default function Timesheets() {
     }
   };
 
+  const handleCardClick = (entry: TimesheetEntry) => {
+    setSelectedTimesheet(entry);
+    setDetailsModalOpen(true);
+  };
+
   // Filter entries by selected user
   const filteredEntries = selectedUserId === 'all' 
     ? entries 
     : entries.filter(e => e.user_id === selectedUserId);
 
-  // Group entries by date
-  const groupedEntries = filteredEntries.reduce((acc, entry) => {
-    const date = entry.date;
-    if (!acc[date]) acc[date] = [];
-    acc[date].push(entry);
-    return acc;
-  }, {} as Record<string, TimesheetEntry[]>);
-
-  // Filter dates to current view week
-  const weekStart = getWeekStart(viewDate);
-  const weekEnd = new Date(weekStart);
-  weekEnd.setDate(weekEnd.getDate() + 6);
+  // Group entries by user and date for planner view
+  const groupedByUserAndDate = groupTimesheetsByUserAndDate(filteredEntries);
   
-  const weekDates: string[] = [];
-  for (let i = 0; i < 7; i++) {
-    const d = new Date(weekStart);
-    d.setDate(d.getDate() + i);
-    weekDates.push(d.toISOString().split('T')[0]);
-  }
-
-  const dates = Object.keys(groupedEntries)
-    .filter(date => date >= weekDates[0] && date <= weekDates[6])
-    .sort((a, b) => new Date(b).getTime() - new Date(a).getTime());
+  // Get unique users from entries
+  const uniqueUsers = Array.from(new Set(filteredEntries.map(e => e.user_id).filter(Boolean)));
+  const usersWithEntries = users.filter(u => uniqueUsers.includes(u.id));
   
-  const totalHoursThisWeek = filteredEntries
-    .filter(e => e.date >= weekDates[0] && e.date <= weekDates[6])
-    .reduce((sum, e) => sum + parseFloat(String(e.hours)), 0);
+  // Calculate date ranges and dates for current view
+  const weekDates = viewMode === 'week' ? getWeekDates(viewDate) : [];
+  const monthDates = viewMode === 'month' 
+    ? getMonthDates(viewDate.getFullYear(), viewDate.getMonth())
+    : [];
+  
+  const totalHoursInRange = filteredEntries.reduce((sum, e) => sum + parseFloat(String(e.hours)), 0);
+
+  // Compact Timesheet Card Component
+  const TimesheetCard = ({ entry, compact = true, onClick }: { entry: TimesheetEntry; compact?: boolean; onClick?: () => void }) => {
+    const activityType = activityTypes.find(at => at.id === entry.activity_type_id);
+    const totalHours = parseFloat(String(entry.hours));
+    
+    if (compact) {
+      return (
+        <div
+          onClick={onClick}
+          className={cn(
+            "p-2 rounded-lg border-2 transition-all cursor-pointer hover:shadow-md",
+            "bg-card border-border hover:border-electric"
+          )}
+        >
+          <div className="flex items-center gap-2">
+            <div className="w-6 h-6 rounded bg-electric/20 border border-electric flex items-center justify-center flex-shrink-0">
+              <Wrench className="w-3 h-3 text-electric" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-semibold truncate">{activityType?.name || 'Activity'}</p>
+              <p className="text-xs text-muted-foreground truncate">{entry.cost_center_code}</p>
+            </div>
+            <span className="text-xs font-bold font-mono text-electric">{totalHours}h</span>
+          </div>
+        </div>
+      );
+    }
+    
+    return (
+      <Card className="p-4 bg-card border-border hover:border-electric transition-all">
+        <div className="flex items-start gap-4">
+          <div className="w-10 h-10 rounded-lg border-2 flex items-center justify-center bg-electric/20 border-electric text-electric">
+            <Wrench className="w-5 h-5" />
+          </div>
+          <div className="flex-1">
+            <div className="flex items-start justify-between mb-2">
+              <div>
+                <h4 className="font-semibold text-foreground">{entry.project_name}</h4>
+                <p className="text-sm text-muted-foreground">{entry.client_name} • {entry.user_name}</p>
+              </div>
+              <span className="text-lg font-bold font-mono text-electric">{totalHours}h</span>
+            </div>
+            <Badge className="capitalize bg-electric/20 text-electric border-electric/30 mb-2">
+              {activityType?.name || entry.activity_type_name}
+            </Badge>
+            {entry.notes && <p className="text-sm text-muted-foreground">{entry.notes}</p>}
+          </div>
+        </div>
+      </Card>
+    );
+  };
+
+  // Week Planner View Component
+  const WeekPlannerView = () => {
+    const weekStartDate = getWeekStart(viewDate);
+    
+    return (
+      <Card className="p-6 bg-card border-border mb-6 overflow-x-auto">
+        <div className="min-w-[800px]">
+          {/* Header Row */}
+          <div className="grid grid-cols-8 gap-2 mb-4">
+            <div className="text-center font-semibold text-sm">User</div>
+            {weekDates.map((dateStr, i) => {
+              const date = new Date(dateStr);
+              const dayName = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][date.getDay()];
+              return (
+                <div key={i} className="text-center">
+                  <p className="text-xs font-mono text-muted-foreground uppercase">{dayName}</p>
+                  <p className={cn(
+                    "text-sm font-bold font-mono",
+                    isToday(dateStr) ? "text-electric" : "text-foreground"
+                  )}>
+                    {date.getDate()}
+                  </p>
+                </div>
+              );
+            })}
+          </div>
+          
+          {/* User Rows */}
+          {usersWithEntries.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              No timesheets found for selected date range
+            </div>
+          ) : (
+            usersWithEntries.map((user) => (
+              <div key={user.id} className="grid grid-cols-8 gap-2 mb-2">
+                <div className="flex items-center p-2 border-r border-border">
+                  <p className="text-sm font-medium truncate">{user.name}</p>
+                </div>
+                {weekDates.map((dateStr, i) => {
+                  const userEntries = groupedByUserAndDate[user.id]?.[dateStr] || [];
+                  const dayTotal = userEntries.reduce((sum, e) => sum + parseFloat(String(e.hours)), 0);
+                  
+                  return (
+                    <div
+                      key={i}
+                      className={cn(
+                        "min-h-[60px] p-2 rounded-lg border transition-all",
+                        isToday(dateStr)
+                          ? "bg-electric/5 border-electric/30"
+                          : "bg-muted/10 border-border"
+                      )}
+                    >
+                      <div className="space-y-1">
+                        {userEntries.map((entry) => (
+                          <TimesheetCard
+                            key={entry.id}
+                            entry={entry}
+                            compact={true}
+                            onClick={() => handleCardClick(entry)}
+                          />
+                        ))}
+                        {userEntries.length === 0 && dayTotal === 0 && (
+                          <div className="text-xs text-muted-foreground/50 text-center py-1">-</div>
+                        )}
+                      </div>
+                      {dayTotal > 0 && (
+                        <p className="text-xs font-mono text-electric mt-1 text-center">{dayTotal.toFixed(1)}h</p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            ))
+          )}
+        </div>
+      </Card>
+    );
+  };
+
+  // Month Planner View Component
+  const MonthPlannerView = () => {
+    const firstDayOfMonth = new Date(viewDate.getFullYear(), viewDate.getMonth(), 1);
+    const lastDayOfMonth = new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 0);
+    const firstDayWeekday = firstDayOfMonth.getDay();
+    const daysInMonth = lastDayOfMonth.getDate();
+    
+    // Create calendar grid (6 weeks x 7 days)
+    const calendarDays: (string | null)[] = [];
+    // Add empty cells for days before month starts
+    for (let i = 0; i < firstDayWeekday; i++) {
+      calendarDays.push(null);
+    }
+    // Add days of the month
+    for (let i = 1; i <= daysInMonth; i++) {
+      const date = new Date(viewDate.getFullYear(), viewDate.getMonth(), i);
+      calendarDays.push(date.toISOString().split('T')[0]);
+    }
+    // Fill remaining cells to complete 6 weeks
+    while (calendarDays.length < 42) {
+      calendarDays.push(null);
+    }
+    
+    return (
+      <Card className="p-6 bg-card border-border mb-6">
+        {/* Month Header */}
+        <div className="mb-4 text-center">
+          <h3 className="text-xl font-bold">
+            {viewDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
+          </h3>
+        </div>
+        
+        {/* Day Names */}
+        <div className="grid grid-cols-7 gap-2 mb-2">
+          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => (
+            <div key={day} className="text-center">
+              <p className="text-xs font-mono text-muted-foreground uppercase">{day}</p>
+            </div>
+          ))}
+        </div>
+        
+        {/* Calendar Grid */}
+        <div className="grid grid-cols-7 gap-2">
+          {calendarDays.map((dateStr, i) => {
+            if (!dateStr) {
+              return <div key={i} className="min-h-[100px] p-2 rounded-lg bg-muted/5 border border-transparent" />;
+            }
+            
+            const date = new Date(dateStr);
+            const dayEntries = filteredEntries.filter(e => e.date === dateStr);
+            const dayEntriesByUser = groupTimesheetsByUserAndDate(dayEntries);
+            const dayTotal = dayEntries.reduce((sum, e) => sum + parseFloat(String(e.hours)), 0);
+            
+            return (
+              <div
+                key={i}
+                className={cn(
+                  "min-h-[100px] p-2 rounded-lg border transition-all",
+                  isToday(dateStr)
+                    ? "bg-electric/10 border-electric"
+                    : "bg-muted/10 border-border hover:border-electric/50"
+                )}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <p className={cn(
+                    "text-sm font-bold font-mono",
+                    isToday(dateStr) ? "text-electric" : "text-foreground"
+                  )}>
+                    {date.getDate()}
+                  </p>
+                  {dayTotal > 0 && (
+                    <span className="text-xs font-mono text-electric">{dayTotal.toFixed(1)}h</span>
+                  )}
+                </div>
+                
+                <div className="space-y-1 max-h-[60px] overflow-y-auto">
+                  {Object.entries(dayEntriesByUser).map(([userId, dateEntries]) => {
+                    const user = users.find(u => u.id === userId);
+                    const userEntries = Object.values(dateEntries).flat();
+                    const userTotal = userEntries.reduce((sum, e) => sum + parseFloat(String(e.hours)), 0);
+                    
+                    return (
+                      <div key={userId} className="text-xs">
+                        <p className="font-medium truncate">{user?.name || 'Unassigned'}</p>
+                        {userEntries.slice(0, 2).map((entry) => (
+                          <TimesheetCard
+                            key={entry.id}
+                            entry={entry}
+                            compact={true}
+                            onClick={() => handleCardClick(entry)}
+                          />
+                        ))}
+                        {userEntries.length > 2 && (
+                          <p className="text-xs text-muted-foreground">+{userEntries.length - 2} more</p>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </Card>
+    );
+  };
 
   if (isLoading) {
     return (
@@ -696,16 +1062,36 @@ export default function Timesheets() {
         {/* Actions Bar */}
         <div className="mb-6 flex items-center justify-between flex-wrap gap-4">
           <div className="flex items-center gap-4 flex-wrap">
-            {/* Week Navigation */}
+            {/* View Mode Toggle */}
+            <div className="flex items-center gap-2 border border-border rounded-lg p-1">
+              <Button
+                variant={viewMode === 'week' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => handleViewModeChange('week')}
+                className={viewMode === 'week' ? 'bg-electric text-background' : ''}
+              >
+                Week
+              </Button>
+              <Button
+                variant={viewMode === 'month' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => handleViewModeChange('month')}
+                className={viewMode === 'month' ? 'bg-electric text-background' : ''}
+              >
+                Month
+              </Button>
+            </div>
+            
+            {/* Date Navigation */}
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={() => navigateWeek('prev')}>
+              <Button variant="outline" size="sm" onClick={() => viewMode === 'week' ? navigateWeek('prev') : navigateMonth('prev')}>
                 <ChevronLeft className="w-4 h-4" />
               </Button>
               <Button variant="outline" size="sm" onClick={goToToday}>
                 <Calendar className="w-4 h-4 mr-2" />
                 Today
               </Button>
-              <Button variant="outline" size="sm" onClick={() => navigateWeek('next')}>
+              <Button variant="outline" size="sm" onClick={() => viewMode === 'week' ? navigateWeek('next') : navigateMonth('next')}>
                 <ChevronRight className="w-4 h-4" />
               </Button>
             </div>
@@ -727,7 +1113,7 @@ export default function Timesheets() {
             </Select>
 
             <div className="text-sm font-mono text-muted-foreground">
-              Total Hours: <span className="text-foreground font-bold">{totalHoursThisWeek.toFixed(1)}</span>
+              Total Hours: <span className="text-foreground font-bold">{totalHoursInRange.toFixed(1)}</span>
             </div>
           </div>
           <Button 
@@ -739,205 +1125,8 @@ export default function Timesheets() {
           </Button>
         </div>
 
-        {/* Week Display Header */}
-        <div className="mb-4">
-          <h3 className="text-lg font-bold">
-            Week of {weekStart.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
-          </h3>
-        </div>
-
-        {/* Weekly Calendar View */}
-        <Card className="p-6 bg-card border-border mb-6">
-          <div className="grid grid-cols-7 gap-2 mb-4">
-            {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) => (
-              <div key={day} className="text-center">
-                <p className="text-xs font-mono text-muted-foreground uppercase tracking-wider">{day}</p>
-              </div>
-            ))}
-          </div>
-          <div className="grid grid-cols-7 gap-2">
-            {weekDates.map((dateStr, i) => {
-              const date = new Date(dateStr);
-              const dayEntries = groupedEntries[dateStr] || [];
-              const totalHours = dayEntries.reduce((sum, e) => sum + parseFloat(String(e.hours)), 0);
-              const isToday = dateStr === new Date().toISOString().split('T')[0];
-
-              return (
-                <div
-                  key={i}
-                  className={cn(
-                    'p-3 rounded-lg border transition-all cursor-pointer',
-                    isToday
-                      ? 'bg-electric/10 border-electric'
-                      : dayEntries.length > 0
-                      ? 'bg-muted/30 border-border hover:border-electric'
-                      : 'bg-muted/10 border-border hover:border-muted'
-                  )}
-                  onClick={() => {
-                    setFormData(prev => ({ ...prev, date: dateStr }));
-                    setCreateModalOpen(true);
-                  }}
-                >
-                  <p className="text-lg font-bold font-mono text-center mb-1">{date.getDate()}</p>
-                  {totalHours > 0 && (
-                    <p className="text-xs font-mono text-center text-electric">{totalHours}h</p>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </Card>
-
-        {/* Technician Summary (when viewing all) */}
-        {selectedUserId === 'all' && users.length > 0 && (
-          <Card className="p-6 bg-card border-border mb-6">
-            <h3 className="text-lg font-bold mb-4 flex items-center gap-2">
-              <Users className="w-5 h-5 text-electric" />
-              Technician Hours This Week
-            </h3>
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-              {users.map((user) => {
-                const userHours = filteredEntries
-                  .filter(e => e.user_id === user.id && e.date >= weekDates[0] && e.date <= weekDates[6])
-                  .reduce((sum, e) => sum + parseFloat(String(e.hours)), 0);
-                
-                return (
-                  <div 
-                    key={user.id} 
-                    className={cn(
-                      "p-4 rounded-lg border cursor-pointer transition-all hover:border-electric",
-                      selectedUserId === user.id ? "border-electric bg-electric/10" : "border-border"
-                    )}
-                    onClick={() => setSelectedUserId(user.id)}
-                  >
-                    <p className="font-semibold text-sm truncate">{user.name}</p>
-                    <p className="text-2xl font-bold font-mono text-electric">{userHours.toFixed(1)}h</p>
-                  </div>
-                );
-              })}
-            </div>
-          </Card>
-        )}
-
-        {/* Timesheet Entries */}
-        <div className="space-y-6">
-          {dates.length === 0 && (
-            <Card className="p-8 bg-card border-border">
-              <p className="text-center text-muted-foreground">No timesheet entries found</p>
-            </Card>
-          )}
-          {dates.map((date) => {
-            const dateEntries = groupedEntries[date];
-            const totalHours = dateEntries.reduce((sum, e) => sum + parseFloat(String(e.hours)), 0);
-
-            return (
-              <div key={date}>
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="text-lg font-bold">
-                    {new Date(date).toLocaleDateString('en-US', {
-                      weekday: 'long',
-                      month: 'long',
-                      day: 'numeric',
-                      year: 'numeric',
-                    })}
-                  </h3>
-                  <div className="flex items-center gap-2">
-                    <Clock className="w-4 h-4 text-electric" />
-                    <span className="font-mono font-bold text-electric">{totalHours}h total</span>
-                  </div>
-                </div>
-
-                <div className="space-y-3">
-                  {dateEntries.map((entry) => (
-                    <Card
-                      key={entry.id}
-                      className="p-4 bg-card border-border hover:border-electric transition-all group"
-                    >
-                      <div className="flex items-start gap-4">
-                        <div className="w-10 h-10 rounded-lg border-2 flex items-center justify-center bg-electric/20 border-electric text-electric">
-                          <Wrench className="w-5 h-5" />
-                        </div>
-
-                        <div className="flex-1">
-                          <div className="flex items-start justify-between mb-2">
-                            <div>
-                              <h4 className="font-semibold text-foreground group-hover:text-electric transition-colors">
-                                {entry.project_name}
-                              </h4>
-                              <p className="text-sm text-muted-foreground">
-                                {entry.client_name} • {entry.user_name}
-                              </p>
-                            </div>
-                            <div className="flex items-center gap-2">
-                              <Badge variant="outline" className="font-mono">
-                                {entry.cost_center_code}
-                              </Badge>
-                              <span className="text-lg font-bold font-mono text-electric">{entry.hours}h</span>
-                            </div>
-                          </div>
-
-                          <p className="text-sm text-muted-foreground mb-3">{entry.notes}</p>
-
-                          {/* Show images if any */}
-                          {entry.image_urls && entry.image_urls.length > 0 && (
-                            <div className="flex gap-2 mb-3 flex-wrap">
-                              {entry.image_urls.map((url, idx) => (
-                                <button
-                                  key={idx}
-                                  onClick={() => {
-                                    setViewingImages(entry.image_urls);
-                                    setViewingImageIndex(idx);
-                                    setViewingEntryId(entry.id);
-                                    setImageViewerOpen(true);
-                                  }}
-                                  className="w-16 h-16 rounded border border-border overflow-hidden hover:border-electric transition-colors group relative"
-                                >
-                                  <img 
-                                    src={url} 
-                                    alt={`Photo ${idx + 1}`} 
-                                    className="w-full h-full object-cover" 
-                                  />
-                                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/20 transition-colors flex items-center justify-center">
-                                    <Image className="w-4 h-4 text-white opacity-0 group-hover:opacity-100 transition-opacity" />
-                                  </div>
-                                </button>
-                              ))}
-                            </div>
-                          )}
-
-                          <div className="flex items-center justify-between">
-                            <Badge className="capitalize bg-electric/20 text-electric border-electric/30">
-                              {entry.activity_type_name}
-                            </Badge>
-
-                            <div className="flex items-center gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <Button 
-                                variant="ghost" 
-                                size="sm" 
-                                className="h-8"
-                                onClick={() => handleEdit(entry)}
-                              >
-                                <Pencil className="w-3 h-3" />
-                              </Button>
-                              <Button 
-                                variant="ghost" 
-                                size="sm" 
-                                className="h-8 text-destructive hover:text-destructive"
-                                onClick={() => handleDelete(entry)}
-                              >
-                                <Trash2 className="w-3 h-3" />
-                              </Button>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    </Card>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+        {/* Planner View */}
+        {viewMode === 'week' ? <WeekPlannerView /> : <MonthPlannerView />}
       </div>
 
       {/* Create Timesheet Modal */}
@@ -1025,6 +1214,121 @@ export default function Timesheets() {
             handleDragOver={handleDragOver}
             handleDrop={handleDrop}
           />
+        </DialogContent>
+      </Dialog>
+
+      {/* Timesheet Details Modal */}
+      <Dialog open={detailsModalOpen} onOpenChange={setDetailsModalOpen}>
+        <DialogContent className="max-w-[95vw] sm:max-w-[700px] bg-card border-border">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold">Timesheet Details</DialogTitle>
+            <DialogDescription>View full timesheet information</DialogDescription>
+          </DialogHeader>
+          
+          {selectedTimesheet && (
+            <div className="space-y-4 py-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-xs font-mono uppercase tracking-wider text-muted-foreground">Project</Label>
+                  <p className="text-sm font-semibold mt-1">{selectedTimesheet.project_name}</p>
+                </div>
+                <div>
+                  <Label className="text-xs font-mono uppercase tracking-wider text-muted-foreground">Client</Label>
+                  <p className="text-sm font-semibold mt-1">{selectedTimesheet.client_name}</p>
+                </div>
+                <div>
+                  <Label className="text-xs font-mono uppercase tracking-wider text-muted-foreground">User</Label>
+                  <p className="text-sm font-semibold mt-1">{selectedTimesheet.user_name}</p>
+                </div>
+                <div>
+                  <Label className="text-xs font-mono uppercase tracking-wider text-muted-foreground">Date</Label>
+                  <p className="text-sm font-semibold mt-1">
+                    {new Date(selectedTimesheet.date).toLocaleDateString('en-US', {
+                      weekday: 'long',
+                      month: 'long',
+                      day: 'numeric',
+                      year: 'numeric',
+                    })}
+                  </p>
+                </div>
+                <div>
+                  <Label className="text-xs font-mono uppercase tracking-wider text-muted-foreground">Activity Type</Label>
+                  <Badge className="capitalize bg-electric/20 text-electric border-electric/30 mt-1">
+                    {selectedTimesheet.activity_type_name}
+                  </Badge>
+                </div>
+                <div>
+                  <Label className="text-xs font-mono uppercase tracking-wider text-muted-foreground">Cost Center</Label>
+                  <Badge variant="outline" className="font-mono mt-1">
+                    {selectedTimesheet.cost_center_code}
+                  </Badge>
+                </div>
+                <div>
+                  <Label className="text-xs font-mono uppercase tracking-wider text-muted-foreground">Hours</Label>
+                  <p className="text-lg font-bold font-mono text-electric mt-1">{selectedTimesheet.hours}h</p>
+                </div>
+                <div>
+                  <Label className="text-xs font-mono uppercase tracking-wider text-muted-foreground">Billing Status</Label>
+                  <Badge className="capitalize mt-1">
+                    {selectedTimesheet.billing_status || 'unbilled'}
+                  </Badge>
+                </div>
+              </div>
+              
+              {selectedTimesheet.notes && (
+                <div>
+                  <Label className="text-xs font-mono uppercase tracking-wider text-muted-foreground">Notes</Label>
+                  <p className="text-sm mt-1 p-3 rounded-lg bg-muted/20 border border-border">{selectedTimesheet.notes}</p>
+                </div>
+              )}
+              
+              {selectedTimesheet.image_urls && selectedTimesheet.image_urls.length > 0 && (
+                <div>
+                  <Label className="text-xs font-mono uppercase tracking-wider text-muted-foreground mb-2 block">Photos</Label>
+                  <div className="flex gap-2 flex-wrap">
+                    {selectedTimesheet.image_urls.map((url, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => {
+                          setViewingImages(selectedTimesheet.image_urls);
+                          setViewingImageIndex(idx);
+                          setViewingEntryId(selectedTimesheet.id);
+                          setImageViewerOpen(true);
+                        }}
+                        className="w-20 h-20 rounded border border-border overflow-hidden hover:border-electric transition-colors"
+                      >
+                        <img src={url} alt={`Photo ${idx + 1}`} className="w-full h-full object-cover" />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              
+              <div className="flex justify-end gap-3 pt-4 border-t border-border">
+                <Button variant="outline" onClick={() => setDetailsModalOpen(false)}>
+                  Close
+                </Button>
+                {selectedTimesheet.billing_status !== 'billed' && selectedTimesheet.billing_status !== 'paid' && (
+                  <>
+                    <Button variant="outline" onClick={() => {
+                      setDetailsModalOpen(false);
+                      handleEdit(selectedTimesheet);
+                    }}>
+                      <Pencil className="w-4 h-4 mr-2" />
+                      Edit
+                    </Button>
+                    <Button variant="destructive" onClick={() => {
+                      setDetailsModalOpen(false);
+                      handleDelete(selectedTimesheet);
+                    }}>
+                      <Trash2 className="w-4 h-4 mr-2" />
+                      Delete
+                    </Button>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 
@@ -1130,14 +1434,216 @@ function TimesheetForm({
   handleDragOver: (e: React.DragEvent) => void;
   handleDrop: (e: React.DragEvent) => void;
 }) {
+  // State for collapsible activity cards
+  const [expandedActivities, setExpandedActivities] = useState<Set<string>>(new Set());
+  const [currentUser] = useState(() => {
+    try {
+      const stored = localStorage.getItem('current_user');
+      return stored ? JSON.parse(stored) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  // Smart defaults - remember last selections
+  useEffect(() => {
+    const lastClient = localStorage.getItem('timesheet_last_client');
+    const lastProject = localStorage.getItem('timesheet_last_project');
+    if (lastClient && !formData.client_id) {
+      handleClientChange(lastClient);
+    }
+    if (lastProject && !formData.project_id && formData.client_id) {
+      handleProjectChange(lastProject);
+    }
+  }, []);
+
+  // Auto-select current user if no users assigned
+  useEffect(() => {
+    if (currentUser && formData.activity_entries.length > 0) {
+      formData.activity_entries.forEach((entry: ActivityTypeEntry) => {
+        if (entry.user_ids.length === 0 && currentUser.id) {
+          toggleUserForActivity(entry.id, currentUser.id);
+        }
+      });
+    }
+  }, [formData.activity_entries.length]);
+
+  const toggleActivityExpanded = (entryId: string) => {
+    setExpandedActivities(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(entryId)) {
+        newSet.delete(entryId);
+      } else {
+        newSet.add(entryId);
+      }
+      return newSet;
+    });
+  };
+
+  // Calculate form completion progress
+  const calculateProgress = () => {
+    let completed = 0;
+    let total = 3; // Basic info, Activities, Additional
+    
+    // Basic info
+    if (formData.project_id && formData.date) completed++;
+    
+    // Activities
+    if (formData.activity_entries.length > 0) {
+      const allActivitiesValid = formData.activity_entries.every((e: ActivityTypeEntry) => 
+        e.activity_type_id && e.cost_center_id && 
+        (e.user_ids.length > 0 ? e.user_ids.every(uid => e.user_hours[uid] && parseFloat(e.user_hours[uid]) > 0) : e.hours && parseFloat(e.hours) > 0)
+      );
+      if (allActivitiesValid) completed++;
+    }
+    
+    // Additional (notes/photos are optional, so always complete)
+    completed++;
+    
+    return Math.round((completed / total) * 100);
+  };
+
+  const progress = calculateProgress();
+
+  // Calculate total hours per activity
+  const getActivityTotalHours = (entry: ActivityTypeEntry) => {
+    if (entry.user_ids.length > 0) {
+      return entry.user_ids.reduce((sum, uid) => sum + (parseFloat(entry.user_hours[uid] || '0')), 0);
+    }
+    return parseFloat(entry.hours || '0');
+  };
+
   return (
-    <div className="space-y-6 py-4 max-h-[70vh] overflow-y-auto">
-      {/* Project Information Section */}
-      <div className="space-y-4 p-4 rounded-lg border border-border bg-muted/20">
-        <h3 className="font-semibold text-base flex items-center gap-2">
-          <Calendar className="w-4 h-4 text-electric" />
-          Project Information
-        </h3>
+    <div className="space-y-4 py-4 max-h-[75vh] overflow-y-auto">
+      {/* Progress Indicator */}
+      <div className="mb-4 p-3 rounded-lg border border-border bg-muted/20">
+        <div className="flex items-center justify-between mb-2">
+          <span className="text-xs font-mono uppercase tracking-wider text-muted-foreground">Form Progress</span>
+          <span className="text-sm font-bold text-electric">{progress}%</span>
+        </div>
+        <div className="w-full bg-muted rounded-full h-2">
+          <div 
+            className="bg-electric h-2 rounded-full transition-all duration-300"
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+      </div>
+
+      {/* Accordion Sections */}
+      <Accordion type="multiple" defaultValue={['basic-info']} className="space-y-4">
+        {/* Basic Information Section */}
+        <AccordionItem value="basic-info" className="border border-border rounded-lg bg-muted/20">
+          <AccordionTrigger className="px-4 hover:no-underline">
+            <div className="flex items-center gap-2">
+              <Calendar className="w-4 h-4 text-electric" />
+              <span className="font-semibold text-base">Basic Information</span>
+              {formData.project_id && formData.date && (
+                <CheckCircle2 className="w-4 h-4 text-green-500" />
+              )}
+            </div>
+          </AccordionTrigger>
+          <AccordionContent className="px-4 pb-4">
+            <div className="space-y-4 pt-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <Label className="font-mono text-xs uppercase tracking-wider mb-2 block">Client</Label>
+                  <Select value={formData.client_id} onValueChange={(value) => {
+                    localStorage.setItem('timesheet_last_client', value);
+                    handleClientChange(value);
+                  }}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select client" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {clients.length === 0 ? (
+                        <SelectItem value="__empty__" disabled>No clients available</SelectItem>
+                      ) : (
+                        clients.map((client) => (
+                          <SelectItem key={client.id} value={client.id.toString()}>
+                            {client.name}
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div>
+                  <Label className="font-mono text-xs uppercase tracking-wider mb-2 block flex items-center gap-1">
+                    Project *
+                    {!formData.project_id && <AlertCircle className="w-3 h-3 text-destructive" />}
+                  </Label>
+                  <Select
+                    value={formData.project_id}
+                    onValueChange={(value) => {
+                      localStorage.setItem('timesheet_last_project', value);
+                      handleProjectChange(value);
+                    }}
+                    disabled={!formData.client_id}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select project" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {projects.length === 0 ? (
+                        <SelectItem value="__empty__" disabled>No projects for this client</SelectItem>
+                      ) : (
+                        projects.filter(project => project.id).map((project) => (
+                          <SelectItem key={project.id} value={project.id.toString()}>
+                            {project.name}
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              <div>
+                <Label className="font-mono text-xs uppercase tracking-wider mb-2 block flex items-center gap-1">
+                  Date *
+                  {!formData.date && <AlertCircle className="w-3 h-3 text-destructive" />}
+                </Label>
+                <Input
+                  type="date"
+                  value={formData.date}
+                  onChange={(e) => setFormData({ ...formData, date: e.target.value })}
+                  className="max-w-xs"
+                />
+              </div>
+            </div>
+          </AccordionContent>
+        </AccordionItem>
+
+        {/* Activities Section */}
+        <AccordionItem value="activities" className="border border-border rounded-lg bg-muted/20">
+          <AccordionTrigger className="px-4 hover:no-underline">
+            <div className="flex items-center gap-2">
+              <Wrench className="w-4 h-4 text-electric" />
+              <span className="font-semibold text-base">Activities *</span>
+              {formData.activity_entries.length > 0 && formData.activity_entries.every((e: ActivityTypeEntry) => 
+                e.activity_type_id && e.cost_center_id && 
+                (e.user_ids.length > 0 ? e.user_ids.every(uid => e.user_hours[uid] && parseFloat(e.user_hours[uid]) > 0) : e.hours && parseFloat(e.hours) > 0)
+              ) && (
+                <CheckCircle2 className="w-4 h-4 text-green-500" />
+              )}
+            </div>
+          </AccordionTrigger>
+          <AccordionContent className="px-4 pb-4">
+            <div className="space-y-4 pt-2">
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-muted-foreground">Add activity types and assign users</p>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={addActivityEntry}
+                  className="h-8 border-electric/30 hover:border-electric hover:bg-electric/10"
+                >
+                  <Plus className="w-3 h-3 mr-1" />
+                  Add Activity
+                </Button>
+              </div>
         
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
@@ -1215,296 +1721,408 @@ function TimesheetForm({
           </Button>
         </div>
 
-        {formData.activity_entries.length === 0 ? (
-          <div className="p-8 border-2 border-dashed border-muted rounded-lg text-center bg-muted/10">
-            <Wrench className="w-8 h-8 mx-auto mb-3 text-muted-foreground opacity-50" />
-            <p className="text-sm text-muted-foreground font-medium">No activities added</p>
-            <p className="text-xs text-muted-foreground mt-1">Click "Add Activity" to get started</p>
-          </div>
-        ) : (
-          formData.activity_entries.map((entry: ActivityTypeEntry, index: number) => (
-            <Card key={entry.id} className="p-5 border-2 border-border hover:border-electric/50 transition-colors bg-card">
-              <div className="flex items-center justify-between mb-4 pb-3 border-b border-border">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-lg bg-electric/20 border-2 border-electric flex items-center justify-center">
-                    <span className="text-sm font-bold font-mono text-electric">{index + 1}</span>
-                  </div>
-                  <Label className="font-semibold text-base">
-                    Activity {index + 1}
-                  </Label>
+              {formData.activity_entries.length === 0 ? (
+                <div className="p-8 border-2 border-dashed border-muted rounded-lg text-center bg-muted/10">
+                  <Wrench className="w-8 h-8 mx-auto mb-3 text-muted-foreground opacity-50" />
+                  <p className="text-sm text-muted-foreground font-medium">No activities added</p>
+                  <p className="text-xs text-muted-foreground mt-1">Click "Add Activity" to get started</p>
                 </div>
-                {formData.activity_entries.length > 1 && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => removeActivityEntry(entry.id)}
-                    className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
-                  >
-                    <X className="w-4 h-4" />
-                  </Button>
-                )}
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <Label className="font-mono text-xs uppercase tracking-wider mb-2 block">Activity Type *</Label>
-                  <Select
-                    value={entry.activity_type_id}
-                    onValueChange={(value) => updateActivityEntry(entry.id, { activity_type_id: value })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select activity" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {activityTypes.length === 0 ? (
-                        <SelectItem value="__empty__" disabled>No activity types available</SelectItem>
-                      ) : (
-                        activityTypes.filter(type => type.id).map((type) => (
-                          <SelectItem key={type.id} value={type.id.toString()}>
-                            {type.name}
-                          </SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div>
-                  <Label className="font-mono text-xs uppercase tracking-wider mb-2 block">Cost Center *</Label>
-                  <Select
-                    value={entry.cost_center_id}
-                    onValueChange={(value) => updateActivityEntry(entry.id, { cost_center_id: value })}
-                    disabled={!formData.project_id || costCenters.length === 0}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder={costCenters.length === 0 ? "Select project first" : "Select cost center"} />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {costCenters.length === 0 ? (
-                        <SelectItem value="__none__" disabled>No cost centers for this project</SelectItem>
-                      ) : (
-                        costCenters.filter(cc => cc.id).map((cc) => (
-                          <SelectItem key={cc.id} value={cc.id.toString()}>
-                            {cc.code} - {cc.name}
-                          </SelectItem>
-                        ))
-                      )}
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-
-              {/* Users and Hours Section */}
-              <div className="space-y-3 pt-3 border-t border-border">
-                <Label className="font-mono text-xs uppercase tracking-wider flex items-center gap-2 mb-3 block">
-                  <Users className="w-4 h-4 text-electric" />
-                  Assign Users & Hours
-                </Label>
-                
-                <div className="space-y-2">
-                  {users.map((user) => {
-                    const isSelected = entry.user_ids.includes(user.id);
-                    return (
-                      <div key={user.id} className={cn(
-                        "flex items-center gap-3 p-3 rounded-lg border-2 transition-all",
-                        isSelected 
-                          ? "border-electric bg-electric/10" 
-                          : "border-border hover:border-electric/30 bg-card"
-                      )}>
-                        <Checkbox
-                          checked={isSelected}
-                          onCheckedChange={() => toggleUserForActivity(entry.id, user.id)}
-                          className="border-2"
-                        />
-                        <div className="flex-1">
-                          <Label className="text-sm font-medium cursor-pointer" onClick={() => toggleUserForActivity(entry.id, user.id)}>
-                            {user.name}
-                          </Label>
-                        </div>
-                        {isSelected && (
-                          <div className="flex items-center gap-2">
-                            <Input
-                              type="number"
-                              step="0.25"
-                              min="0.25"
-                              max="24"
-                              value={entry.user_hours[user.id] || ''}
-                              onChange={(e) => updateUserHoursForActivity(entry.id, user.id, e.target.value)}
-                              placeholder="0.00"
-                              className="w-24 h-9 text-sm font-mono text-center border-electric/30 focus:border-electric"
-                            />
-                            <span className="text-xs text-muted-foreground font-medium">hrs</span>
+              ) : (
+                formData.activity_entries.map((entry: ActivityTypeEntry, index: number) => {
+                  const isExpanded = expandedActivities.has(entry.id);
+                  const activityType = activityTypes.find(at => at.id === entry.activity_type_id);
+                  const totalHours = getActivityTotalHours(entry);
+                  const userCount = entry.user_ids.length;
+                  
+                  return (
+                    <Collapsible key={entry.id} open={isExpanded} onOpenChange={() => toggleActivityExpanded(entry.id)}>
+                      <Card className="border-2 border-border hover:border-electric/50 transition-colors bg-card">
+                        <CollapsibleTrigger asChild>
+                          <div className="flex items-center justify-between p-4 cursor-pointer">
+                            <div className="flex items-center gap-3 flex-1">
+                              <div className="w-8 h-8 rounded-lg bg-electric/20 border-2 border-electric flex items-center justify-center flex-shrink-0">
+                                <span className="text-sm font-bold font-mono text-electric">{index + 1}</span>
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-semibold text-sm">
+                                    {activityType?.name || `Activity ${index + 1}`}
+                                  </span>
+                                  {entry.activity_type_id && entry.cost_center_id && (
+                                    <CheckCircle2 className="w-4 h-4 text-green-500 flex-shrink-0" />
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
+                                  <span>{totalHours > 0 ? `${totalHours.toFixed(1)}h` : 'No hours'}</span>
+                                  {userCount > 0 && <span>• {userCount} user{userCount !== 1 ? 's' : ''}</span>}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {formData.activity_entries.length > 1 && (
+                                <Button
+                                  type="button"
+                                  variant="ghost"
+                                  size="sm"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    removeActivityEntry(entry.id);
+                                  }}
+                                  className="h-8 w-8 p-0 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                >
+                                  <X className="w-4 h-4" />
+                                </Button>
+                              )}
+                            </div>
                           </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
+                        </CollapsibleTrigger>
+                        
+                        <CollapsibleContent>
+                          <div className="px-4 pb-4 space-y-4 border-t border-border pt-4">
 
-                {entry.user_ids.length === 0 && (
-                  <div className="p-4 text-xs text-muted-foreground text-center border-2 border-dashed border-muted rounded-lg bg-muted/10">
-                    <Users className="w-5 h-5 mx-auto mb-2 opacity-50" />
-                    <p>No users assigned. Check users above to assign hours.</p>
-                  </div>
-                )}
-              </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                              <div>
+                                <Label className="font-mono text-xs uppercase tracking-wider mb-2 block flex items-center gap-1">
+                                  Activity Type *
+                                  {!entry.activity_type_id && <AlertCircle className="w-3 h-3 text-destructive" />}
+                                </Label>
+                                <Select
+                                  value={entry.activity_type_id}
+                                  onValueChange={(value) => updateActivityEntry(entry.id, { activity_type_id: value })}
+                                >
+                                  <SelectTrigger>
+                                    <SelectValue placeholder="Select activity" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {activityTypes.length === 0 ? (
+                                      <SelectItem value="__empty__" disabled>No activity types available</SelectItem>
+                                    ) : (
+                                      activityTypes.filter(type => type.id).map((type) => (
+                                        <SelectItem key={type.id} value={type.id.toString()}>
+                                          {type.name}
+                                        </SelectItem>
+                                      ))
+                                    )}
+                                  </SelectContent>
+                                </Select>
+                              </div>
 
-              {/* Activity-specific notes */}
+                              <div>
+                                <Label className="font-mono text-xs uppercase tracking-wider mb-2 block flex items-center gap-1">
+                                  Cost Center *
+                                  {!entry.cost_center_id && <AlertCircle className="w-3 h-3 text-destructive" />}
+                                </Label>
+                                <Select
+                                  value={entry.cost_center_id}
+                                  onValueChange={(value) => updateActivityEntry(entry.id, { cost_center_id: value })}
+                                  disabled={!formData.project_id || costCenters.length === 0}
+                                >
+                                  <SelectTrigger>
+                                    <SelectValue placeholder={costCenters.length === 0 ? "Select project first" : "Select cost center"} />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {costCenters.length === 0 ? (
+                                      <SelectItem value="__none__" disabled>No cost centers for this project</SelectItem>
+                                    ) : (
+                                      costCenters.filter(cc => cc.id).map((cc) => (
+                                        <SelectItem key={cc.id} value={cc.id.toString()}>
+                                          {cc.code} - {cc.name}
+                                        </SelectItem>
+                                      ))
+                                    )}
+                                  </SelectContent>
+                                </Select>
+                              </div>
+                            </div>
+
+                            {/* Improved Users and Hours Section */}
+                            <div className="space-y-3">
+                              <div className="flex items-center justify-between">
+                                <Label className="font-mono text-xs uppercase tracking-wider flex items-center gap-2">
+                                  <Users className="w-4 h-4 text-electric" />
+                                  Assign Users & Hours
+                                </Label>
+                                {users.length > 0 && (
+                                  <div className="flex gap-2">
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-7 text-xs"
+                                      onClick={() => {
+                                        users.forEach(user => {
+                                          if (!entry.user_ids.includes(user.id)) {
+                                            toggleUserForActivity(entry.id, user.id);
+                                          }
+                                        });
+                                      }}
+                                    >
+                                      Select All
+                                    </Button>
+                                    <Button
+                                      type="button"
+                                      variant="ghost"
+                                      size="sm"
+                                      className="h-7 text-xs"
+                                      onClick={() => {
+                                        entry.user_ids.forEach(userId => {
+                                          toggleUserForActivity(entry.id, userId);
+                                        });
+                                      }}
+                                    >
+                                      Deselect All
+                                    </Button>
+                                  </div>
+                                )}
+                              </div>
+                              
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                {users.map((user) => {
+                                  const isSelected = entry.user_ids.includes(user.id);
+                                  return (
+                                    <div
+                                      key={user.id}
+                                      className={cn(
+                                        "flex items-center gap-2 p-2 rounded-lg border-2 transition-all cursor-pointer",
+                                        isSelected 
+                                          ? "border-electric bg-electric/10" 
+                                          : "border-border hover:border-electric/30 bg-card"
+                                      )}
+                                      onClick={() => toggleUserForActivity(entry.id, user.id)}
+                                    >
+                                      <div className="flex-1 min-w-0">
+                                        <Label className="text-sm font-medium cursor-pointer truncate block">
+                                          {user.name}
+                                        </Label>
+                                      </div>
+                                      {isSelected ? (
+                                        <div className="flex items-center gap-1">
+                                          <Input
+                                            type="number"
+                                            step="0.25"
+                                            min="0.25"
+                                            max="24"
+                                            value={entry.user_hours[user.id] || ''}
+                                            onChange={(e) => {
+                                              e.stopPropagation();
+                                              updateUserHoursForActivity(entry.id, user.id, e.target.value);
+                                            }}
+                                            onClick={(e) => e.stopPropagation()}
+                                            placeholder="0.00"
+                                            className="w-20 h-8 text-xs font-mono text-center border-electric/30 focus:border-electric"
+                                          />
+                                          <span className="text-xs text-muted-foreground">h</span>
+                                        </div>
+                                      ) : (
+                                        <div className="w-6 h-6 rounded border-2 border-border flex items-center justify-center">
+                                          <div className="w-3 h-3 rounded bg-muted" />
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+
+                              {entry.user_ids.length > 0 && (
+                                <div className="p-2 rounded-lg bg-electric/5 border border-electric/20">
+                                  <p className="text-xs font-mono text-electric text-center">
+                                    Total: <span className="font-bold">{totalHours.toFixed(1)}h</span>
+                                  </p>
+                                </div>
+                              )}
+
+                              {entry.user_ids.length === 0 && (
+                                <div className="p-4 text-xs text-muted-foreground text-center border-2 border-dashed border-muted rounded-lg bg-muted/10">
+                                  <Users className="w-5 h-5 mx-auto mb-2 opacity-50" />
+                                  <p>Click users above to assign hours</p>
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Activity-specific notes */}
+                            <div>
+                              <Label className="font-mono text-xs uppercase tracking-wider mb-2 block">Activity Notes</Label>
+                              <Textarea
+                                value={entry.notes}
+                                onChange={(e) => updateActivityEntry(entry.id, { notes: e.target.value })}
+                                placeholder="Notes for this activity..."
+                                className="min-h-[60px] text-sm"
+                              />
+                            </div>
+                          </div>
+                        </CollapsibleContent>
+                      </Card>
+                    </Collapsible>
+                  );
+                })
+              )}
+            </div>
+          </AccordionContent>
+        </AccordionItem>
+
+        {/* Additional Details Section */}
+        <AccordionItem value="additional" className="border border-border rounded-lg bg-muted/20">
+          <AccordionTrigger className="px-4 hover:no-underline">
+            <div className="flex items-center gap-2">
+              <Image className="w-4 h-4 text-electric" />
+              <span className="font-semibold text-base">Additional Details</span>
+              <CheckCircle2 className="w-4 h-4 text-green-500" />
+            </div>
+          </AccordionTrigger>
+          <AccordionContent className="px-4 pb-4">
+            <div className="space-y-4 pt-2">
+
+              {/* General Notes */}
               <div>
-                <Label className="font-mono text-xs uppercase tracking-wider mb-2 block">Activity Notes</Label>
+                <Label className="font-mono text-xs uppercase tracking-wider mb-2 block">General Notes</Label>
                 <Textarea
-                  value={entry.notes}
-                  onChange={(e) => updateActivityEntry(entry.id, { notes: e.target.value })}
-                  placeholder="Notes for this activity..."
-                  className="mt-2 min-h-[60px] text-sm"
+                  value={formData.notes}
+                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                  placeholder="General work description..."
+                  className="min-h-[80px] resize-none"
                 />
               </div>
-            </Card>
-          ))
-        )}
-      </div>
 
-      {/* General Notes */}
-      <div className="p-4 rounded-lg border border-border bg-muted/20">
-        <Label className="font-mono text-xs uppercase tracking-wider mb-2 block">General Notes</Label>
-        <Textarea
-          value={formData.notes}
-          onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-          placeholder="General work description..."
-          className="min-h-[100px] resize-none"
-        />
-      </div>
-
-      {/* Photo/Image Upload Section */}
-      <div className="p-4 rounded-lg border border-border bg-muted/20">
-        <Label className="font-mono text-xs uppercase tracking-wider mb-3 block flex items-center gap-2">
-          <Camera className="w-4 h-4 text-electric" />
-          Photos / Media
-        </Label>
-        
-        {/* Drag and Drop Zone */}
-        {imagePreviews.length < 5 && (
-          <div
-            ref={dropZoneRef as React.LegacyRef<HTMLDivElement>}
-            onDragEnter={handleDragEnter}
-            onDragLeave={handleDragLeave}
-            onDragOver={handleDragOver}
-            onDrop={handleDrop}
-            className={cn(
-              "border-2 border-dashed rounded-lg p-8 transition-all duration-200",
-              isDragging 
-                ? "border-electric bg-electric/20 scale-[1.02] shadow-lg shadow-electric/20" 
-                : "border-muted hover:border-electric/50 bg-muted/10"
-            )}
-          >
-            <div className="flex flex-col items-center justify-center gap-3 text-center">
-              <div className={cn(
-                "w-16 h-16 rounded-full flex items-center justify-center transition-colors",
-                isDragging ? "bg-electric/20" : "bg-muted"
-              )}>
-                <Image className={cn(
-                  "w-8 h-8 transition-colors",
-                  isDragging ? "text-electric" : "text-muted-foreground"
-                )} />
-              </div>
+              {/* Improved Photo/Image Upload Section */}
               <div>
-                <p className={cn(
-                  "text-sm font-semibold transition-colors",
-                  isDragging ? "text-electric" : "text-foreground"
-                )}>
-                  {isDragging ? "Drop images here" : "Drag & drop images here"}
-                </p>
-                <p className="text-xs text-muted-foreground mt-1">
-                  or click buttons below to select
-                </p>
-              </div>
-            </div>
-          </div>
-        )}
-
-        <div className="mt-4 flex flex-wrap gap-3">
-          {/* Image Previews */}
-          {imagePreviews.map((preview, index) => (
-            <div key={index} className="relative w-24 h-24 rounded-lg overflow-hidden border-2 border-border group hover:border-electric transition-all shadow-sm hover:shadow-md">
-              <img src={preview} alt={`Preview ${index + 1}`} className="w-full h-full object-cover" />
-              {/* Upload Progress */}
-              {uploadProgress[index] !== undefined && uploadProgress[index] < 100 && (
-                <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center gap-2">
-                  <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  <span className="text-xs text-white font-medium">{uploadProgress[index]}%</span>
-                </div>
-              )}
-              {/* Remove Button */}
-              <button
-                type="button"
-                onClick={() => removeImage(index)}
-                className="absolute top-1 right-1 w-6 h-6 bg-destructive rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg hover:scale-110"
-              >
-                <X className="w-3.5 h-3.5 text-white" />
-              </button>
-              {/* File Info */}
-              <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent text-white text-xs p-2 truncate opacity-0 group-hover:opacity-100 transition-opacity">
-                {imageFiles[index]?.name || `Image ${index + 1}`}
-              </div>
-            </div>
-          ))}
-
-          {/* Upload Buttons */}
-          {imagePreviews.length < 5 && (
-            <>
-              {/* Take Photo Button */}
-              <button
-                type="button"
-                onClick={() => cameraInputRef.current?.click()}
-                className="w-24 h-24 rounded-lg border-2 border-dashed border-muted hover:border-electric hover:bg-electric/5 flex flex-col items-center justify-center gap-2 transition-all group"
-              >
-                <div className="w-10 h-10 rounded-full bg-muted group-hover:bg-electric/20 flex items-center justify-center transition-colors">
-                  <Camera className="w-5 h-5 text-muted-foreground group-hover:text-electric transition-colors" />
-                </div>
-                <span className="text-xs text-muted-foreground group-hover:text-electric font-medium transition-colors">Camera</span>
-              </button>
-
-              {/* Select from Gallery */}
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="w-24 h-24 rounded-lg border-2 border-dashed border-muted hover:border-electric hover:bg-electric/5 flex flex-col items-center justify-center gap-2 transition-all group"
-              >
-                <div className="w-10 h-10 rounded-full bg-muted group-hover:bg-electric/20 flex items-center justify-center transition-colors">
-                  <Image className="w-5 h-5 text-muted-foreground group-hover:text-electric transition-colors" />
-                </div>
-                <span className="text-xs text-muted-foreground group-hover:text-electric font-medium transition-colors">Gallery</span>
-              </button>
-            </>
-          )}
-        </div>
-
-        {/* Hidden file inputs */}
-        <input
-          ref={fileInputRef as React.LegacyRef<HTMLInputElement>}
-          type="file"
-          accept="image/*"
-          multiple
-          onChange={handleFileSelect}
-          className="hidden"
-        />
-        <input
-          ref={cameraInputRef as React.LegacyRef<HTMLInputElement>}
-          type="file"
-          accept="image/*"
-          capture="environment"
-          onChange={handleFileSelect}
-          className="hidden"
-        />
+                <Label className="font-mono text-xs uppercase tracking-wider mb-3 block flex items-center gap-2">
+                  <Camera className="w-4 h-4 text-electric" />
+                  Photos / Media
+                </Label>
         
-        <p className="text-xs text-muted-foreground mt-3 flex items-center gap-1">
-          <span className="w-1.5 h-1.5 rounded-full bg-electric"></span>
-          Add up to 5 photos (max 10MB each). Drag & drop or click to select.
-        </p>
-      </div>
+                {/* Enhanced Drag and Drop Zone */}
+                {imagePreviews.length < 5 && (
+                  <div
+                    ref={dropZoneRef as React.LegacyRef<HTMLDivElement>}
+                    onDragEnter={handleDragEnter}
+                    onDragLeave={handleDragLeave}
+                    onDragOver={handleDragOver}
+                    onDrop={handleDrop}
+                    className={cn(
+                      "border-2 border-dashed rounded-lg p-12 transition-all duration-200 cursor-pointer",
+                      isDragging 
+                        ? "border-electric bg-electric/20 scale-[1.02] shadow-lg shadow-electric/20" 
+                        : "border-electric/50 hover:border-electric bg-electric/5"
+                    )}
+                    onClick={() => fileInputRef.current?.click()}
+                  >
+                    <div className="flex flex-col items-center justify-center gap-4 text-center">
+                      <div className={cn(
+                        "w-20 h-20 rounded-full flex items-center justify-center transition-colors",
+                        isDragging ? "bg-electric/30" : "bg-electric/10"
+                      )}>
+                        <Image className={cn(
+                          "w-10 h-10 transition-colors",
+                          isDragging ? "text-electric" : "text-electric"
+                        )} />
+                      </div>
+                      <div>
+                        <p className={cn(
+                          "text-base font-semibold transition-colors",
+                          isDragging ? "text-electric" : "text-foreground"
+                        )}>
+                          {isDragging ? "Drop images here" : "Drag & drop images here"}
+                        </p>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          or click to browse • Up to 5 photos (max 10MB each)
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
-      <div className="flex justify-end gap-3 pt-6 border-t border-border sticky bottom-0 bg-card -mx-4 px-4 pb-2">
+                {/* Improved Image Preview Grid */}
+                {imagePreviews.length > 0 && (
+                  <div className="grid grid-cols-4 sm:grid-cols-5 gap-3">
+                    {imagePreviews.map((preview, index) => (
+                      <div key={index} className="relative aspect-square rounded-lg overflow-hidden border-2 border-border group hover:border-electric transition-all shadow-sm hover:shadow-md">
+                        <img src={preview} alt={`Preview ${index + 1}`} className="w-full h-full object-cover" />
+                        {/* Upload Progress */}
+                        {uploadProgress[index] !== undefined && uploadProgress[index] < 100 && (
+                          <div className="absolute inset-0 bg-black/70 flex flex-col items-center justify-center gap-2">
+                            <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                            <span className="text-xs text-white font-medium">{uploadProgress[index]}%</span>
+                          </div>
+                        )}
+                        {/* Remove Button */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            removeImage(index);
+                          }}
+                          className="absolute top-1 right-1 w-6 h-6 bg-destructive rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow-lg hover:scale-110 z-10"
+                        >
+                          <X className="w-3.5 h-3.5 text-white" />
+                        </button>
+                        {/* File Info */}
+                        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent text-white text-xs p-1.5 truncate opacity-0 group-hover:opacity-100 transition-opacity">
+                          {imageFiles[index]?.name || `Image ${index + 1}`}
+                        </div>
+                      </div>
+                    ))}
+                    
+                    {/* Quick Upload Buttons */}
+                    {imagePreviews.length < 5 && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            cameraInputRef.current?.click();
+                          }}
+                          className="aspect-square rounded-lg border-2 border-dashed border-muted hover:border-electric hover:bg-electric/5 flex flex-col items-center justify-center gap-2 transition-all group"
+                        >
+                          <div className="w-8 h-8 rounded-full bg-muted group-hover:bg-electric/20 flex items-center justify-center transition-colors">
+                            <Camera className="w-4 h-4 text-muted-foreground group-hover:text-electric transition-colors" />
+                          </div>
+                          <span className="text-xs text-muted-foreground group-hover:text-electric font-medium">Camera</span>
+                        </button>
+                        {imagePreviews.length < 4 && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              fileInputRef.current?.click();
+                            }}
+                            className="aspect-square rounded-lg border-2 border-dashed border-muted hover:border-electric hover:bg-electric/5 flex flex-col items-center justify-center gap-2 transition-all group"
+                          >
+                            <div className="w-8 h-8 rounded-full bg-muted group-hover:bg-electric/20 flex items-center justify-center transition-colors">
+                              <Image className="w-4 h-4 text-muted-foreground group-hover:text-electric transition-colors" />
+                            </div>
+                            <span className="text-xs text-muted-foreground group-hover:text-electric font-medium">Gallery</span>
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {/* Hidden file inputs */}
+                <input
+                  ref={fileInputRef as React.LegacyRef<HTMLInputElement>}
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={handleFileSelect}
+                  className="hidden"
+                />
+                <input
+                  ref={cameraInputRef as React.LegacyRef<HTMLInputElement>}
+                  type="file"
+                  accept="image/*"
+                  capture="environment"
+                  onChange={handleFileSelect}
+                  className="hidden"
+                />
+              </div>
+            </div>
+          </AccordionContent>
+        </AccordionItem>
+      </Accordion>
+
+      {/* Sticky Action Buttons */}
+      <div className="flex justify-end gap-3 pt-4 border-t border-border sticky bottom-0 bg-card -mx-4 px-4 pb-2 mt-4">
         <Button variant="outline" onClick={onCancel} disabled={isSubmitting} className="min-w-[100px]">
           Cancel
         </Button>
