@@ -250,8 +250,19 @@ router.post('/', authenticate, uploadLimiter,
   
   if (isFormData && files.length > 0) {
     // Files were uploaded - upload to storage provider
-    const storage = await StorageFactory.getInstance();
+    let storage;
+    try {
+      storage = await StorageFactory.getInstance();
+    } catch (storageError: any) {
+      log.error('Failed to initialize storage provider', storageError, { project_id });
+      return res.status(500).json({ 
+        error: 'Failed to initialize file storage',
+        details: process.env.NODE_ENV === 'development' ? storageError.message : undefined
+      });
+    }
+    
     const basePath = `projects/${project_id}`;
+    const uploadErrors: string[] = [];
     
     // Upload each file to storage provider
     for (const file of files) {
@@ -270,6 +281,8 @@ router.post('/', authenticate, uploadLimiter,
         const fileUrl = await storage.url(storagePath);
         imageUrls.push(fileUrl);
       } catch (uploadError: any) {
+        const errorMsg = `Failed to upload ${file.originalname}: ${uploadError.message}`;
+        uploadErrors.push(errorMsg);
         log.error(`Failed to upload ${file.originalname} to storage`, uploadError, { 
           filename: file.originalname, 
           project_id,
@@ -277,8 +290,25 @@ router.post('/', authenticate, uploadLimiter,
           errorMessage: uploadError.message,
           errorStack: uploadError.stack
         });
-        // Don't add to imageUrls if upload failed
       }
+    }
+    
+    // If all files failed to upload, return error
+    if (files.length > 0 && imageUrls.length === 0) {
+      return res.status(500).json({ 
+        error: 'All file uploads failed',
+        details: uploadErrors.join('; ')
+      });
+    }
+    
+    // If some files failed, log warning but continue
+    if (uploadErrors.length > 0) {
+      log.warn('Some files failed to upload', { 
+        project_id, 
+        failedCount: uploadErrors.length,
+        successCount: imageUrls.length,
+        errors: uploadErrors
+      });
     }
   } else {
     // JSON request with pre-uploaded URLs
