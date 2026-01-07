@@ -158,11 +158,16 @@ export default function Projects() {
     loadClients();
   }, []);
 
-  // Handle URL parameters for opening specific project
+  // Handle URL parameters for opening specific project or create modal
   useEffect(() => {
     const params = new URLSearchParams(location.search);
     const projectId = params.get('id');
-    if (projectId && projects.length > 0) {
+    const action = params.get('action');
+    
+    if (action === 'create') {
+      setCreateModalOpen(true);
+      navigate('/projects', { replace: true });
+    } else if (projectId && projects.length > 0) {
       const project = projects.find(p => p.id === projectId);
       if (project) {
         setSelectedProject(project);
