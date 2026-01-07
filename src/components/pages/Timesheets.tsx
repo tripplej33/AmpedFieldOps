@@ -100,8 +100,12 @@ const getMonthDates = (year: number, month: number): string[] => {
 const groupTimesheetsByUserAndDate = (entries: TimesheetEntry[]): GroupedTimesheets => {
   const grouped: GroupedTimesheets = {};
   entries.forEach(entry => {
-    const userId = entry.user_id || 'unassigned';
-    const date = entry.date;
+    // Normalize user_id to string for consistent comparison
+    const userId = entry.user_id ? String(entry.user_id) : 'unassigned';
+    // Normalize date to YYYY-MM-DD format (remove time component if present)
+    const date = entry.date ? entry.date.split('T')[0] : '';
+    if (!date) return; // Skip entries without valid dates
+    
     if (!grouped[userId]) {
       grouped[userId] = {};
     }
@@ -229,7 +233,14 @@ export default function Timesheets() {
       const data = (response && typeof response === 'object' && 'data' in response) 
         ? response.data 
         : (Array.isArray(response) ? response : []);
-      setEntries(Array.isArray(data) ? data : []);
+      
+      // Normalize dates in entries (remove time components)
+      const normalizedData = Array.isArray(data) ? data.map((entry: any) => ({
+        ...entry,
+        date: entry.date ? entry.date.split('T')[0] : entry.date
+      })) : [];
+      
+      setEntries(normalizedData);
     } catch (error: any) {
       console.error('Failed to load timesheets:', error);
       if (error?.message !== 'Failed to fetch') {
@@ -805,9 +816,29 @@ export default function Timesheets() {
   // Group entries by user and date for planner view
   const groupedByUserAndDate = groupTimesheetsByUserAndDate(filteredEntries);
   
-  // Get unique users from entries
-  const uniqueUsers = Array.from(new Set(filteredEntries.map(e => e.user_id).filter(Boolean)));
-  const usersWithEntries = users.filter(u => uniqueUsers.includes(u.id));
+  // Get unique users from entries (normalize IDs to strings for comparison)
+  const uniqueUsers = Array.from(new Set(filteredEntries.map(e => e.user_id ? String(e.user_id) : null).filter(Boolean))) as string[];
+  // Match users by normalizing IDs to strings
+  const usersWithEntries = users.filter(u => u.id && uniqueUsers.includes(String(u.id)));
+  
+  // Also include any users from entries that aren't in the users list (fallback)
+  const missingUserIds = uniqueUsers.filter(uid => !users.some(u => String(u.id) === uid));
+  const missingUsers = missingUserIds.map(uid => {
+    // Try to find user info from entries
+    const entry = filteredEntries.find(e => e.user_id && String(e.user_id) === uid);
+    return {
+      id: uid,
+      name: entry?.user_name || 'Unknown User',
+      email: '',
+      role: 'user' as const,
+      is_active: true,
+      created_at: '',
+      updated_at: ''
+    };
+  });
+  
+  // Combine users from list with missing users
+  const allUsersWithEntries = [...usersWithEntries, ...missingUsers];
   
   // Calculate date ranges and dates for current view
   const weekDates = viewMode === 'week' ? getWeekDates(viewDate) : [];
@@ -897,18 +928,19 @@ export default function Timesheets() {
           </div>
           
           {/* User Rows */}
-          {usersWithEntries.length === 0 ? (
+          {allUsersWithEntries.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               No timesheets found for selected date range
             </div>
           ) : (
-            usersWithEntries.map((user) => (
+            allUsersWithEntries.map((user) => (
               <div key={user.id} className="grid grid-cols-8 gap-2 mb-2">
                 <div className="flex items-center p-2 border-r border-border">
                   <p className="text-sm font-medium truncate">{user.name}</p>
                 </div>
                 {weekDates.map((dateStr, i) => {
-                  const userEntries = groupedByUserAndDate[user.id]?.[dateStr] || [];
+                  const userId = String(user.id);
+                  const userEntries = groupedByUserAndDate[userId]?.[dateStr] || [];
                   const dayTotal = userEntries.reduce((sum, e) => sum + parseFloat(String(e.hours)), 0);
                   
                   return (
@@ -997,7 +1029,12 @@ export default function Timesheets() {
             }
             
             const date = new Date(dateStr);
-            const dayEntries = filteredEntries.filter(e => e.date === dateStr);
+            // Normalize date strings for comparison
+            const normalizedDateStr = dateStr.split('T')[0];
+            const dayEntries = filteredEntries.filter(e => {
+              const entryDate = e.date ? e.date.split('T')[0] : '';
+              return entryDate === normalizedDateStr;
+            });
             const dayEntriesByUser = groupTimesheetsByUserAndDate(dayEntries);
             const dayTotal = dayEntries.reduce((sum, e) => sum + parseFloat(String(e.hours)), 0);
             
@@ -1006,7 +1043,7 @@ export default function Timesheets() {
                 key={i}
                 className={cn(
                   "min-h-[100px] p-2 rounded-lg border transition-all",
-                  isToday(dateStr)
+                  isToday(normalizedDateStr)
                     ? "bg-electric/10 border-electric"
                     : "bg-muted/10 border-border hover:border-electric/50"
                 )}
@@ -1014,7 +1051,7 @@ export default function Timesheets() {
                 <div className="flex items-center justify-between mb-2">
                   <p className={cn(
                     "text-sm font-bold font-mono",
-                    isToday(dateStr) ? "text-electric" : "text-foreground"
+                    isToday(normalizedDateStr) ? "text-electric" : "text-foreground"
                   )}>
                     {date.getDate()}
                   </p>
@@ -1025,7 +1062,7 @@ export default function Timesheets() {
                 
                 <div className="space-y-1 max-h-[60px] overflow-y-auto">
                   {Object.entries(dayEntriesByUser).map(([userId, dateEntries]) => {
-                    const user = users.find(u => u.id === userId);
+                    const user = users.find(u => String(u.id) === userId) || allUsersWithEntries.find(u => String(u.id) === userId);
                     const userEntries = Object.values(dateEntries).flat();
                     const userTotal = userEntries.reduce((sum, e) => sum + parseFloat(String(e.hours)), 0);
                     
