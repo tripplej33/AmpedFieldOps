@@ -113,9 +113,21 @@ export class StorageFactory {
 
     // Create new instance if config changed or instance doesn't exist
     if (!storageInstance || configChanged) {
-      storageInstance = createStorageProvider(config);
-      configCache = { ...config }; // Deep copy for comparison
-      cacheTimestamp = now;
+      try {
+        storageInstance = createStorageProvider(config);
+        configCache = { ...config }; // Deep copy for comparison
+        cacheTimestamp = now;
+      } catch (error: any) {
+        log.error('Failed to create storage provider instance', error, {
+          driver: config.driver,
+          basePath: config.basePath,
+          hasS3Config: !!(config.s3Bucket && config.s3AccessKeyId),
+          hasGoogleDriveConfig: !!config.googleDriveFolderId,
+          errorMessage: error.message,
+          errorStack: error.stack
+        });
+        throw new Error(`Failed to initialize storage provider (${config.driver}): ${error.message}`);
+      }
     }
 
     return storageInstance;

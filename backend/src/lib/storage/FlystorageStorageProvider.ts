@@ -42,14 +42,35 @@ export class FlystorageStorageProvider implements IStorageProvider {
       const basePath = path.resolve(process.cwd(), this.config.basePath || 'uploads');
       
       // Ensure base directory exists
-      if (!fs.existsSync(basePath)) {
-        fs.mkdirSync(basePath, { recursive: true });
+      // Note: This is only needed for local storage. With memory storage for uploads,
+      // files are streamed directly to storage, but we still need the base directory
+      // for file retrieval and serving.
+      try {
+        if (!fs.existsSync(basePath)) {
+          fs.mkdirSync(basePath, { recursive: true });
+        }
+      } catch (mkdirError: any) {
+        // If directory creation fails, log warning but continue
+        // The directory might already exist or permissions might be set differently
+        log.warn('Could not create base storage directory (may already exist)', {
+          basePath,
+          error: mkdirError.message
+        });
+        // Verify directory exists or is accessible
+        if (!fs.existsSync(basePath)) {
+          throw new Error(`Storage directory does not exist and could not be created: ${mkdirError.message}`);
+        }
       }
 
       const adapter = new LocalStorageAdapter(basePath);
       this.storage = new FileStorage(adapter);
     } catch (error: any) {
-      log.error('Failed to initialize local storage', error);
+      log.error('Failed to initialize local storage', error, {
+        basePath: this.config.basePath || 'uploads',
+        resolvedPath: path.resolve(process.cwd(), this.config.basePath || 'uploads'),
+        errorMessage: error.message,
+        errorStack: error.stack
+      });
       throw new Error(`Local storage initialization failed: ${error.message}`);
     }
   }
