@@ -3,6 +3,8 @@ import { query } from '../db';
 import { authenticate, requireRole, AuthRequest } from '../middleware/auth';
 import { logoUpload, faviconUpload } from '../middleware/upload';
 import { clearEmailSettingsCache, sendTestEmail } from '../lib/email';
+import { StorageFactory } from '../lib/storage/StorageFactory';
+import { StorageConfig } from '../lib/storage/types';
 import fs from 'fs';
 import path from 'path';
 import { env } from '../config/env';
@@ -180,13 +182,28 @@ router.post('/logo', authenticate, requireRole('admin'), logoUpload.single('logo
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
-    // Ensure the logos directory exists
-    const logosDir = path.join(__dirname, '../../uploads/logos');
-    if (!fs.existsSync(logosDir)) {
-      fs.mkdirSync(logosDir, { recursive: true });
+    // Upload logo to storage provider
+    const storage = await StorageFactory.getInstance();
+    const basePath = 'logos';
+    const storagePath = generatePartitionedPath(req.file.originalname, basePath);
+    
+    // Stream file from temp location to storage provider
+    const fileStream = createReadStream(req.file.path);
+    await storage.put(storagePath, fileStream, {
+      contentType: req.file.mimetype,
+    });
+    
+    // Get URL from storage provider
+    const logoUrl = await storage.url(storagePath);
+    
+    // Delete temp file after successful upload
+    try {
+      if (fs.existsSync(req.file.path)) {
+        fs.unlinkSync(req.file.path);
+      }
+    } catch (cleanupError) {
+      log.error('Failed to cleanup temp logo file', cleanupError);
     }
-
-    const logoUrl = `/uploads/logos/${req.file.filename}`;
 
     await query(
       `INSERT INTO settings (key, value, user_id)
@@ -219,13 +236,31 @@ router.post('/favicon', authenticate, requireRole('admin'), faviconUpload.single
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
-    // Ensure the logos directory exists
-    const logosDir = path.join(__dirname, '../../uploads/logos');
-    if (!fs.existsSync(logosDir)) {
-      fs.mkdirSync(logosDir, { recursive: true });
+    // Upload favicon to storage provider
+    const storage = await StorageFactory.getInstance();
+    const basePath = 'logos';
+    // For favicon, use a consistent name
+    const isIco = path.extname(req.file.originalname).toLowerCase() === '.ico';
+    const faviconFilename = isIco ? 'favicon.ico' : `favicon-${Date.now()}${path.extname(req.file.originalname)}`;
+    const storagePath = generatePartitionedPath(faviconFilename, basePath);
+    
+    // Stream file from temp location to storage provider
+    const fileStream = createReadStream(req.file.path);
+    await storage.put(storagePath, fileStream, {
+      contentType: req.file.mimetype,
+    });
+    
+    // Get URL from storage provider
+    const faviconUrl = await storage.url(storagePath);
+    
+    // Delete temp file after successful upload
+    try {
+      if (fs.existsSync(req.file.path)) {
+        fs.unlinkSync(req.file.path);
+      }
+    } catch (cleanupError) {
+      log.error('Failed to cleanup temp favicon file', cleanupError);
     }
-
-    const faviconUrl = `/uploads/logos/${req.file.filename}`;
 
     await query(
       `INSERT INTO settings (key, value, user_id)
@@ -368,6 +403,204 @@ router.post('/test-s3', authenticate, requireRole('admin'), async (req: AuthRequ
     res.status(500).json({ 
       error: 'Failed to test S3 connection',
       message: error.message || 'Unknown error'
+    });
+  }
+});
+
+// Get storage configuration (admin only)
+router.get('/storage', authenticate, requireRole('admin'), async (req: AuthRequest, res: Response) => {
+  try {
+    const result = await query(
+      `SELECT key, value FROM settings 
+       WHERE user_id IS NULL 
+       AND key IN ('storage_driver', 'storage_base_path', 'storage_s3_bucket', 'storage_s3_region', 'storage_s3_access_key_id', 'storage_s3_secret_access_key', 'storage_s3_endpoint')`
+    );
+
+    const settings: Record<string, string> = {};
+    result.rows.forEach((row: any) => {
+      settings[row.key] = row.value;
+    });
+
+    // Don't return secret access key in response (security)
+    const response: any = {
+      driver: settings.storage_driver || 'local',
+      basePath: settings.storage_base_path || 'uploads',
+    };
+
+    if (settings.storage_driver === 's3') {
+      response.s3Bucket = settings.storage_s3_bucket || '';
+      response.s3Region = settings.storage_s3_region || 'us-east-1';
+      response.s3AccessKeyId = settings.storage_s3_access_key_id || '';
+      // Only return masked secret key
+      if (settings.storage_s3_secret_access_key) {
+        const secret = settings.storage_s3_secret_access_key;
+        response.s3SecretAccessKey = secret.length > 8 
+          ? `${secret.substring(0, 4)}${'*'.repeat(secret.length - 8)}${secret.substring(secret.length - 4)}`
+          : '****';
+      }
+      response.s3Endpoint = settings.storage_s3_endpoint || '';
+    }
+
+    res.json(response);
+  } catch (error: any) {
+    console.error('Failed to fetch storage settings:', error);
+    res.status(500).json({ 
+      error: 'Failed to fetch storage settings',
+      details: env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
+// Update storage configuration (admin only)
+router.put('/storage', authenticate, requireRole('admin'), async (req: AuthRequest, res: Response) => {
+  try {
+    const { driver, basePath, s3Bucket, s3Region, s3AccessKeyId, s3SecretAccessKey, s3Endpoint } = req.body;
+
+    // Validate driver
+    if (driver && !['local', 's3'].includes(driver)) {
+      return res.status(400).json({ error: 'Invalid storage driver. Must be "local" or "s3"' });
+    }
+
+    // Validate S3 configuration if switching to S3
+    if (driver === 's3') {
+      if (!s3Bucket || !s3AccessKeyId || !s3SecretAccessKey) {
+        return res.status(400).json({ 
+          error: 'S3 configuration incomplete',
+          missing: [
+            !s3Bucket && 'bucket',
+            !s3AccessKeyId && 'accessKeyId',
+            !s3SecretAccessKey && 'secretAccessKey'
+          ].filter(Boolean)
+        });
+      }
+    }
+
+    // Test connection before saving (if switching to S3 or updating S3 config)
+    if (driver === 's3' || (driver && driver !== 'local')) {
+      try {
+        const testConfig: StorageConfig = {
+          driver: driver || 's3',
+          basePath: basePath || 'uploads',
+          s3Bucket,
+          s3Region: s3Region || 'us-east-1',
+          s3AccessKeyId,
+          s3SecretAccessKey,
+          s3Endpoint,
+        };
+
+        const testProvider = await StorageFactory.createTestInstance(testConfig);
+        const testResult = await testProvider.testConnection();
+
+        if (!testResult.success) {
+          return res.status(400).json({ 
+            error: 'Storage connection test failed',
+            message: testResult.message
+          });
+        }
+      } catch (testError: any) {
+        return res.status(400).json({ 
+          error: 'Storage connection test failed',
+          message: testError.message
+        });
+      }
+    }
+
+    // Save settings
+    const settingsToSave = [
+      { key: 'storage_driver', value: driver || 'local' },
+      { key: 'storage_base_path', value: basePath || 'uploads' },
+    ];
+
+    if (driver === 's3') {
+      settingsToSave.push(
+        { key: 'storage_s3_bucket', value: s3Bucket },
+        { key: 'storage_s3_region', value: s3Region || 'us-east-1' },
+        { key: 'storage_s3_access_key_id', value: s3AccessKeyId },
+        { key: 'storage_s3_secret_access_key', value: s3SecretAccessKey }, // TODO: Encrypt this
+        ...(s3Endpoint ? [{ key: 'storage_s3_endpoint', value: s3Endpoint }] : [])
+      );
+    } else {
+      // Clear S3 settings when switching to local
+      const s3Settings = ['storage_s3_bucket', 'storage_s3_region', 'storage_s3_access_key_id', 'storage_s3_secret_access_key', 'storage_s3_endpoint'];
+      for (const key of s3Settings) {
+        await query('DELETE FROM settings WHERE key = $1 AND user_id IS NULL', [key]);
+      }
+    }
+
+    // Save all settings
+    for (const { key, value } of settingsToSave) {
+      await query(
+        `INSERT INTO settings (key, value, user_id)
+         VALUES ($1, $2, NULL)
+         ON CONFLICT (key, user_id) DO UPDATE SET value = $2, updated_at = CURRENT_TIMESTAMP`,
+        [key, value]
+      );
+    }
+
+    // Invalidate storage factory cache
+    StorageFactory.invalidateCache();
+
+    // Log activity
+    await query(
+      `INSERT INTO activity_logs (user_id, action, entity_type, details) 
+       VALUES ($1, $2, $3, $4)`,
+      [req.user!.id, 'update', 'storage_settings', JSON.stringify({ driver })]
+    );
+
+    res.json({ message: 'Storage configuration updated successfully' });
+  } catch (error: any) {
+    console.error('Failed to update storage settings:', error);
+    res.status(500).json({ 
+      error: 'Failed to update storage settings',
+      details: env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+});
+
+// Test storage connection without saving (admin only)
+router.post('/storage/test', authenticate, requireRole('admin'), async (req: AuthRequest, res: Response) => {
+  try {
+    const { driver, basePath, s3Bucket, s3Region, s3AccessKeyId, s3SecretAccessKey, s3Endpoint } = req.body;
+
+    // Validate driver
+    if (!driver || !['local', 's3'].includes(driver)) {
+      return res.status(400).json({ error: 'Invalid storage driver. Must be "local" or "s3"' });
+    }
+
+    // Validate S3 configuration
+    if (driver === 's3') {
+      if (!s3Bucket || !s3AccessKeyId || !s3SecretAccessKey) {
+        return res.status(400).json({ 
+          error: 'S3 configuration incomplete',
+          missing: [
+            !s3Bucket && 'bucket',
+            !s3AccessKeyId && 'accessKeyId',
+            !s3SecretAccessKey && 'secretAccessKey'
+          ].filter(Boolean)
+        });
+      }
+    }
+
+    // Create test instance
+    const testConfig: StorageConfig = {
+      driver,
+      basePath: basePath || 'uploads',
+      s3Bucket,
+      s3Region: s3Region || 'us-east-1',
+      s3AccessKeyId,
+      s3SecretAccessKey,
+      s3Endpoint,
+    };
+
+    const testProvider = await StorageFactory.createTestInstance(testConfig);
+    const testResult = await testProvider.testConnection();
+
+    res.json(testResult);
+  } catch (error: any) {
+    console.error('Storage connection test error:', error);
+    res.status(500).json({ 
+      success: false,
+      message: error.message || 'Connection test failed'
     });
   }
 });

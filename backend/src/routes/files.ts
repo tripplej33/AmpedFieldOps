@@ -9,6 +9,9 @@ import { log } from '../lib/logger';
 import { validateFileContent, validateFileExtension } from '../lib/fileValidator';
 import { ocrService } from '../lib/ocrService';
 import { findMatches } from '../lib/documentMatcher';
+import { StorageFactory } from '../lib/storage/StorageFactory';
+import { generatePartitionedPath, resolveStoragePath } from '../lib/storage/pathUtils';
+import { createReadStream } from 'fs';
 import path from 'path';
 import fs from 'fs';
 
@@ -115,30 +118,65 @@ router.get('/:id/download', authenticate, requirePermission('can_view_financials
     }
   }
 
-  // Sanitize file path to prevent directory traversal
-  const baseDir = path.resolve(__dirname, '../../uploads');
-  const filePath = path.resolve(path.join(__dirname, '../../', file.file_path));
-
-  // Ensure file is within the uploads directory
-  if (!filePath.startsWith(baseDir)) {
-    log.error('Path traversal attempt detected', null, {
-      userId: req.user!.id,
-      fileId: req.params.id,
-      filePath: file.file_path,
-      requestedPath: filePath,
-    });
-    throw new FileError('Invalid file path');
+  // Get storage provider
+  const storage = await StorageFactory.getInstance();
+  
+  // Extract storage path from file_path
+  // file_path could be: /uploads/projects/... (local) or https://... (S3 signed URL)
+  let storagePath: string;
+  let useOldPath = false;
+  
+  if (file.file_path.startsWith('http://') || file.file_path.startsWith('https://')) {
+    // S3 signed URL - redirect directly
+    return res.redirect(file.file_path);
+  } else {
+    // Local path - extract relative path
+    storagePath = resolveStoragePath(file.file_path);
   }
-
-  if (!fs.existsSync(filePath)) {
-    throw new NotFoundError('File', 'on disk');
+  
+  // Check if file exists in storage (new path)
+  let exists = await storage.exists(storagePath);
+  
+  // Hybrid support: If not found in new storage, try old filesystem path
+  if (!exists) {
+    // Try old path format: /uploads/projects/{project_id}/files/{filename}
+    const oldPath = file.file_path.startsWith('/') 
+      ? file.file_path.substring(1) // Remove leading slash
+      : file.file_path;
+    
+    // Check if old path exists in filesystem (only for local storage)
+    if (storage.getDriver() === 'local') {
+      const absoluteOldPath = path.join(process.cwd(), oldPath);
+      if (fs.existsSync(absoluteOldPath)) {
+        // File exists in old location - use it for now
+        storagePath = oldPath;
+        exists = true;
+        useOldPath = true;
+        log.info('File found in old location, serving from old path', { fileId: file.id, oldPath });
+      }
+    }
   }
-
+  
+  if (!exists) {
+    throw new NotFoundError('File', 'in storage');
+  }
+  
+  // Get file stream from storage
+  const fileStream = useOldPath && storage.getDriver() === 'local'
+    ? fs.createReadStream(path.join(process.cwd(), storagePath))
+    : await storage.getStream(storagePath);
+  
+  const metadata = useOldPath && storage.getDriver() === 'local'
+    ? { mimeType: file.mime_type, name: file.file_name, size: 0 }
+    : await storage.getMetadata(storagePath);
+  
+  // Set headers
   res.setHeader('Content-Disposition', `attachment; filename="${file.file_name}"`);
-  if (file.mime_type) {
-    res.setHeader('Content-Type', file.mime_type);
-  }
-  res.sendFile(filePath);
+  res.setHeader('Content-Type', metadata.mimeType || file.mime_type || 'application/octet-stream');
+  res.setHeader('Cache-Control', 'public, max-age=3600');
+  
+  // Stream file to response
+  fileStream.pipe(res);
 }));
 
 // Upload file with validation and content checking
@@ -170,48 +208,9 @@ router.post(
       throw new ValidationError('project_id is required');
     }
 
-    // Move file from temp location to correct project directory
-    const { sanitizeProjectId } = await import('../middleware/validateProject');
-    const projectId = sanitizeProjectId(project_id);
-    const baseDir = path.resolve(__dirname, '../../uploads/projects');
-    let finalDir = path.join(baseDir, projectId, 'files');
-    
-    // If cost center is specified, add it to the path
-    if (cost_center_id) {
-      const isValidUUID = (uuid: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(uuid);
-      if (isValidUUID(cost_center_id)) {
-        const sanitizedCostCenterId = cost_center_id.replace(/\.\./g, '').replace(/\//g, '').replace(/\\/g, '');
-        finalDir = path.join(finalDir, sanitizedCostCenterId);
-      }
-    }
-    
-    // Ensure directory exists
-    if (!fs.existsSync(finalDir)) {
-      fs.mkdirSync(finalDir, { recursive: true });
-    }
-    
-    // Move file to final location
-    const finalPath = path.join(finalDir, req.file.filename);
-    try {
-      fs.renameSync(req.file.path, finalPath);
-      // Update req.file.path to reflect new location
-      req.file.path = finalPath;
-    } catch (moveError: any) {
-      log.error('Failed to move file to project directory', moveError, { project_id, tempPath: req.file.path });
-      // Try to clean up temp file
-      try {
-        if (fs.existsSync(req.file.path)) {
-          fs.unlinkSync(req.file.path);
-        }
-      } catch (cleanupError) {
-        log.error('Failed to cleanup temp file', cleanupError);
-      }
-      throw new ValidationError('Failed to save file to project directory');
-    }
-
-    // Validate file extension matches MIME type
+    // Validate file extension matches MIME type (before uploading to storage)
     if (!validateFileExtension(req.file.originalname, req.file.mimetype)) {
-      // Delete uploaded file
+      // Delete temp file
       if (fs.existsSync(req.file.path)) {
         try {
           fs.unlinkSync(req.file.path);
@@ -222,10 +221,10 @@ router.post(
       throw new FileError('File extension does not match declared file type');
     }
 
-    // Validate file content (magic number validation)
-    const isValidContent = await validateFileContent(req.file.path, req.file.mimetype);
+    // Validate file content (magic number validation) - using temp file
+    const isValidContent = await validateFileContent(req.file.path, req.file.mimetype, false);
     if (!isValidContent) {
-      // Delete uploaded file
+      // Delete temp file
       if (fs.existsSync(req.file.path)) {
         try {
           fs.unlinkSync(req.file.path);
@@ -234,6 +233,44 @@ router.post(
         }
       }
       throw new FileError('File content does not match declared file type. The file may be corrupted or malicious.');
+    }
+
+    // Get storage provider
+    const storage = await StorageFactory.getInstance();
+    const { sanitizeProjectId } = await import('../middleware/validateProject');
+    const projectId = sanitizeProjectId(project_id);
+    
+    // Generate partitioned path for storage
+    const basePath = `projects/${projectId}/files${cost_center_id ? `/${cost_center_id}` : ''}`;
+    const storagePath = generatePartitionedPath(req.file.originalname, basePath);
+    
+    // Stream file from temp location to storage provider
+    try {
+      const fileStream = createReadStream(req.file.path);
+      await storage.put(storagePath, fileStream, {
+        contentType: req.file.mimetype,
+      });
+      
+      // Delete temp file after successful upload
+      try {
+        if (fs.existsSync(req.file.path)) {
+          fs.unlinkSync(req.file.path);
+        }
+      } catch (cleanupError) {
+        log.error('Failed to cleanup temp file after upload', cleanupError);
+        // Don't throw - file is already in storage
+      }
+    } catch (storageError: any) {
+      log.error('Failed to upload file to storage', storageError, { project_id, tempPath: req.file.path });
+      // Try to clean up temp file
+      try {
+        if (fs.existsSync(req.file.path)) {
+          fs.unlinkSync(req.file.path);
+        }
+      } catch (cleanupError) {
+        log.error('Failed to cleanup temp file after storage error', cleanupError);
+      }
+      throw new ValidationError(`Failed to save file to storage: ${storageError.message}`);
     }
 
     // Determine file type from mime type
@@ -246,11 +283,9 @@ router.post(
       fileType = 'document';
     }
 
-    // Generate proper relative file path for storage
-    // req.file.path is now in the final project directory after being moved
-    // We need relative from uploads root
-    const uploadsRoot = path.join(process.cwd(), 'uploads');
-    const relativePath = path.relative(uploadsRoot, req.file.path).replace(/\\/g, '/'); // Normalize to forward slashes
+    // Generate file URL for database storage
+    // Use storage provider to get the URL (will be signed URL for S3, regular path for local)
+    const fileUrl = await storage.url(storagePath);
     
     const result = await query(
       `INSERT INTO project_files (
@@ -261,7 +296,7 @@ router.post(
         project_id,
         cost_center_id || null,
         req.file.originalname,
-        `/uploads/${relativePath}`, // Ensure it starts with /uploads
+        fileUrl, // Storage provider URL (signed for S3, /uploads/... for local)
         fileType,
         req.file.size,
         req.file.mimetype,
@@ -290,7 +325,9 @@ router.post(
         );
 
         // Process OCR in background
-        processDocumentOCR(scanResult.rows[0].id, req.file.path).catch(error => {
+        // For OCR, we need to get the file from storage
+        // For now, use the storage path - OCR service will need to be updated to use storage provider
+        processDocumentOCR(scanResult.rows[0].id, storagePath).catch(error => {
           log.error('Background OCR processing failed', error, { fileId: result.rows[0].id });
         });
       } catch (ocrError) {
@@ -333,30 +370,32 @@ router.delete('/:id', authenticate, requirePermission('can_edit_projects'), asyn
     }
   }
 
-  // Sanitize file path
-  const baseDir = path.resolve(__dirname, '../../uploads');
-  const filePath = path.resolve(path.join(__dirname, '../../', file.file_path));
-
-  if (!filePath.startsWith(baseDir)) {
-    log.error('Path traversal attempt detected in file delete', null, {
-      userId: req.user!.id,
-      fileId: req.params.id,
-      filePath: file.file_path,
-    });
-    throw new FileError('Invalid file path');
+  // Get storage provider
+  const storage = await StorageFactory.getInstance();
+  
+  // Extract storage path from file_path
+  let storagePath: string;
+  if (file.file_path.startsWith('http://') || file.file_path.startsWith('https://')) {
+    // S3 signed URL - extract key from URL or use file_path as-is for deletion
+    // For S3, we need the key, not the URL. Store key separately or extract from URL
+    // For now, if it's a URL, we can't delete it (would need to store S3 key separately)
+    log.warn('Cannot delete file with S3 URL - key not stored', { fileId: req.params.id, filePath: file.file_path });
+  } else {
+    // Local path - extract relative path
+    storagePath = resolveStoragePath(file.file_path);
   }
-
+  
   // Delete from database first
   await query('DELETE FROM project_files WHERE id = $1', [req.params.id]);
 
-  // Delete file from disk
-  if (fs.existsSync(filePath)) {
+  // Delete file from storage (if we have a valid path)
+  if (storagePath && !storagePath.startsWith('http')) {
     try {
-      fs.unlinkSync(filePath);
-    } catch (unlinkError) {
-      log.error('Failed to delete file from disk', unlinkError, {
+      await storage.delete(storagePath);
+    } catch (deleteError: any) {
+      log.error('Failed to delete file from storage', deleteError, {
         fileId: req.params.id,
-        filePath,
+        storagePath,
       });
       // Continue even if file deletion fails - it's already removed from DB
     }

@@ -8,6 +8,9 @@ import { NotFoundError, ValidationError, FileError } from '../lib/errors';
 import { log } from '../lib/logger';
 import { ocrService, OCRResult } from '../lib/ocrService';
 import { findMatches } from '../lib/documentMatcher';
+import { StorageFactory } from '../lib/storage/StorageFactory';
+import { generatePartitionedPath, resolveStoragePath } from '../lib/storage/pathUtils';
+import { createReadStream } from 'fs';
 import path from 'path';
 import fs from 'fs';
 
@@ -44,43 +47,41 @@ router.post(
       throw new ValidationError('project_id is required');
     }
 
-    // Move file from temp location to correct project directory
+    // Get storage provider
+    const storage = await StorageFactory.getInstance();
     const { sanitizeProjectId } = await import('../middleware/validateProject');
     const projectId = sanitizeProjectId(project_id);
-    const baseDir = path.resolve(__dirname, '../../uploads/projects');
-    let finalDir = path.join(baseDir, projectId, 'files');
     
-    // If cost center is specified, add it to the path
-    if (cost_center_id) {
-      const isValidUUID = (uuid: string) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(uuid);
-      if (isValidUUID(cost_center_id)) {
-        const sanitizedCostCenterId = cost_center_id.replace(/\.\./g, '').replace(/\//g, '').replace(/\\/g, '');
-        finalDir = path.join(finalDir, sanitizedCostCenterId);
-      }
-    }
+    // Generate partitioned path for storage
+    const basePath = `projects/${projectId}/files${cost_center_id ? `/${cost_center_id}` : ''}`;
+    const storagePath = generatePartitionedPath(req.file.originalname, basePath);
     
-    // Ensure directory exists
-    if (!fs.existsSync(finalDir)) {
-      fs.mkdirSync(finalDir, { recursive: true });
-    }
-    
-    // Move file to final location
-    const finalPath = path.join(finalDir, req.file.filename);
+    // Stream file from temp location to storage provider
     try {
-      fs.renameSync(req.file.path, finalPath);
-      // Update req.file.path to reflect new location
-      req.file.path = finalPath;
-    } catch (moveError: any) {
-      log.error('Failed to move file to project directory', moveError, { project_id, tempPath: req.file.path });
+      const fileStream = createReadStream(req.file.path);
+      await storage.put(storagePath, fileStream, {
+        contentType: req.file.mimetype,
+      });
+      
+      // Delete temp file after successful upload
+      try {
+        if (fs.existsSync(req.file.path)) {
+          fs.unlinkSync(req.file.path);
+        }
+      } catch (cleanupError) {
+        log.error('Failed to cleanup temp file after upload', cleanupError);
+      }
+    } catch (storageError: any) {
+      log.error('Failed to upload file to storage', storageError, { project_id, tempPath: req.file.path });
       // Try to clean up temp file
       try {
         if (fs.existsSync(req.file.path)) {
           fs.unlinkSync(req.file.path);
         }
       } catch (cleanupError) {
-        log.error('Failed to cleanup temp file', cleanupError);
+        log.error('Failed to cleanup temp file after storage error', cleanupError);
       }
-      throw new ValidationError('Failed to save file to project directory');
+      throw new ValidationError(`Failed to save file to storage: ${storageError.message}`);
     }
 
     // Check if file is an image
@@ -103,6 +104,9 @@ router.post(
       fileType = 'image';
     }
 
+    // Get file URL from storage provider
+    const fileUrl = await storage.url(storagePath);
+    
     // Store file in project_files table
     const fileResult = await query(
       `INSERT INTO project_files (
@@ -113,11 +117,7 @@ router.post(
         project_id,
         cost_center_id || null,
         req.file.originalname,
-        (() => {
-          const uploadsRoot = path.join(process.cwd(), 'uploads');
-          const relativePath = path.relative(uploadsRoot, req.file.path).replace(/\\/g, '/');
-          return `/uploads/${relativePath}`;
-        })(),
+        fileUrl,
         fileType,
         req.file.size,
         req.file.mimetype,
@@ -139,7 +139,8 @@ router.post(
     const scan = scanResult.rows[0];
 
     // Process OCR asynchronously (don't block response)
-    processDocumentScan(scan.id, req.file.path).catch(error => {
+    // Pass storage path instead of local file path
+    processDocumentScan(scan.id, storagePath).catch(error => {
       log.error('Background OCR processing failed', error, { scanId: scan.id });
     });
 

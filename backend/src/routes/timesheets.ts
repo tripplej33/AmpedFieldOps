@@ -3,11 +3,14 @@ import rateLimit from 'express-rate-limit';
 import multer from 'multer';
 import fs from 'fs';
 import path from 'path';
+import { createReadStream } from 'fs';
 import { query } from '../db';
 import { authenticate, requirePermission, AuthRequest } from '../middleware/auth';
 import { projectUpload } from '../middleware/upload';
 import { parsePaginationParams, createPaginatedResponse } from '../lib/pagination';
 import { log } from '../lib/logger';
+import { StorageFactory } from '../lib/storage/StorageFactory';
+import { generatePartitionedPath, resolveStoragePath } from '../lib/storage/pathUtils';
 
 const router = Router();
 
@@ -246,30 +249,51 @@ router.post('/', authenticate, uploadLimiter,
   let cloudImageUrls: string[] = [];
   
   if (isFormData && files.length > 0) {
-    // Files were uploaded - upload to cloud storage
-    try {
-      const { uploadFileToCloud } = await import('../lib/cloudStorage');
-      const folderPath = `projects/${project_id}`;
-      
-      // Upload each file to cloud storage
-      for (const file of files) {
-        try {
-          const cloudUrl = await uploadFileToCloud(file.path, file.filename, folderPath);
-          cloudImageUrls.push(cloudUrl);
-          // Keep local path for backward compatibility
-          imageUrls.push(`/uploads/projects/${project_id}/${file.filename}`);
-        } catch (uploadError: any) {
-          log.error(`Failed to upload ${file.filename} to cloud storage`, uploadError, { filename: file.filename, project_id });
-          // Fallback to local path if cloud upload fails
-          imageUrls.push(`/uploads/projects/${project_id}/${file.filename}`);
-          // Optionally clean up local file if cloud upload fails and we don't want local storage
-          // fs.unlinkSync(file.path);
+    // Files were uploaded - upload to storage provider
+    const storage = await StorageFactory.getInstance();
+    const basePath = `projects/${project_id}`;
+    
+    // Upload each file to storage provider
+    for (const file of files) {
+      try {
+        // Generate partitioned path
+        const storagePath = generatePartitionedPath(file.originalname, basePath);
+        
+        // Stream file from temp location to storage provider
+        const fileStream = createReadStream(file.path);
+        await storage.put(storagePath, fileStream, {
+          contentType: file.mimetype,
+        });
+        
+        // Get URL from storage provider (signed URL for S3, regular path for local)
+        const fileUrl = await storage.url(storagePath);
+        imageUrls.push(fileUrl);
+        
+        // For S3, also store in cloud_image_urls
+        if (storage.getDriver() === 's3') {
+          cloudImageUrls.push(fileUrl);
         }
+        
+        // Delete temp file after successful upload
+        try {
+          if (fs.existsSync(file.path)) {
+            fs.unlinkSync(file.path);
+          }
+        } catch (cleanupError) {
+          log.error('Failed to cleanup temp file after upload', cleanupError, { filePath: file.path });
+        }
+      } catch (uploadError: any) {
+        log.error(`Failed to upload ${file.filename} to storage`, uploadError, { filename: file.filename, project_id });
+        // Try to clean up temp file
+        try {
+          if (fs.existsSync(file.path)) {
+            fs.unlinkSync(file.path);
+          }
+        } catch (cleanupError) {
+          log.error('Failed to cleanup temp file after upload error', cleanupError);
+        }
+        // Don't add to imageUrls if upload failed
       }
-    } catch (error: any) {
-      log.error('Cloud storage upload error', error, { project_id });
-      // Fallback to local paths if cloud storage is not configured
-      imageUrls = files.map(f => `/uploads/projects/${project_id}/${f.filename}`);
     }
   } else {
     // JSON request with pre-uploaded URLs
@@ -413,52 +437,75 @@ router.put('/:id', authenticate,
     let cloudImageUrls: string[] = [];
     
     if (isFormData && files.length > 0) {
-      // Files were uploaded - upload to cloud storage
-      try {
-        const { uploadFileToCloud } = await import('../lib/cloudStorage');
-        const folderPath = `projects/${project_id}`;
-        
-        // Upload each new file to cloud storage
-        for (const file of files) {
-          try {
-            const cloudUrl = await uploadFileToCloud(file.path, file.filename, folderPath);
-            cloudImageUrls.push(cloudUrl);
-            // Keep local path for backward compatibility
-            imageUrls.push(`/uploads/projects/${project_id}/${file.filename}`);
-          } catch (uploadError: any) {
-            log.error(`Failed to upload ${file.filename} to cloud storage`, uploadError, { filename: file.filename, project_id });
-            // Fallback to local path
-            imageUrls.push(`/uploads/projects/${project_id}/${file.filename}`);
+      // Files were uploaded - upload to storage provider
+      const storage = await StorageFactory.getInstance();
+      const basePath = `projects/${project_id}`;
+      
+      // Upload each new file to storage provider
+      for (const file of files) {
+        try {
+          // Generate partitioned path
+          const storagePath = generatePartitionedPath(file.originalname, basePath);
+          
+          // Stream file from temp location to storage provider
+          const fileStream = createReadStream(file.path);
+          await storage.put(storagePath, fileStream, {
+            contentType: file.mimetype,
+          });
+          
+          // Get URL from storage provider
+          const fileUrl = await storage.url(storagePath);
+          imageUrls.push(fileUrl);
+          
+          // For S3, also store in cloud_image_urls
+          if (storage.getDriver() === 's3') {
+            cloudImageUrls.push(fileUrl);
           }
-        }
-        
-        // Also include any existing image URLs from body
-        if (req.body.image_urls) {
+          
+          // Delete temp file after successful upload
           try {
-            const existingUrls = typeof req.body.image_urls === 'string' 
-              ? JSON.parse(req.body.image_urls) 
-              : req.body.image_urls;
-            imageUrls = [...imageUrls, ...existingUrls];
-          } catch (e) {
-            // If parsing fails, just use the new files
+            if (fs.existsSync(file.path)) {
+              fs.unlinkSync(file.path);
+            }
+          } catch (cleanupError) {
+            log.error('Failed to cleanup temp file after upload', cleanupError);
           }
-        }
-        
-        // Include existing cloud URLs
-        if (req.body.cloud_image_urls) {
+        } catch (uploadError: any) {
+          log.error(`Failed to upload ${file.filename} to storage`, uploadError, { filename: file.filename, project_id });
+          // Try to clean up temp file
           try {
-            const existingCloudUrls = typeof req.body.cloud_image_urls === 'string'
-              ? JSON.parse(req.body.cloud_image_urls)
-              : req.body.cloud_image_urls;
-            cloudImageUrls = [...cloudImageUrls, ...existingCloudUrls];
-          } catch (e) {
-            // If parsing fails, just use the new files
+            if (fs.existsSync(file.path)) {
+              fs.unlinkSync(file.path);
+            }
+          } catch (cleanupError) {
+            log.error('Failed to cleanup temp file after upload error', cleanupError);
           }
+          // Don't add to imageUrls if upload failed
         }
-      } catch (error: any) {
-        log.error('Cloud storage upload error', error, { project_id });
-        // Fallback to local paths
-        imageUrls = files.map(f => `/uploads/projects/${project_id}/${f.filename}`);
+      }
+      
+      // Also include any existing image URLs from body
+      if (req.body.image_urls) {
+        try {
+          const existingUrls = typeof req.body.image_urls === 'string' 
+            ? JSON.parse(req.body.image_urls) 
+            : req.body.image_urls;
+          imageUrls = [...imageUrls, ...existingUrls];
+        } catch (e) {
+          // If parsing fails, just use the new files
+        }
+      }
+      
+      // Include existing cloud URLs
+      if (req.body.cloud_image_urls) {
+        try {
+          const existingCloudUrls = typeof req.body.cloud_image_urls === 'string'
+            ? JSON.parse(req.body.cloud_image_urls)
+            : req.body.cloud_image_urls;
+          cloudImageUrls = [...cloudImageUrls, ...existingCloudUrls];
+        } catch (e) {
+          // If parsing fails, just use the new files
+        }
       }
     } else {
       // JSON request with pre-uploaded URLs or existing URLs
@@ -589,31 +636,44 @@ router.delete('/:id', authenticate, async (req: AuthRequest, res: Response) => {
       });
     }
 
-    // Get timesheet info for cleanup
-    const timesheetInfo = existing.rows[0];
+    // Get timesheet info for cleanup (including image_urls)
+    const timesheetWithImages = await query(
+      'SELECT image_urls, project_id FROM timesheets WHERE id = $1',
+      [req.params.id]
+    );
     
+    const timesheetInfo = existing.rows[0];
+    const imageUrls = timesheetWithImages.rows[0]?.image_urls || [];
+    
+    // Delete from database
     await query('DELETE FROM timesheets WHERE id = $1', [req.params.id]);
 
-    // Delete associated image files
-    if (timesheetInfo.image_urls && timesheetInfo.image_urls.length > 0 && timesheetInfo.project_id) {
-      try {
-        const fs = require('fs');
-        const path = require('path');
-        const projectDir = path.join(__dirname, '../../uploads/projects', timesheetInfo.project_id);
-        
-        timesheetInfo.image_urls.forEach((imageUrl: string) => {
-          const filename = imageUrl.split('/').pop();
-          if (filename) {
-            const filePath = path.join(projectDir, filename);
-            if (fs.existsSync(filePath)) {
-              fs.unlinkSync(filePath);
-            }
-          }
-        });
-      } catch (fileError) {
-        log.error('Failed to delete timesheet image files', fileError, { timesheetId: req.params.id });
-        // Continue even if file deletion fails
+    // Delete associated image files using storage provider
+    if (imageUrls.length > 0) {
+      const storage = await StorageFactory.getInstance();
+      const cleanupPromises: Promise<void>[] = [];
+
+      for (const imageUrl of imageUrls) {
+        // Skip HTTP URLs (S3 signed URLs - can't delete directly)
+        if (!imageUrl || imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
+          continue;
+        }
+
+        // Extract storage path and delete
+        const storagePath = resolveStoragePath(imageUrl);
+        cleanupPromises.push(
+          storage.delete(storagePath).catch((err) => {
+            log.error('Failed to delete timesheet image', err, { timesheetId: req.params.id, path: storagePath });
+          })
+        );
       }
+
+      // Run cleanup in background (don't block response)
+      Promise.all(cleanupPromises).then(() => {
+        log.info('Timesheet images cleanup completed', { timesheetId: req.params.id, imagesDeleted: cleanupPromises.length });
+      }).catch((err) => {
+        log.error('Error during timesheet cleanup', err, { timesheetId: req.params.id });
+      });
     }
 
     // Update project costs
@@ -688,24 +748,52 @@ router.post('/:id/images', authenticate,
       // Get project_id from request body (already set in previous middleware)
       const project_id = req.body.project_id;
     
-    // Upload files to cloud storage
+    // Upload files to storage provider
+    const storage = await StorageFactory.getInstance();
+    const basePath = `projects/${project_id}`;
+    let imageUrls: string[] = [];
     let cloudImageUrls: string[] = [];
-    const localImageUrls = files.map(f => `/uploads/projects/${project_id}/${f.filename}`);
     
-    try {
-      const { uploadFileToCloud } = await import('../lib/cloudStorage');
-      const folderPath = `projects/${project_id}`;
-      
-      for (const file of files) {
-        try {
-          const cloudUrl = await uploadFileToCloud(file.path, file.filename, folderPath);
-          cloudImageUrls.push(cloudUrl);
-        } catch (uploadError: any) {
-          log.error(`Failed to upload ${file.filename} to cloud storage`, uploadError, { filename: file.filename, timesheetId: req.params.id });
+    for (const file of files) {
+      try {
+        // Generate partitioned path
+        const storagePath = generatePartitionedPath(file.originalname, basePath);
+        
+        // Stream file from temp location to storage provider
+        const fileStream = createReadStream(file.path);
+        await storage.put(storagePath, fileStream, {
+          contentType: file.mimetype,
+        });
+        
+        // Get URL from storage provider
+        const fileUrl = await storage.url(storagePath);
+        imageUrls.push(fileUrl);
+        
+        // For S3, also store in cloud_image_urls
+        if (storage.getDriver() === 's3') {
+          cloudImageUrls.push(fileUrl);
         }
+        
+        // Delete temp file after successful upload
+        try {
+          if (fs.existsSync(file.path)) {
+            fs.unlinkSync(file.path);
+          }
+        } catch (cleanupError) {
+          log.error('Failed to cleanup temp file after upload', cleanupError);
+        }
+      } catch (uploadError: any) {
+        log.error(`Failed to upload ${file.filename} to storage`, uploadError, { filename: file.filename, timesheetId: req.params.id });
+        // Try to clean up temp file
+        try {
+          if (fs.existsSync(file.path)) {
+            fs.unlinkSync(file.path);
+          }
+        } catch (cleanupError) {
+          log.error('Failed to cleanup temp file after upload error', cleanupError);
+        }
+        // Don't add to imageUrls if upload failed
       }
-    } catch (error: any) {
-      log.error('Cloud storage upload error', error, { timesheetId: req.params.id });
     }
 
     // Update both local and cloud URLs
@@ -716,7 +804,7 @@ router.post('/:id/images', authenticate,
            updated_at = CURRENT_TIMESTAMP
        WHERE id = $3
        RETURNING image_urls, cloud_image_urls`,
-      [localImageUrls, cloudImageUrls.length > 0 ? cloudImageUrls : [], req.params.id]
+      [imageUrls, cloudImageUrls.length > 0 ? cloudImageUrls : [], req.params.id]
     );
 
     res.json({ 
@@ -768,13 +856,22 @@ router.delete('/:id/images/:index', authenticate, async (req: AuthRequest, res: 
 
     // Delete physical file
     try {
-      // Extract filename from URL (e.g., /uploads/projects/{id}/filename.jpg)
-      const filename = imageUrl.split('/').pop();
-      if (filename && projectId) {
-        const filePath = path.join(__dirname, '../../uploads/projects', projectId, filename);
-        if (fs.existsSync(filePath)) {
-          fs.unlinkSync(filePath);
+      // Delete file from storage
+      const storage = await StorageFactory.getInstance();
+      try {
+        // Extract storage path from URL
+        let storagePath: string;
+        if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
+          // S3 signed URL - can't delete directly, would need S3 key
+          log.warn('Cannot delete S3 file from signed URL', { imageUrl, timesheetId });
+        } else {
+          // Local path - extract relative path
+          storagePath = resolveStoragePath(imageUrl);
+          await storage.delete(storagePath);
         }
+      } catch (deleteError: any) {
+        log.error('Failed to delete image from storage', deleteError, { imageUrl, timesheetId });
+        // Continue - file is already removed from array
       }
     } catch (fileError) {
       log.error('Failed to delete image file', fileError, { timesheetId: req.params.id, imageUrl });

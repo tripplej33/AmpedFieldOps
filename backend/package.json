@@ -8,6 +8,7 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "migrate": "tsx src/db/migrate.ts",
+    "migrate:files": "tsx src/scripts/migrate-files-to-storage.ts",
     "seed": "tsx src/db/seed.ts",
     "seed:demo": "tsx src/db/seed-demo.ts",
     "cleanup:duplicates": "tsx scripts/cleanup-duplicates.ts",

@@ -1259,6 +1259,43 @@ class ApiClient {
     return this.request<any>(`/api/backups/${id}`);
   }
 
+  // Storage Settings
+  async getStorageSettings() {
+    return this.request<{
+      driver: 'local' | 's3';
+      basePath?: string;
+      s3Bucket?: string;
+      s3Region?: string;
+      s3AccessKeyId?: string;
+      s3SecretAccessKey?: string;
+      s3Endpoint?: string;
+    }>('/api/settings/storage');
+  }
+
+  async updateStorageSettings(data: {
+    driver: 'local' | 's3';
+    basePath?: string;
+    s3Bucket?: string;
+    s3Region?: string;
+    s3AccessKeyId?: string;
+    s3SecretAccessKey?: string;
+    s3Endpoint?: string;
+  }) {
+    return this.request('/api/settings/storage', { method: 'PUT', body: data });
+  }
+
+  async testStorageConnection(data: {
+    driver: 'local' | 's3';
+    basePath?: string;
+    s3Bucket?: string;
+    s3Region?: string;
+    s3AccessKeyId?: string;
+    s3SecretAccessKey?: string;
+    s3Endpoint?: string;
+  }) {
+    return this.request<{ success: boolean; message: string }>('/api/settings/storage/test', { method: 'POST', body: data });
+  }
+
   async createBackup(data: { type: 'full' | 'database' | 'files'; storage_type?: 'local' | 'google_drive' }) {
     return this.request<any>('/api/backups', { method: 'POST', body: data });
   }

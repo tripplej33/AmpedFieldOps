@@ -47,7 +47,24 @@ export default function Settings() {
     redirectUri: ''
   });
   
-  // Cloud Storage state
+  // Storage Settings state (new unified storage abstraction)
+  const [storageSettings, setStorageSettings] = useState<{
+    driver: 'local' | 's3';
+    basePath?: string;
+    s3Bucket?: string;
+    s3Region?: string;
+    s3AccessKeyId?: string;
+    s3SecretAccessKey?: string;
+    s3Endpoint?: string;
+  }>({
+    driver: 'local',
+    basePath: 'uploads',
+  });
+  const [storageConnectionStatus, setStorageConnectionStatus] = useState<{ success: boolean; message: string } | null>(null);
+  const [isSavingStorage, setIsSavingStorage] = useState(false);
+  const [isTestingStorageConnection, setIsTestingStorageConnection] = useState(false);
+  
+  // Legacy cloud storage state (for Google Drive - keep separate)
   const [cloudStorageProvider, setCloudStorageProvider] = useState<'local' | 's3' | 'google-drive'>('local');
   const [s3Config, setS3Config] = useState({
     accessKeyId: '',
@@ -261,6 +278,15 @@ export default function Settings() {
     try {
       const settingsData = await api.getSettings();
       setSettings(settingsData);
+
+      // Load storage settings
+      try {
+        const storageData = await api.getStorageSettings();
+        setStorageSettings(storageData);
+      } catch (error) {
+        // Storage settings might not exist yet, use defaults
+        console.log('Storage settings not found, using defaults');
+      }
 
       // Update favicon if available
       if (settingsData.company_favicon) {
@@ -1397,63 +1423,65 @@ export default function Settings() {
               <Card className="p-6 bg-card border-border">
                 <div className="flex items-start justify-between mb-6">
                   <div>
-                    <h3 className="text-lg font-bold mb-1">Cloud Storage Configuration</h3>
+                    <h3 className="text-lg font-bold mb-1">Storage Configuration</h3>
                     <p className="text-sm text-muted-foreground">
-                      Configure where files and images are stored. Choose between local storage, AWS S3, or Google Drive.
+                      Configure where files and images are stored. Choose between local filesystem or AWS S3-compatible storage.
                     </p>
                   </div>
                 </div>
 
                 <div className="space-y-6">
+                  {/* Connection Status */}
+                  {storageConnectionStatus && (
+                    <div className={cn(
+                      "p-3 rounded-lg border flex items-center gap-2",
+                      storageConnectionStatus.success 
+                        ? "bg-voltage/10 border-voltage text-voltage" 
+                        : "bg-destructive/10 border-destructive text-destructive"
+                    )}>
+                      {storageConnectionStatus.success ? (
+                        <CheckCircle className="w-4 h-4" />
+                      ) : (
+                        <XIcon className="w-4 h-4" />
+                      )}
+                      <span className="text-sm font-mono">{storageConnectionStatus.message}</span>
+                    </div>
+                  )}
+
                   {/* Provider Selection */}
                   <div>
                     <Label className="font-mono text-xs uppercase tracking-wider mb-3 block">
-                      Storage Provider
+                      Storage Driver
                     </Label>
-                    <div className="grid grid-cols-3 gap-4">
+                    <div className="grid grid-cols-2 gap-4">
                       <button
                         type="button"
-                        onClick={() => setCloudStorageProvider('local')}
+                        onClick={() => setStorageSettings(prev => ({ ...prev, driver: 'local' }))}
                         className={cn(
                           "p-4 rounded-lg border-2 transition-all text-left",
-                          cloudStorageProvider === 'local'
+                          storageSettings.driver === 'local'
                             ? "border-electric bg-electric/10"
                             : "border-border hover:border-electric/50"
                         )}
                       >
-                        <div className="font-semibold mb-1">Local Storage</div>
+                        <div className="font-semibold mb-1">Local Filesystem</div>
                         <div className="text-xs text-muted-foreground">
                           Files stored on server disk
                         </div>
                       </button>
                       <button
                         type="button"
-                        onClick={() => setCloudStorageProvider('s3')}
+                        onClick={() => setStorageSettings(prev => ({ ...prev, driver: 's3' }))}
                         className={cn(
                           "p-4 rounded-lg border-2 transition-all text-left",
-                          cloudStorageProvider === 's3'
+                          storageSettings.driver === 's3'
                             ? "border-electric bg-electric/10"
                             : "border-border hover:border-electric/50"
                         )}
                       >
-                        <div className="font-semibold mb-1">AWS S3</div>
+                        <div className="font-semibold mb-1">Amazon S3</div>
                         <div className="text-xs text-muted-foreground">
                           Scalable cloud storage
-                        </div>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setCloudStorageProvider('google-drive')}
-                        className={cn(
-                          "p-4 rounded-lg border-2 transition-all text-left",
-                          cloudStorageProvider === 'google-drive'
-                            ? "border-electric bg-electric/10"
-                            : "border-border hover:border-electric/50"
-                        )}
-                      >
-                        <div className="font-semibold mb-1">Google Drive</div>
-                        <div className="text-xs text-muted-foreground">
-                          Google cloud storage
                         </div>
                       </button>
                     </div>
@@ -1461,19 +1489,65 @@ export default function Settings() {
 
                   <Separator />
 
+                  {/* Base Path Configuration */}
+                  <div>
+                    <Label className="font-mono text-xs uppercase tracking-wider">
+                      Base Path
+                    </Label>
+                    <Input
+                      type="text"
+                      value={storageSettings.basePath || 'uploads'}
+                      onChange={(e) => setStorageSettings(prev => ({ ...prev, basePath: e.target.value }))}
+                      placeholder="uploads"
+                      className="mt-2 font-mono text-sm"
+                    />
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Base directory path for file storage (relative to storage root)
+                    </p>
+                  </div>
+
                   {/* S3 Configuration */}
-                  {cloudStorageProvider === 's3' && (
+                  {storageSettings.driver === 's3' && (
                     <div className="space-y-4 p-4 rounded-lg bg-muted/20 border border-border">
-                      <h4 className="text-sm font-bold font-mono uppercase tracking-wider">AWS S3 Configuration</h4>
+                      <h4 className="text-sm font-bold font-mono uppercase tracking-wider">S3 Configuration</h4>
                       
+                      <div>
+                        <Label className="font-mono text-xs uppercase tracking-wider">
+                          Bucket Name *
+                        </Label>
+                        <Input
+                          type="text"
+                          value={storageSettings.s3Bucket || ''}
+                          onChange={(e) => setStorageSettings(prev => ({ ...prev, s3Bucket: e.target.value }))}
+                          placeholder="my-bucket-name"
+                          className="mt-2 font-mono text-sm"
+                        />
+                      </div>
+
+                      <div>
+                        <Label className="font-mono text-xs uppercase tracking-wider">
+                          Region *
+                        </Label>
+                        <Input
+                          type="text"
+                          value={storageSettings.s3Region || 'us-east-1'}
+                          onChange={(e) => setStorageSettings(prev => ({ ...prev, s3Region: e.target.value }))}
+                          placeholder="us-east-1"
+                          className="mt-2 font-mono text-sm"
+                        />
+                        <p className="text-xs text-muted-foreground mt-1">
+                          AWS region where your bucket is located (e.g., us-east-1, eu-west-1)
+                        </p>
+                      </div>
+
                       <div>
                         <Label className="font-mono text-xs uppercase tracking-wider">
                           Access Key ID *
                         </Label>
                         <Input
-                          type="text"
-                          value={s3Config.accessKeyId}
-                          onChange={(e) => setS3Config(prev => ({ ...prev, accessKeyId: e.target.value }))}
+                          type="password"
+                          value={storageSettings.s3AccessKeyId || ''}
+                          onChange={(e) => setStorageSettings(prev => ({ ...prev, s3AccessKeyId: e.target.value }))}
                           placeholder="AKIAIOSFODNN7EXAMPLE"
                           className="mt-2 font-mono text-sm"
                         />
@@ -1485,8 +1559,8 @@ export default function Settings() {
                         </Label>
                         <Input
                           type="password"
-                          value={s3Config.secretAccessKey}
-                          onChange={(e) => setS3Config(prev => ({ ...prev, secretAccessKey: e.target.value }))}
+                          value={storageSettings.s3SecretAccessKey || ''}
+                          onChange={(e) => setStorageSettings(prev => ({ ...prev, s3SecretAccessKey: e.target.value }))}
                           placeholder="wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY"
                           className="mt-2 font-mono text-sm"
                         />
@@ -1494,65 +1568,63 @@ export default function Settings() {
 
                       <div>
                         <Label className="font-mono text-xs uppercase tracking-wider">
-                          Region *
+                          Endpoint (Optional)
                         </Label>
                         <Input
                           type="text"
-                          value={s3Config.region}
-                          onChange={(e) => setS3Config(prev => ({ ...prev, region: e.target.value }))}
-                          placeholder="us-east-1"
+                          value={storageSettings.s3Endpoint || ''}
+                          onChange={(e) => setStorageSettings(prev => ({ ...prev, s3Endpoint: e.target.value }))}
+                          placeholder="https://s3.amazonaws.com (leave empty for AWS)"
                           className="mt-2 font-mono text-sm"
                         />
                         <p className="text-xs text-muted-foreground mt-1">
-                          AWS region where your bucket is located (e.g., us-east-1, eu-west-1)
+                          For S3-compatible services (MinIO, DigitalOcean Spaces, etc.)
                         </p>
-                      </div>
-
-                      <div>
-                        <Label className="font-mono text-xs uppercase tracking-wider">
-                          Bucket Name *
-                        </Label>
-                        <Input
-                          type="text"
-                          value={s3Config.bucket}
-                          onChange={(e) => setS3Config(prev => ({ ...prev, bucket: e.target.value }))}
-                          placeholder="my-bucket-name"
-                          className="mt-2 font-mono text-sm"
-                        />
                       </div>
 
                       <div className="flex gap-2">
                         <Button
                           onClick={async () => {
-                            setIsTestingConnection(true);
+                            setIsTestingStorageConnection(true);
+                            setStorageConnectionStatus(null);
                             try {
-                              // Test S3 connection
-                              await api.testS3Connection(s3Config);
-                              toast.success('S3 connection successful!');
+                              const result = await api.testStorageConnection(storageSettings);
+                              setStorageConnectionStatus(result);
+                              if (result.success) {
+                                toast.success('Storage connection successful!');
+                              } else {
+                                toast.error(result.message || 'Connection test failed');
+                              }
                             } catch (error: any) {
-                              toast.error(error.message || 'S3 connection test failed');
+                              const errorMsg = error.message || 'Connection test failed';
+                              setStorageConnectionStatus({ success: false, message: errorMsg });
+                              toast.error(errorMsg);
                             } finally {
-                              setIsTestingConnection(false);
+                              setIsTestingStorageConnection(false);
                             }
                           }}
-                          disabled={isTestingConnection || !s3Config.accessKeyId || !s3Config.secretAccessKey || !s3Config.bucket}
+                          disabled={isTestingStorageConnection || 
+                            (storageSettings.driver === 's3' && (!storageSettings.s3Bucket || !storageSettings.s3AccessKeyId || !storageSettings.s3SecretAccessKey))}
                           variant="outline"
                         >
-                          {isTestingConnection ? (
+                          {isTestingStorageConnection ? (
                             <>
                               <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                               Testing...
                             </>
                           ) : (
-                            'Test Connection'
+                            <>
+                              <RefreshCw className="w-4 h-4 mr-2" />
+                              Test Connection
+                            </>
                           )}
                         </Button>
                       </div>
                     </div>
                   )}
 
-                  {/* Google Drive Configuration */}
-                  {cloudStorageProvider === 'google-drive' && (
+                  {/* Legacy Google Drive Configuration (kept for backward compatibility) */}
+                  {false && cloudStorageProvider === 'google-drive' && (
                     <div className="space-y-4">
                       {/* Connection Status */}
                       <div className="flex items-center justify-between p-3 rounded-lg bg-muted/20 border border-border">
@@ -1738,10 +1810,10 @@ export default function Settings() {
                   )}
 
                   {/* Local Storage Info */}
-                  {cloudStorageProvider === 'local' && (
+                  {storageSettings.driver === 'local' && (
                     <div className="p-4 rounded-lg bg-muted/20 border border-border">
                       <p className="text-sm text-muted-foreground">
-                        Files will be stored on the server's local filesystem at <code className="bg-muted px-1 py-0.5 rounded text-xs">/uploads</code>.
+                        Files will be stored on the server's local filesystem at <code className="bg-muted px-1 py-0.5 rounded text-xs">/{storageSettings.basePath || 'uploads'}</code>.
                         This is suitable for small deployments but may not scale well.
                       </p>
                     </div>
@@ -1751,28 +1823,42 @@ export default function Settings() {
                   <div className="flex justify-end gap-2 pt-4 border-t border-border">
                     <Button
                       onClick={async () => {
-                        setIsSavingCloudStorage(true);
-                        try {
-                          await api.updateSetting('cloud_storage_provider', cloudStorageProvider, true);
-                          if (cloudStorageProvider === 's3') {
-                            await api.updateSetting('aws_access_key_id', s3Config.accessKeyId, true);
-                            await api.updateSetting('aws_secret_access_key', s3Config.secretAccessKey, true);
-                            await api.updateSetting('aws_region', s3Config.region, true);
-                            await api.updateSetting('aws_s3_bucket', s3Config.bucket, true);
-                          } else if (cloudStorageProvider === 'google-drive') {
-                            await api.updateSetting('google_drive_folder_id', googleDriveFolderId, true);
+                        // Test connection before saving if S3
+                        if (storageSettings.driver === 's3') {
+                          setIsTestingStorageConnection(true);
+                          try {
+                            const testResult = await api.testStorageConnection(storageSettings);
+                            if (!testResult.success) {
+                              toast.error('Connection test failed. Please fix configuration before saving.');
+                              setStorageConnectionStatus(testResult);
+                              return;
+                            }
+                            setStorageConnectionStatus(testResult);
+                          } catch (error: any) {
+                            toast.error(error.message || 'Connection test failed');
+                            return;
+                          } finally {
+                            setIsTestingStorageConnection(false);
                           }
-                          toast.success('Cloud storage configuration saved!');
+                        }
+
+                        setIsSavingStorage(true);
+                        try {
+                          await api.updateStorageSettings(storageSettings);
+                          toast.success('Storage configuration saved successfully!');
+                          // Reload settings to get updated values
+                          await loadSettings();
                         } catch (error: any) {
                           toast.error(error.message || 'Failed to save configuration');
                         } finally {
-                          setIsSavingCloudStorage(false);
+                          setIsSavingStorage(false);
                         }
                       }}
-                      disabled={isSavingCloudStorage || (cloudStorageProvider === 's3' && (!s3Config.accessKeyId || !s3Config.secretAccessKey || !s3Config.bucket))}
+                      disabled={isSavingStorage || isTestingStorageConnection || 
+                        (storageSettings.driver === 's3' && (!storageSettings.s3Bucket || !storageSettings.s3AccessKeyId || !storageSettings.s3SecretAccessKey))}
                       className="bg-electric text-background hover:bg-electric/90"
                     >
-                      {isSavingCloudStorage ? (
+                      {isSavingStorage ? (
                         <>
                           <Loader2 className="w-4 h-4 mr-2 animate-spin" />
                           Saving...

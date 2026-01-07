@@ -3,8 +3,12 @@ import { body, validationResult } from 'express-validator';
 import { query } from '../db';
 import { authenticate, requirePermission, AuthRequest } from '../middleware/auth';
 import { generateDocumentPDF } from '../lib/pdfGenerator';
+import { StorageFactory } from '../lib/storage/StorageFactory';
+import { generatePartitionedPath, resolveStoragePath } from '../lib/storage/pathUtils';
+import { createReadStream } from 'fs';
 import path from 'path';
 import fs from 'fs';
+import { log } from '../lib/logger';
 
 const router = Router();
 
@@ -229,11 +233,26 @@ router.delete('/:id', authenticate, requirePermission('can_edit_projects'), asyn
     // Delete from database first
     await query('DELETE FROM safety_documents WHERE id = $1', [req.params.id]);
 
-    // Delete PDF file if it exists
+    // Delete PDF file from storage if it exists
     if (filePath) {
-      const fullPath = path.join(__dirname, '../../', filePath);
-      if (fs.existsSync(fullPath)) {
-        fs.unlinkSync(fullPath);
+      const storage = await StorageFactory.getInstance();
+      try {
+        // Extract storage path from file_path
+        let storagePath: string;
+        if (filePath.startsWith('http://') || filePath.startsWith('https://')) {
+          // S3 signed URL - can't delete directly
+          log.warn('Cannot delete S3 file from signed URL', { filePath, documentId: req.params.id });
+        } else {
+          // Local path - extract relative path
+          storagePath = resolveStoragePath(filePath);
+          await storage.delete(storagePath);
+        }
+      } catch (deleteError: any) {
+        log.error('Failed to delete PDF from storage', deleteError, {
+          documentId: req.params.id,
+          filePath,
+        });
+        // Continue - file is already removed from DB
       }
     }
 
@@ -269,22 +288,43 @@ router.post('/:id/generate-pdf', authenticate, requirePermission('can_edit_proje
     // Parse JSON data
     const documentData = typeof doc.data === 'string' ? JSON.parse(doc.data) : doc.data;
 
-    // Create output path: uploads/projects/{project_id}/safety-documents/{document_id}.pdf
-    const outputDir = path.join(__dirname, '../../uploads/projects', projectId, 'safety-documents');
-    if (!fs.existsSync(outputDir)) {
-      fs.mkdirSync(outputDir, { recursive: true });
+    // Generate PDF to temp file first
+    const tempDir = path.join(__dirname, '../../uploads/temp');
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir, { recursive: true });
+    }
+    const tempPath = path.join(tempDir, `${doc.id}.pdf`);
+
+    // Generate PDF to temp file
+    await generateDocumentPDF(doc.document_type, documentData, tempPath);
+
+    // Upload PDF to storage provider
+    const storage = await StorageFactory.getInstance();
+    const basePath = `projects/${projectId}/safety-documents`;
+    const storagePath = generatePartitionedPath(`${doc.id}.pdf`, basePath);
+    
+    // Stream PDF from temp to storage
+    const pdfStream = createReadStream(tempPath);
+    await storage.put(storagePath, pdfStream, {
+      contentType: 'application/pdf',
+    });
+    
+    // Get URL from storage provider
+    const fileUrl = await storage.url(storagePath);
+    
+    // Delete temp file
+    try {
+      if (fs.existsSync(tempPath)) {
+        fs.unlinkSync(tempPath);
+      }
+    } catch (cleanupError) {
+      log.error('Failed to cleanup temp PDF file', cleanupError);
     }
 
-    const outputPath = path.join(outputDir, `${doc.id}.pdf`);
-    const relativePath = path.relative(path.join(__dirname, '../../'), outputPath).replace(/\\/g, '/');
-
-    // Generate PDF
-    await generateDocumentPDF(doc.document_type, documentData, outputPath);
-
-    // Update document with file path
+    // Update document with file path (URL from storage provider)
     await query(
       'UPDATE safety_documents SET file_path = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
-      [relativePath, doc.id]
+      [fileUrl, doc.id]
     );
 
     // Log activity
@@ -294,7 +334,7 @@ router.post('/:id/generate-pdf', authenticate, requirePermission('can_edit_proje
       [req.user!.id, 'generate_pdf', 'safety_document', doc.id, JSON.stringify({ document_type: doc.document_type })]
     );
 
-    res.json({ message: 'PDF generated successfully', file_path: relativePath });
+    res.json({ message: 'PDF generated successfully', file_path: fileUrl });
   } catch (error: any) {
     console.error('Generate PDF error:', error);
     const errorMessage = error?.message || 'Failed to generate PDF';
@@ -320,16 +360,61 @@ router.get('/:id/pdf', authenticate, requirePermission('can_view_financials'), a
       return res.status(404).json({ error: 'PDF not generated yet. Please generate PDF first.' });
     }
 
-    const filePath = path.join(__dirname, '../../', doc.file_path);
-
-    if (!fs.existsSync(filePath)) {
-      return res.status(404).json({ error: 'PDF file not found on disk' });
+    // Get storage provider
+    const storage = await StorageFactory.getInstance();
+    
+    // Extract storage path from file_path
+    let storagePath: string;
+    let useOldPath = false;
+    
+    if (doc.file_path.startsWith('http://') || doc.file_path.startsWith('https://')) {
+      // S3 signed URL - redirect directly (short-circuit for performance)
+      return res.redirect(doc.file_path);
+    } else {
+      // Local path - extract relative path
+      storagePath = resolveStoragePath(doc.file_path);
     }
-
+    
+    // Check if file exists in storage (new path)
+    let exists = await storage.exists(storagePath);
+    
+    // Hybrid support: If not found in new storage, try old filesystem path
+    if (!exists) {
+      // Try old path format: /uploads/projects/{project_id}/safety-documents/{filename}
+      const oldPath = doc.file_path.startsWith('/') 
+        ? doc.file_path.substring(1) // Remove leading slash
+        : doc.file_path;
+      
+      // Check if old path exists in filesystem (only for local storage)
+      if (storage.getDriver() === 'local') {
+        const absoluteOldPath = path.join(process.cwd(), oldPath);
+        if (fs.existsSync(absoluteOldPath)) {
+          // File exists in old location - use it for now
+          storagePath = oldPath;
+          exists = true;
+          useOldPath = true;
+          log.info('PDF found in old location, serving from old path', { documentId: req.params.id, oldPath });
+        }
+      }
+    }
+    
+    if (!exists) {
+      return res.status(404).json({ error: 'PDF file not found in storage' });
+    }
+    
+    // Get file stream from storage
+    const fileStream = useOldPath && storage.getDriver() === 'local'
+      ? fs.createReadStream(path.join(process.cwd(), storagePath))
+      : await storage.getStream(storagePath);
+    
+    // Set headers
     const fileName = `${doc.title || doc.document_type}_${req.params.id}.pdf`;
     res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
     res.setHeader('Content-Type', 'application/pdf');
-    res.sendFile(path.resolve(filePath));
+    res.setHeader('Cache-Control', 'public, max-age=3600');
+    
+    // Stream PDF to response
+    fileStream.pipe(res);
   } catch (error) {
     console.error('Download PDF error:', error);
     res.status(500).json({ error: 'Failed to download PDF' });

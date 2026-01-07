@@ -5,6 +5,8 @@ import { authenticate, requirePermission, AuthRequest } from '../middleware/auth
 import { parsePaginationParams, createPaginatedResponse } from '../lib/pagination';
 import { log } from '../lib/logger';
 import { PROJECT_CODE_CONSTANTS } from '../lib/constants';
+import { StorageFactory } from '../lib/storage/StorageFactory';
+import { resolveStoragePath } from '../lib/storage/pathUtils';
 
 const router = Router();
 
@@ -358,24 +360,101 @@ router.put('/:id', authenticate, requirePermission('can_edit_projects'),
 // Delete project
 router.delete('/:id', authenticate, requirePermission('can_edit_projects'), async (req: AuthRequest, res: Response) => {
   try {
-    const result = await query(
-      'DELETE FROM projects WHERE id = $1 RETURNING id, name, code',
-      [req.params.id]
+    const projectId = req.params.id;
+
+    // Get project info before deletion
+    const projectResult = await query(
+      'SELECT id, name, code FROM projects WHERE id = $1',
+      [projectId]
     );
 
-    if (result.rows.length === 0) {
+    if (projectResult.rows.length === 0) {
       return res.status(404).json({ error: 'Project not found' });
     }
+
+    const project = projectResult.rows[0];
+
+    // Get all associated files before deletion
+    const projectFiles = await query(
+      'SELECT id, file_path FROM project_files WHERE project_id = $1',
+      [projectId]
+    );
+
+    // Get all timesheet images
+    const timesheets = await query(
+      'SELECT id, image_urls FROM timesheets WHERE project_id = $1',
+      [projectId]
+    );
+
+    // Get all safety document PDFs
+    const safetyDocuments = await query(
+      'SELECT id, file_path FROM safety_documents WHERE project_id = $1 AND file_path IS NOT NULL',
+      [projectId]
+    );
+
+    // Delete project from database
+    await query('DELETE FROM projects WHERE id = $1', [projectId]);
+
+    // Cleanup orphaned files in parallel (don't block response)
+    const storage = await StorageFactory.getInstance();
+    const cleanupPromises: Promise<void>[] = [];
+
+    // Cleanup project files
+    for (const file of projectFiles.rows) {
+      if (file.file_path && !file.file_path.startsWith('http://') && !file.file_path.startsWith('https://')) {
+        const storagePath = resolveStoragePath(file.file_path);
+        cleanupPromises.push(
+          storage.delete(storagePath).catch((err) => {
+            log.error('Failed to delete project file', err, { fileId: file.id, path: storagePath });
+          })
+        );
+      }
+    }
+
+    // Cleanup timesheet images
+    for (const timesheet of timesheets.rows) {
+      const imageUrls = timesheet.image_urls || [];
+      for (const imageUrl of imageUrls) {
+        if (imageUrl && !imageUrl.startsWith('http://') && !imageUrl.startsWith('https://')) {
+          const storagePath = resolveStoragePath(imageUrl);
+          cleanupPromises.push(
+            storage.delete(storagePath).catch((err) => {
+              log.error('Failed to delete timesheet image', err, { timesheetId: timesheet.id, path: storagePath });
+            })
+          );
+        }
+      }
+    }
+
+    // Cleanup safety document PDFs
+    for (const doc of safetyDocuments.rows) {
+      if (doc.file_path && !doc.file_path.startsWith('http://') && !doc.file_path.startsWith('https://')) {
+        const storagePath = resolveStoragePath(doc.file_path);
+        cleanupPromises.push(
+          storage.delete(storagePath).catch((err) => {
+            log.error('Failed to delete safety document PDF', err, { docId: doc.id, path: storagePath });
+          })
+        );
+      }
+    }
+
+    // Run cleanup in background (don't await)
+    Promise.all(cleanupPromises).then(() => {
+      log.info('Project cleanup completed', { projectId, filesDeleted: cleanupPromises.length });
+    }).catch((err) => {
+      log.error('Error during project cleanup', err, { projectId });
+    });
 
     // Log activity
     await query(
       `INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) 
        VALUES ($1, $2, $3, $4, $5)`,
-      [req.user!.id, 'delete', 'project', req.params.id, JSON.stringify({ name: result.rows[0].name })]
+      [req.user!.id, 'delete', 'project', projectId, JSON.stringify({ name: project.name })]
     );
 
     res.json({ message: 'Project deleted' });
   } catch (error) {
+    log.error('Delete project error', error, { projectId: req.params.id });
     res.status(500).json({ error: 'Failed to delete project' });
   }
 });

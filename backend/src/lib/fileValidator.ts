@@ -1,9 +1,12 @@
 import fs from 'fs';
+import { StorageFactory } from './storage/StorageFactory';
 
 /**
  * File content validation using magic numbers/file signatures
  * Validates actual file content matches declared MIME type
  * Prevents malicious files disguised as images or documents
+ * 
+ * Supports both local filesystem paths and storage provider paths
  */
 
 // Magic number signatures for common file types
@@ -54,16 +57,31 @@ const FILE_SIGNATURES: { [key: string]: Array<{ offset: number; bytes: number[] 
  */
 export async function validateFileContent(
   filePath: string,
-  declaredMimeType: string
+  declaredMimeType: string,
+  useStorageProvider: boolean = false
 ): Promise<boolean> {
   try {
-    // Read first 32 bytes (enough for most magic numbers)
-    const buffer = Buffer.alloc(32);
-    const fd = await fs.promises.open(filePath, 'r');
-    const { bytesRead } = await fd.read(buffer, 0, 32, 0);
-    await fd.close();
+    let buffer: Buffer;
+    
+    if (useStorageProvider) {
+      // Use storage provider to read file
+      const storage = await StorageFactory.getInstance();
+      const fileContent = await storage.get(filePath);
+      // Read first 32 bytes
+      buffer = fileContent.slice(0, 32);
+    } else {
+      // Use local filesystem (backward compatibility)
+      buffer = Buffer.alloc(32);
+      const fd = await fs.promises.open(filePath, 'r');
+      const { bytesRead } = await fd.read(buffer, 0, 32, 0);
+      await fd.close();
+      
+      if (bytesRead === 0) {
+        return false; // Empty file
+      }
+    }
 
-    if (bytesRead === 0) {
+    if (buffer.length === 0) {
       return false; // Empty file
     }
 
@@ -90,7 +108,7 @@ export async function validateFileContent(
     for (const signature of signatures) {
       const { offset, bytes } = signature;
       
-      if (offset + bytes.length > bytesRead) {
+      if (offset + bytes.length > buffer.length) {
         continue; // Not enough data
       }
 
