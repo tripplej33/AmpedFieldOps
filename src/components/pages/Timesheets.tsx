@@ -2145,26 +2145,25 @@ function TimesheetForm({
                   </div>
                 )}
 
-                {/* Hidden file inputs */}
-                <input
-                  ref={fileInputRef as React.LegacyRef<HTMLInputElement>}
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  onChange={handleFileSelect}
-                  className="hidden"
-                />
-                <input
-                  ref={cameraInputRef as React.LegacyRef<HTMLInputElement>}
-                  type="file"
-                  accept="image/*"
-                  capture="environment"
-                  onChange={handleFileSelect}
-                  className="hidden"
-                />
-              </div>
-            </div>
-        </div>
+            {/* Hidden file inputs */}
+            <input
+              ref={fileInputRef as React.LegacyRef<HTMLInputElement>}
+              type="file"
+              accept="image/*"
+              multiple
+              onChange={handleFileSelect}
+              className="hidden"
+            />
+            <input
+              ref={cameraInputRef as React.LegacyRef<HTMLInputElement>}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={handleFileSelect}
+              className="hidden"
+            />
+          </div>
+      </div>
 
       {/* Sticky Action Buttons */}
       <div className="flex justify-end gap-2 sm:gap-3 pt-3 sm:pt-4 border-t border-border sticky bottom-0 bg-card -mx-3 sm:-mx-4 lg:-mx-6 px-3 sm:px-4 lg:px-6 pb-2 mt-4">
