@@ -19,6 +19,7 @@ import { createHash } from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import { log } from '../lib/logger';
+import { isGoogleDriveConnected } from '../lib/googleDrive';
 
 interface MigrationRecord {
   id: string;
@@ -179,18 +180,30 @@ async function migrateFile(
     const stats = fs.statSync(absoluteSourcePath);
     const fileSize = stats.size;
 
-    // Calculate checksum
-    log.info(`Calculating checksum for: ${absoluteSourcePath}`);
-    const checksum = await calculateChecksum(absoluteSourcePath);
+    // Calculate checksum (skip for very large files to save time)
+    let checksum: string | undefined;
+    const storage = await StorageFactory.getInstance();
+    const driver = storage.getDriver();
+    
+    // For Google Drive, skip checksum calculation for files > 10MB to speed up migration
+    // For other drivers, calculate checksum for all files
+    if (driver !== 'google-drive' || fileSize < 10 * 1024 * 1024) {
+      log.info(`Calculating checksum for: ${absoluteSourcePath} (${(fileSize / 1024 / 1024).toFixed(2)} MB)`);
+      checksum = await calculateChecksum(absoluteSourcePath);
+    } else {
+      log.info(`Skipping checksum for large file: ${absoluteSourcePath} (${(fileSize / 1024 / 1024).toFixed(2)} MB)`);
+    }
 
     // Create migration record as 'in_progress'
     await createMigrationRecord(fileId, entityType, entityId, sourcePath, destinationPath, 'in_progress', fileSize, checksum);
 
-    // Get storage provider
-    const storage = await StorageFactory.getInstance();
-
     // Copy file to storage
-    log.info(`Migrating file: ${sourcePath} -> ${destinationPath}`);
+    if (driver === 'google-drive') {
+      log.info(`Uploading to Google Drive: ${sourcePath} -> ${destinationPath} (${(fileSize / 1024 / 1024).toFixed(2)} MB)`);
+    } else {
+      log.info(`Migrating file: ${sourcePath} -> ${destinationPath}`);
+    }
+    
     const fileStream = createReadStream(absoluteSourcePath);
     await storage.put(destinationPath, fileStream, {
       contentType: getContentType(filename),
@@ -202,11 +215,26 @@ async function migrateFile(
     // Mark migration as completed
     await createMigrationRecord(fileId, entityType, entityId, sourcePath, destinationPath, 'completed', fileSize, checksum);
 
-    log.info(`Successfully migrated: ${sourcePath} -> ${destinationPath}`);
+    if (driver === 'google-drive') {
+      log.info(`✓ Successfully uploaded to Google Drive: ${destinationPath}`);
+    } else {
+      log.info(`Successfully migrated: ${sourcePath} -> ${destinationPath}`);
+    }
     return { success: true, destinationPath };
   } catch (error: any) {
     const errorMsg = error?.message || 'Unknown error';
-    log.error(`Failed to migrate file: ${sourcePath}`, error);
+    
+    // Provide more helpful error messages for Google Drive
+    if (errorMsg.includes('Google Drive') || errorMsg.includes('gdrive')) {
+      log.error(`Failed to upload to Google Drive: ${sourcePath}`, error);
+      log.error('  This may be due to:');
+      log.error('  - Google Drive API rate limits (wait and retry)');
+      log.error('  - Insufficient permissions');
+      log.error('  - Network connectivity issues');
+    } else {
+      log.error(`Failed to migrate file: ${sourcePath}`, error);
+    }
+    
     await createMigrationRecord(fileId, entityType, entityId, sourcePath, '', 'failed', undefined, undefined, errorMsg);
     return { success: false, error: errorMsg };
   }
@@ -319,13 +347,20 @@ async function migrateProjectFiles(): Promise<{ success: number; failed: number 
      FROM project_files 
      WHERE file_path IS NOT NULL 
      AND file_path != ''
-     AND NOT (file_path LIKE 'http://%' OR file_path LIKE 'https://%')`
+     AND NOT (file_path LIKE 'http://%' OR file_path LIKE 'https://%')
+     AND NOT (file_path LIKE 'gdrive://%')`
   );
 
+  log.info(`Found ${files.rows.length} project files to migrate`);
   let success = 0;
   let failed = 0;
+  let processed = 0;
 
   for (const file of files.rows) {
+    processed++;
+    if (processed % 10 === 0) {
+      log.info(`Progress: ${processed}/${files.rows.length} files processed (${success} succeeded, ${failed} failed)`);
+    }
     const basePath = `projects/${file.project_id}/files`;
     const result = await migrateFile(
       file.id,
@@ -358,8 +393,21 @@ async function migrateTimesheetImages(): Promise<{ success: number; failed: numb
      AND array_length(image_urls, 1) > 0`
   );
 
+  // Count total images to migrate
+  let totalImages = 0;
+  for (const timesheet of timesheets.rows) {
+    const imageUrls = timesheet.image_urls || [];
+    for (const imageUrl of imageUrls) {
+      if (!imageUrl.startsWith('http://') && !imageUrl.startsWith('https://') && !imageUrl.startsWith('gdrive://')) {
+        totalImages++;
+      }
+    }
+  }
+  
+  log.info(`Found ${totalImages} timesheet images to migrate`);
   let success = 0;
   let failed = 0;
+  let processed = 0;
 
   for (const timesheet of timesheets.rows) {
     const imageUrls = timesheet.image_urls || [];
@@ -380,6 +428,10 @@ async function migrateTimesheetImages(): Promise<{ success: number; failed: numb
         basePath,
         filename
       );
+      processed++;
+      if (processed % 10 === 0) {
+        log.info(`Progress: ${processed}/${totalImages} images processed (${success} succeeded, ${failed} failed)`);
+      }
       if (result.success) {
         success++;
       } else {
@@ -402,9 +454,11 @@ async function migrateSafetyDocuments(): Promise<{ success: number; failed: numb
      FROM safety_documents 
      WHERE file_path IS NOT NULL 
      AND file_path != ''
-     AND NOT (file_path LIKE 'http://%' OR file_path LIKE 'https://%')`
+     AND NOT (file_path LIKE 'http://%' OR file_path LIKE 'https://%')
+     AND NOT (file_path LIKE 'gdrive://%')`
   );
 
+  log.info(`Found ${documents.rows.length} safety documents to migrate`);
   let success = 0;
   let failed = 0;
 
@@ -452,8 +506,8 @@ async function migrateLogosAndFavicons(): Promise<{ success: number; failed: num
       }
 
       const filePath = value.path || value.url;
-      // Skip HTTP URLs
-      if (filePath.startsWith('http://') || filePath.startsWith('https://')) {
+      // Skip HTTP URLs and Google Drive URLs (already migrated)
+      if (filePath.startsWith('http://') || filePath.startsWith('https://') || filePath.startsWith('gdrive://')) {
         continue;
       }
 
@@ -485,6 +539,47 @@ async function migrateLogosAndFavicons(): Promise<{ success: number; failed: num
 }
 
 /**
+ * Verify storage connection before migration
+ */
+async function verifyStorageConnection(): Promise<void> {
+  try {
+    const storage = await StorageFactory.getInstance();
+    const driver = storage.getDriver();
+    
+    log.info(`Storage driver: ${driver}`);
+    
+    if (driver === 'google-drive') {
+      log.info('Verifying Google Drive connection...');
+      const connected = await isGoogleDriveConnected();
+      if (!connected) {
+        throw new Error('Google Drive is not connected. Please connect Google Drive in the Settings > Integrations tab before running migration.');
+      }
+      
+      // Test connection by calling testConnection
+      try {
+        await storage.testConnection();
+        log.info('✓ Google Drive connection verified');
+      } catch (error: any) {
+        throw new Error(`Google Drive connection test failed: ${error.message || 'Unknown error'}`);
+      }
+    } else if (driver === 's3') {
+      log.info('Verifying S3 connection...');
+      try {
+        await storage.testConnection();
+        log.info('✓ S3 connection verified');
+      } catch (error: any) {
+        throw new Error(`S3 connection test failed: ${error.message || 'Unknown error'}`);
+      }
+    } else {
+      log.info('✓ Local storage ready');
+    }
+  } catch (error: any) {
+    log.error('Storage connection verification failed', error);
+    throw error;
+  }
+}
+
+/**
  * Main migration function
  */
 async function migrateFiles(): Promise<void> {
@@ -503,6 +598,17 @@ async function migrateFiles(): Promise<void> {
     if (!migrationTableCheck.rows[0].exists) {
       log.error('file_migrations table does not exist. Please run the migration SQL first.');
       process.exit(1);
+    }
+
+    // Verify storage connection before starting migration
+    await verifyStorageConnection();
+
+    // Get storage driver for progress reporting
+    const storage = await StorageFactory.getInstance();
+    const driver = storage.getDriver();
+    if (driver === 'google-drive') {
+      log.info('⚠️  Note: Google Drive migrations may be slower due to API rate limits.');
+      log.info('   Large migrations may take significant time. Progress will be logged.');
     }
 
     // Run migrations
