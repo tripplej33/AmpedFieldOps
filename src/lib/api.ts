@@ -811,7 +811,23 @@ class ApiClient {
     return this.request('/api/xero/invoices', { method: 'POST', body: data });
   }
 
-  async createInvoiceFromTimesheets(data: { client_id: string; project_id?: string; date_from?: string; date_to?: string; period?: 'week' | 'month'; due_date?: string }) {
+  async previewInvoiceFromTimesheets(data: { client_id: string; project_id?: string; date_from?: string; date_to?: string; period?: 'week' | 'month' }) {
+    const response = await fetch(`${API_URL}/api/xero/invoices/from-timesheets/preview`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}),
+      },
+      body: JSON.stringify(data),
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Failed to preview invoice');
+    }
+    return response.json();
+  }
+
+  async createInvoiceFromTimesheets(data: { client_id: string; project_id?: string; date_from?: string; date_to?: string; period?: 'week' | 'month'; due_date?: string; invoice_number?: string }) {
     const response = await fetch(`${API_URL}/api/xero/invoices/from-timesheets`, {
       method: 'POST',
       headers: {

@@ -4,7 +4,7 @@ import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -89,6 +89,9 @@ export default function Financials() {
   const [isCreateFromTimesheetsModalOpen, setIsCreateFromTimesheetsModalOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [isCreatingFromTimesheets, setIsCreatingFromTimesheets] = useState(false);
+  const [invoicePreview, setInvoicePreview] = useState<any>(null);
+  const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
+  const [isLoadingPreview, setIsLoadingPreview] = useState(false);
   const [syncingInvoices, setSyncingInvoices] = useState<Set<string>>(new Set());
   const [syncingPOs, setSyncingPOs] = useState<Set<string>>(new Set());
   const [syncErrors, setSyncErrors] = useState<Record<string, any>>({});
@@ -270,7 +273,7 @@ export default function Financials() {
     }
   };
 
-  const handleCreateInvoiceFromTimesheets = async () => {
+  const handlePreviewInvoice = async () => {
     if (!timesheetInvoiceForm.client_id) {
       toast.error('Please select a client');
       return;
@@ -278,6 +281,30 @@ export default function Financials() {
 
     if (timesheetInvoiceForm.period === 'custom' && (!timesheetInvoiceForm.date_from || !timesheetInvoiceForm.date_to)) {
       toast.error('Please select date range');
+      return;
+    }
+
+    setIsLoadingPreview(true);
+    try {
+      const preview = await api.previewInvoiceFromTimesheets({
+        client_id: timesheetInvoiceForm.client_id,
+        project_id: timesheetInvoiceForm.project_id || undefined,
+        period: timesheetInvoiceForm.period === 'custom' ? undefined : timesheetInvoiceForm.period,
+        date_from: timesheetInvoiceForm.period === 'custom' ? timesheetInvoiceForm.date_from : undefined,
+        date_to: timesheetInvoiceForm.period === 'custom' ? timesheetInvoiceForm.date_to : undefined,
+      });
+      setInvoicePreview(preview);
+      setIsPreviewModalOpen(true);
+    } catch (error: any) {
+      toast.error(error.message || 'Failed to preview invoice');
+    } finally {
+      setIsLoadingPreview(false);
+    }
+  };
+
+  const handleCreateInvoiceFromTimesheets = async () => {
+    if (!invoicePreview) {
+      toast.error('No invoice preview available');
       return;
     }
 
@@ -289,7 +316,8 @@ export default function Financials() {
         period: timesheetInvoiceForm.period === 'custom' ? undefined : timesheetInvoiceForm.period,
         date_from: timesheetInvoiceForm.period === 'custom' ? timesheetInvoiceForm.date_from : undefined,
         date_to: timesheetInvoiceForm.period === 'custom' ? timesheetInvoiceForm.date_to : undefined,
-        due_date: timesheetInvoiceForm.due_date
+        due_date: timesheetInvoiceForm.due_date,
+        invoice_number: invoicePreview.invoice_number
       });
       
       const invoiceId = (result as any)?.id;
@@ -308,6 +336,8 @@ export default function Financials() {
       }
       
       setIsCreateFromTimesheetsModalOpen(false);
+      setIsPreviewModalOpen(false);
+      setInvoicePreview(null);
       setTimesheetInvoiceForm({
         client_id: '',
         project_id: '',
@@ -1393,23 +1423,143 @@ export default function Financials() {
               </Button>
               <Button 
                 className="bg-electric text-background hover:bg-electric/90"
-                onClick={handleCreateInvoiceFromTimesheets}
-                disabled={isCreatingFromTimesheets}
+                onClick={handlePreviewInvoice}
+                disabled={isLoadingPreview}
               >
-                {isCreatingFromTimesheets ? (
+                {isLoadingPreview ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Creating...
+                    Loading Preview...
                   </>
                 ) : (
                   <>
-                    <Clock className="w-4 h-4 mr-2" />
-                    Create Invoice
+                    <FileText className="w-4 h-4 mr-2" />
+                    Preview Invoice
                   </>
                 )}
               </Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Invoice Preview Modal */}
+      <Dialog open={isPreviewModalOpen} onOpenChange={setIsPreviewModalOpen}>
+        <DialogContent className="max-w-[95vw] sm:max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-bold">Invoice Preview</DialogTitle>
+            <DialogDescription>
+              Review the invoice details before creating. This invoice will be synced to Xero.
+            </DialogDescription>
+          </DialogHeader>
+
+          {invoicePreview && (
+            <div className="space-y-6 py-4">
+              {/* Invoice Header */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 p-4 bg-muted/30 rounded-lg">
+                <div>
+                  <Label className="text-xs text-muted-foreground">Invoice Number</Label>
+                  <p className="font-mono font-bold text-lg">{invoicePreview.invoice_number}</p>
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Client</Label>
+                  <p className="font-semibold">{invoicePreview.client_name}</p>
+                </div>
+                {invoicePreview.project_id && (
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Project</Label>
+                    <p className="text-sm">{projects.find(p => p.id === invoicePreview.project_id)?.name || 'N/A'}</p>
+                  </div>
+                )}
+                {invoicePreview.reference && (
+                  <div>
+                    <Label className="text-xs text-muted-foreground">Client PO Number(s)</Label>
+                    <p className="text-sm font-mono">{invoicePreview.reference}</p>
+                  </div>
+                )}
+                <div>
+                  <Label className="text-xs text-muted-foreground">Date Range</Label>
+                  <p className="text-sm">
+                    {invoicePreview.date_range.from && invoicePreview.date_range.to
+                      ? `${new Date(invoicePreview.date_range.from).toLocaleDateString()} - ${new Date(invoicePreview.date_range.to).toLocaleDateString()}`
+                      : 'N/A'}
+                  </p>
+                </div>
+                <div>
+                  <Label className="text-xs text-muted-foreground">Timesheets Included</Label>
+                  <p className="text-sm">{invoicePreview.timesheets_count} timesheet{invoicePreview.timesheets_count !== 1 ? 's' : ''}</p>
+                </div>
+              </div>
+
+              {/* Line Items */}
+              <div>
+                <Label className="font-mono text-xs uppercase tracking-wider mb-3 block">Line Items</Label>
+                <div className="border rounded-lg overflow-hidden">
+                  <table className="w-full">
+                    <thead className="bg-muted/50">
+                      <tr>
+                        <th className="text-left p-3 text-xs font-mono uppercase">Description</th>
+                        <th className="text-right p-3 text-xs font-mono uppercase">Hours</th>
+                        <th className="text-right p-3 text-xs font-mono uppercase">Rate</th>
+                        <th className="text-right p-3 text-xs font-mono uppercase">Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {invoicePreview.line_items.map((item: any, index: number) => (
+                        <tr key={index} className="border-t">
+                          <td className="p-3">{item.description}</td>
+                          <td className="p-3 text-right font-mono">{item.quantity.toFixed(2)}</td>
+                          <td className="p-3 text-right font-mono">${item.unit_price.toFixed(2)}</td>
+                          <td className="p-3 text-right font-mono font-semibold">${item.amount.toFixed(2)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                    <tfoot className="bg-muted/50 border-t-2">
+                      <tr>
+                        <td colSpan={3} className="p-3 text-right font-bold">Total:</td>
+                        <td className="p-3 text-right font-mono font-bold text-lg">${invoicePreview.total.toFixed(2)}</td>
+                      </tr>
+                    </tfoot>
+                  </table>
+                </div>
+              </div>
+
+              {/* Due Date */}
+              <div>
+                <Label className="font-mono text-xs uppercase tracking-wider">Due Date</Label>
+                <Input
+                  type="date"
+                  value={timesheetInvoiceForm.due_date}
+                  onChange={(e) => setTimesheetInvoiceForm(prev => ({ ...prev, due_date: e.target.value }))}
+                  className="mt-2"
+                />
+              </div>
+
+              {/* Actions */}
+              <div className="flex items-center justify-end gap-3 pt-4 border-t border-border">
+                <Button variant="outline" onClick={() => setIsPreviewModalOpen(false)}>
+                  Cancel
+                </Button>
+                <Button 
+                  className="bg-electric text-background hover:bg-electric/90"
+                  onClick={handleCreateInvoiceFromTimesheets}
+                  disabled={isCreatingFromTimesheets}
+                >
+                  {isCreatingFromTimesheets ? (
+                    <>
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                      Creating...
+                    </>
+                  ) : (
+                    <>
+                      <FileText className="w-4 h-4 mr-2" />
+                      Create Invoice
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
 

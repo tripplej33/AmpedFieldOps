@@ -1007,6 +1007,7 @@ async function buildXeroInvoicePayload(localInvoice: any): Promise<any> {
     Date: localInvoice.issue_date || new Date().toISOString().split('T')[0],
     DueDate: localInvoice.due_date || null,
     InvoiceNumber: localInvoice.invoice_number || null,
+    Reference: localInvoice.reference || null, // Include client PO numbers
     LineItems: xeroLineItems,
     Status: localInvoice.status || 'DRAFT'
   };
@@ -3254,10 +3255,169 @@ router.post('/invoices', authenticate, requirePermission('can_sync_xero'), async
   }
 });
 
+// Preview invoice from timesheets (without creating)
+router.post('/invoices/from-timesheets/preview', authenticate, requirePermission('can_sync_xero'), async (req: AuthRequest, res: Response) => {
+  try {
+    const { client_id, project_id, date_from, date_to, period } = req.body;
+
+    if (!client_id) {
+      return res.status(400).json({ error: 'Client is required' });
+    }
+
+    // Build query for unbilled timesheets (same as create endpoint)
+    let sql = `
+      SELECT t.*, 
+        at.name as activity_type_name,
+        at.hourly_rate,
+        (t.hours * COALESCE(at.hourly_rate, 0)) as line_total,
+        cc.client_po_number
+      FROM timesheets t
+      LEFT JOIN activity_types at ON t.activity_type_id = at.id
+      LEFT JOIN cost_centers cc ON t.cost_center_id = cc.id
+      WHERE t.client_id = $1 
+        AND COALESCE(t.billing_status, 'unbilled') = 'unbilled'
+        AND t.deleted_at IS NULL
+    `;
+    const params: any[] = [client_id];
+    let paramCount = 2;
+
+    if (project_id) {
+      sql += ` AND t.project_id = $${paramCount++}`;
+      params.push(project_id);
+    }
+
+    if (date_from) {
+      sql += ` AND t.date >= $${paramCount++}`;
+      params.push(date_from);
+    }
+
+    if (date_to) {
+      sql += ` AND t.date <= $${paramCount++}`;
+      params.push(date_to);
+    } else if (period === 'week') {
+      sql += ` AND t.date >= CURRENT_DATE - INTERVAL '7 days'`;
+    } else if (period === 'month') {
+      sql += ` AND t.date >= DATE_TRUNC('month', CURRENT_DATE)`;
+    }
+
+    sql += ' ORDER BY t.date, t.created_at';
+
+    const timesheetsResult = await query(sql, params);
+
+    if (timesheetsResult.rows.length === 0) {
+      return res.status(400).json({ error: 'No unbilled timesheets found for the selected criteria' });
+    }
+
+    // Collect unique client PO numbers
+    const clientPONumbers = new Set<string>();
+    for (const ts of timesheetsResult.rows) {
+      if (ts.client_po_number && ts.client_po_number.trim()) {
+        clientPONumbers.add(ts.client_po_number.trim());
+      }
+    }
+    const clientPOString = Array.from(clientPONumbers).join(', ');
+
+    // Group by activity type
+    const lineItemsMap = new Map<string, { hours: number; rate: number; description: string }>();
+    
+    for (const ts of timesheetsResult.rows) {
+      const key = ts.activity_type_id || 'other';
+      const rate = parseFloat(ts.hourly_rate || '0');
+      const hours = parseFloat(ts.hours);
+      
+      if (!lineItemsMap.has(key)) {
+        lineItemsMap.set(key, {
+          hours: 0,
+          rate,
+          description: ts.activity_type_name || 'Other'
+        });
+      }
+      
+      const item = lineItemsMap.get(key)!;
+      item.hours += hours;
+    }
+
+    // Convert to line items array
+    const lineItems = Array.from(lineItemsMap.values()).map(item => ({
+      description: `${item.description} - ${item.hours.toFixed(2)} hours`,
+      quantity: item.hours,
+      unit_price: item.rate,
+      amount: item.hours * item.rate
+    }));
+
+    const total = lineItems.reduce((sum, item) => sum + item.amount, 0);
+
+    // Generate proposed invoice number
+    const countResult = await query('SELECT COUNT(*) as count FROM xero_invoices WHERE deleted_at IS NULL');
+    const proposedInvoiceNumber = `INV-${String(parseInt(countResult.rows[0].count) + 1).padStart(5, '0')}`;
+
+    // Check Xero for existing invoice numbers
+    let existingInvoiceNumbers: string[] = [];
+    try {
+      const tokenData = await getValidAccessToken();
+      if (tokenData) {
+        const invoicesResponse = await fetchWithRateLimit('https://api.xero.com/api.xro/2.0/Invoices?where=Type=="ACCREC"', {
+          headers: {
+            'Authorization': `Bearer ${tokenData.accessToken}`,
+            'Xero-Tenant-Id': tokenData.tenantId,
+            'Accept': 'application/json'
+          }
+        });
+
+        if (invoicesResponse.ok) {
+          const xeroData = await invoicesResponse.json() as any;
+          if (xeroData.Invoices) {
+            existingInvoiceNumbers = xeroData.Invoices.map((inv: any) => inv.InvoiceNumber).filter((num: string) => num);
+          }
+        }
+      }
+    } catch (error) {
+      console.warn('Could not check Xero for existing invoice numbers:', error);
+    }
+
+    // Also check local database
+    const localInvoicesResult = await query('SELECT invoice_number FROM xero_invoices WHERE invoice_number IS NOT NULL AND deleted_at IS NULL');
+    const localInvoiceNumbers = localInvoicesResult.rows.map(row => row.invoice_number);
+    const allExistingNumbers = [...new Set([...existingInvoiceNumbers, ...localInvoiceNumbers])];
+
+    // Find next available invoice number
+    let invoiceNumber = proposedInvoiceNumber;
+    let counter = 1;
+    while (allExistingNumbers.includes(invoiceNumber)) {
+      const baseNumber = parseInt(countResult.rows[0].count) + counter;
+      invoiceNumber = `INV-${String(baseNumber).padStart(5, '0')}`;
+      counter++;
+    }
+
+    // Get client name
+    const clientResult = await query('SELECT name FROM clients WHERE id = $1', [client_id]);
+    const clientName = clientResult.rows[0]?.name || 'Unknown Client';
+
+    res.json({
+      client_id,
+      client_name: clientName,
+      project_id: project_id || null,
+      invoice_number: invoiceNumber,
+      line_items: lineItems,
+      total,
+      reference: clientPOString || null,
+      timesheets_count: timesheetsResult.rows.length,
+      date_range: {
+        from: date_from || (period === 'week' ? new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0] : 
+                             period === 'month' ? new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0] : null),
+        to: date_to || new Date().toISOString().split('T')[0]
+      }
+    });
+  } catch (error) {
+    console.error('Failed to preview invoice from timesheets:', error);
+    res.status(500).json({ error: 'Failed to preview invoice from timesheets' });
+  }
+});
+
 // Create invoice from timesheets
 router.post('/invoices/from-timesheets', authenticate, requirePermission('can_sync_xero'), async (req: AuthRequest, res: Response) => {
   try {
-    const { client_id, project_id, date_from, date_to, period, due_date } = req.body;
+    const { client_id, project_id, date_from, date_to, period, due_date, invoice_number } = req.body;
 
     if (!client_id) {
       return res.status(400).json({ error: 'Client is required' });
@@ -3268,9 +3428,11 @@ router.post('/invoices/from-timesheets', authenticate, requirePermission('can_sy
       SELECT t.*, 
         at.name as activity_type_name,
         at.hourly_rate,
-        (t.hours * COALESCE(at.hourly_rate, 0)) as line_total
+        (t.hours * COALESCE(at.hourly_rate, 0)) as line_total,
+        cc.client_po_number
       FROM timesheets t
       LEFT JOIN activity_types at ON t.activity_type_id = at.id
+      LEFT JOIN cost_centers cc ON t.cost_center_id = cc.id
       WHERE t.client_id = $1 
         AND COALESCE(t.billing_status, 'unbilled') = 'unbilled'
         AND t.deleted_at IS NULL
@@ -3307,6 +3469,15 @@ router.post('/invoices/from-timesheets', authenticate, requirePermission('can_sy
       return res.status(400).json({ error: 'No unbilled timesheets found for the selected criteria' });
     }
 
+    // Collect unique client PO numbers from cost centers
+    const clientPONumbers = new Set<string>();
+    for (const ts of timesheetsResult.rows) {
+      if (ts.client_po_number && ts.client_po_number.trim()) {
+        clientPONumbers.add(ts.client_po_number.trim());
+      }
+    }
+    const clientPOString = Array.from(clientPONumbers).join(', ');
+
     // Group by activity type and create line items
     const lineItemsMap = new Map<string, { hours: number; rate: number; description: string }>();
     
@@ -3337,16 +3508,59 @@ router.post('/invoices/from-timesheets', authenticate, requirePermission('can_sy
 
     const total = lineItems.reduce((sum, item) => sum + item.amount, 0);
 
-    // Generate invoice number
+    // Generate invoice number and check for duplicates
     const countResult = await query('SELECT COUNT(*) as count FROM xero_invoices WHERE deleted_at IS NULL');
-    const invoiceNumber = `INV-${String(parseInt(countResult.rows[0].count) + 1).padStart(5, '0')}`;
+    let proposedInvoiceNumber = `INV-${String(parseInt(countResult.rows[0].count) + 1).padStart(5, '0')}`;
+    
+    // Check Xero for existing invoice numbers
+    let existingInvoiceNumbers: string[] = [];
+    try {
+      const tokenData = await getValidAccessToken();
+      if (tokenData) {
+        const invoicesResponse = await fetchWithRateLimit('https://api.xero.com/api.xro/2.0/Invoices?where=Type=="ACCREC"', {
+          headers: {
+            'Authorization': `Bearer ${tokenData.accessToken}`,
+            'Xero-Tenant-Id': tokenData.tenantId,
+            'Accept': 'application/json'
+          }
+        });
+
+        if (invoicesResponse.ok) {
+          const xeroData = await invoicesResponse.json() as any;
+          if (xeroData.Invoices) {
+            existingInvoiceNumbers = xeroData.Invoices.map((inv: any) => inv.InvoiceNumber).filter((num: string) => num);
+          }
+        }
+      }
+    } catch (error) {
+      console.warn('Could not check Xero for existing invoice numbers:', error);
+    }
+
+    // Also check local database
+    const localInvoicesResult = await query('SELECT invoice_number FROM xero_invoices WHERE invoice_number IS NOT NULL AND deleted_at IS NULL');
+    const localInvoiceNumbers = localInvoicesResult.rows.map(row => row.invoice_number);
+    const allExistingNumbers = [...new Set([...existingInvoiceNumbers, ...localInvoiceNumbers])];
+
+    // Use provided invoice number from preview, or find next available
+    let invoiceNumber = invoice_number || proposedInvoiceNumber;
+    if (!invoice_number) {
+      let counter = 1;
+      while (allExistingNumbers.includes(invoiceNumber)) {
+        const baseNumber = parseInt(countResult.rows[0].count) + counter;
+        invoiceNumber = `INV-${String(baseNumber).padStart(5, '0')}`;
+        counter++;
+      }
+    }
 
     // Create invoice locally with pending sync status
+    // Include client PO numbers in the invoice reference if available
+    const invoiceReference = clientPOString || null;
+    
     const invoiceResult = await query(
-      `INSERT INTO xero_invoices (xero_invoice_id, invoice_number, client_id, project_id, status, line_items, total, amount_due, due_date, issue_date, sync_status, synced_at)
-       VALUES ($1, $2, $3, $4, 'DRAFT', $5, $6, $6, $7, CURRENT_DATE, 'pending', CURRENT_TIMESTAMP)
+      `INSERT INTO xero_invoices (xero_invoice_id, invoice_number, client_id, project_id, status, line_items, total, amount_due, due_date, issue_date, sync_status, synced_at, reference)
+       VALUES ($1, $2, $3, $4, 'DRAFT', $5, $6, $6, $7, CURRENT_DATE, 'pending', CURRENT_TIMESTAMP, $8)
        RETURNING *`,
-      [invoiceNumber, invoiceNumber, client_id, project_id || null, JSON.stringify(lineItems), total, due_date || null]
+      [invoiceNumber, invoiceNumber, client_id, project_id || null, JSON.stringify(lineItems), total, due_date || null, invoiceReference]
     );
 
     const invoiceId = invoiceResult.rows[0].id;
@@ -3396,6 +3610,7 @@ router.post('/invoices/from-timesheets', authenticate, requirePermission('can_sy
             total,
             dueDate: due_date || null,
             timesheetIds,
+            reference: invoiceReference, // Include client PO numbers
           }, `invoice-${invoiceId}`); // Use invoiceId as jobId for idempotency
         }
       } else {
@@ -3408,6 +3623,7 @@ router.post('/invoices/from-timesheets', authenticate, requirePermission('can_sy
           total,
           dueDate: due_date || null,
           timesheetIds,
+          reference: invoiceReference, // Include client PO numbers
         }, `invoice-${invoiceId}`);
       }
     } catch (queueError: any) {

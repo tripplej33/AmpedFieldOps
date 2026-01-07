@@ -32,6 +32,7 @@ export interface CostCenter {
   project_id?: string; // Job-specific cost center
   project_name?: string;
   xero_tracking_category_id?: string;
+  client_po_number?: string; // Client-supplied purchase order number
   is_active: boolean;
   created_at: string;
   updated_at: string;

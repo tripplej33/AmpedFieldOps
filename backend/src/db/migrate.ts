@@ -73,6 +73,7 @@ CREATE TABLE IF NOT EXISTS cost_centers (
   description TEXT,
   budget DECIMAL(15,2) DEFAULT 0,
   xero_tracking_category_id VARCHAR(100),
+  client_po_number VARCHAR(255),
   is_active BOOLEAN DEFAULT true,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -532,6 +533,14 @@ BEGIN
   ALTER TABLE projects ADD CONSTRAINT projects_status_check 
     CHECK (status IN ('quoted', 'in-progress', 'completed', 'invoiced', 'paid'));
 END $$;
+
+-- Add client_po_number column to cost_centers table if it doesn't exist
+ALTER TABLE cost_centers 
+ADD COLUMN IF NOT EXISTS client_po_number VARCHAR(255);
+
+-- Add reference column to xero_invoices table if it doesn't exist (for client PO numbers)
+ALTER TABLE xero_invoices 
+ADD COLUMN IF NOT EXISTS reference VARCHAR(500);
 `;
 
 async function runMigration() {

@@ -79,7 +79,7 @@ router.post('/', authenticate, requirePermission('can_manage_cost_centers'),
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { code, name, description, budget = 0, xero_tracking_category_id } = req.body;
+    const { code, name, description, budget = 0, xero_tracking_category_id, client_po_number } = req.body;
 
     try {
       // Check for duplicate code
@@ -89,10 +89,10 @@ router.post('/', authenticate, requirePermission('can_manage_cost_centers'),
       }
 
       const result = await query(
-        `INSERT INTO cost_centers (code, name, description, budget, xero_tracking_category_id)
-         VALUES ($1, $2, $3, $4, $5)
+        `INSERT INTO cost_centers (code, name, description, budget, xero_tracking_category_id, client_po_number)
+         VALUES ($1, $2, $3, $4, $5, $6)
          RETURNING *`,
-        [code, name, description, budget, xero_tracking_category_id]
+        [code, name, description, budget, xero_tracking_category_id, client_po_number || null]
       );
 
       // Log activity
@@ -112,19 +112,19 @@ router.post('/', authenticate, requirePermission('can_manage_cost_centers'),
 // Update cost center (admin only)
 router.put('/:id', authenticate, requirePermission('can_manage_cost_centers'),
   async (req: AuthRequest, res: Response) => {
-    const { code, name, description, budget, is_active, xero_tracking_category_id } = req.body;
+    const { code, name, description, budget, is_active, xero_tracking_category_id, client_po_number } = req.body;
 
     try {
       const updates: string[] = [];
       const values: any[] = [];
       let paramCount = 1;
 
-      const fields = { code, name, description, budget, is_active, xero_tracking_category_id };
+      const fields = { code, name, description, budget, is_active, xero_tracking_category_id, client_po_number };
       
       for (const [key, value] of Object.entries(fields)) {
         if (value !== undefined) {
           updates.push(`${key} = $${paramCount++}`);
-          values.push(value);
+          values.push(value === '' ? null : value);
         }
       }
 

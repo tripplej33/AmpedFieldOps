@@ -54,6 +54,7 @@ export default function CostCenters() {
   const [formDescription, setFormDescription] = useState('');
   const [formBudget, setFormBudget] = useState('');
   const [formProjectId, setFormProjectId] = useState<string>('');
+  const [formClientPONumber, setFormClientPONumber] = useState('');
 
   useEffect(() => {
     loadCostCenters();
@@ -94,6 +95,7 @@ export default function CostCenters() {
     setFormDescription('');
     setFormBudget('');
     setFormProjectId('');
+    setFormClientPONumber('');
     setEditingCostCenter(null);
   };
 
@@ -110,6 +112,7 @@ export default function CostCenters() {
     setFormDescription(cc.description || '');
     setFormBudget(cc.budget?.toString() || '');
     setFormProjectId(cc.project_id || '');
+    setFormClientPONumber(cc.client_po_number || '');
     setShowModal(true);
   };
 
@@ -127,6 +130,7 @@ export default function CostCenters() {
         description: formDescription,
         budget: parseFloat(formBudget) || 0,
         project_id: formProjectId || null,
+        client_po_number: formClientPONumber || null,
       };
 
       if (editingCostCenter) {
@@ -391,6 +395,19 @@ export default function CostCenters() {
                 onChange={(e) => setFormDescription(e.target.value)}
                 placeholder="Description of what this cost center tracks..."
                 className="mt-2 min-h-[80px]"
+              />
+            </div>
+
+            <div>
+              <Label className="font-mono text-xs uppercase">Client PO Number (Optional)</Label>
+              <p className="text-xs text-muted-foreground mb-2">
+                Client-supplied purchase order number. This will be referenced when generating invoices from timesheets.
+              </p>
+              <Input
+                value={formClientPONumber}
+                onChange={(e) => setFormClientPONumber(e.target.value)}
+                placeholder="PO-12345"
+                className="mt-2"
               />
             </div>
 
