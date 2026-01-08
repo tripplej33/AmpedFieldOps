@@ -176,6 +176,9 @@ export default function Timesheets() {
     activity_entries: [] as ActivityTypeEntry[],
   });
 
+  // State for collapsible activity cards (needed in main component for addActivityEntry)
+  const [expandedActivities, setExpandedActivities] = useState<Set<string>>(new Set());
+
   // Pagination state (removed for planner view - load all in date range)
   // const [page, setPage] = useState(1);
   // const [limit, setLimit] = useState(20);
@@ -355,6 +358,7 @@ export default function Timesheets() {
     setUploadProgress({});
     setIsDragging(false);
     setCostCenters([]); // Reset cost centers
+    setExpandedActivities(new Set()); // Reset expanded activities
   };
 
   // Image handling with validation
@@ -1314,6 +1318,8 @@ export default function Timesheets() {
             isSubmitting={isSubmitting}
             submitLabel="Save Changes"
             addActivityEntry={addActivityEntry}
+            expandedActivities={expandedActivities}
+            setExpandedActivities={setExpandedActivities}
             removeActivityEntry={removeActivityEntry}
             updateActivityEntry={updateActivityEntry}
             toggleUserForActivity={toggleUserForActivity}
@@ -1513,6 +1519,8 @@ function TimesheetForm({
   handleDragLeave,
   handleDragOver,
   handleDrop,
+  expandedActivities,
+  setExpandedActivities,
 }: {
   formData: any;
   setFormData: (data: any) => void;
@@ -1545,9 +1553,9 @@ function TimesheetForm({
   handleDragLeave: (e: React.DragEvent) => void;
   handleDragOver: (e: React.DragEvent) => void;
   handleDrop: (e: React.DragEvent) => void;
+  expandedActivities: Set<string>;
+  setExpandedActivities: React.Dispatch<React.SetStateAction<Set<string>>>;
 }) {
-  // State for collapsible activity cards
-  const [expandedActivities, setExpandedActivities] = useState<Set<string>>(new Set());
   const [currentUser] = useState(() => {
     try {
       const stored = localStorage.getItem('current_user');

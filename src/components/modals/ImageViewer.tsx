@@ -1,7 +1,7 @@
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { X, ChevronLeft, ChevronRight, Download, Trash2 } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { cn } from '@/lib/utils';
 
 interface ImageViewerProps {
@@ -68,7 +68,10 @@ export default function ImageViewer({
 
   // Keyboard navigation
   useEffect(() => {
-    if (!open) return;
+    // Always call the hook, but conditionally add event listener
+    if (!open) {
+      return;
+    }
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'ArrowLeft' && hasPrevious) {
@@ -82,7 +85,7 @@ export default function ImageViewer({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [open, currentIndex, hasPrevious, hasNext]);
+  }, [open, currentIndex, hasPrevious, hasNext, handlePrevious, handleNext, onOpenChange]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
