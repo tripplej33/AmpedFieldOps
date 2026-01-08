@@ -68,24 +68,29 @@ export default function ImageViewer({
 
   // Keyboard navigation
   useEffect(() => {
-    // Always call the hook, but conditionally add event listener
-    if (!open) {
-      return;
-    }
-
+    // Always call the hook - conditionally add event listener inside
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowLeft' && hasPrevious) {
-        handlePrevious();
-      } else if (e.key === 'ArrowRight' && hasNext) {
-        handleNext();
+      if (!open) return; // Early return inside handler, not in hook
+      
+      if (e.key === 'ArrowLeft' && currentIndex > 0) {
+        setCurrentIndex(currentIndex - 1);
+      } else if (e.key === 'ArrowRight' && currentIndex < images.length - 1) {
+        setCurrentIndex(currentIndex + 1);
       } else if (e.key === 'Escape') {
         onOpenChange(false);
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [open, currentIndex, hasPrevious, hasNext, handlePrevious, handleNext, onOpenChange]);
+    if (open) {
+      window.addEventListener('keydown', handleKeyDown);
+    }
+    
+    return () => {
+      if (open) {
+        window.removeEventListener('keydown', handleKeyDown);
+      }
+    };
+  }, [open, currentIndex, images.length, onOpenChange]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
