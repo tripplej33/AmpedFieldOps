@@ -2178,7 +2178,6 @@ function TimesheetForm({
               className="hidden"
             />
           </div>
-          </div>
         </div>
       </div>
 
