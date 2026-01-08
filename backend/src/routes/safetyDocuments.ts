@@ -283,7 +283,21 @@ router.post('/:id/generate-pdf', authenticate, requirePermission('can_edit_proje
     }
 
     const doc = result.rows[0];
-    const projectId = doc.project_id;
+    const rawProjectId = doc.project_id;
+    
+    if (!rawProjectId) {
+      return res.status(400).json({ error: 'Safety document does not have an associated project' });
+    }
+
+    // Sanitize project_id for security (even though it comes from database)
+    const { sanitizeProjectId } = await import('../middleware/validateProject');
+    let projectId: string;
+    try {
+      projectId = sanitizeProjectId(rawProjectId);
+    } catch (validationError: any) {
+      log.error('Invalid project_id from database', validationError, { docId: doc.id, rawProjectId });
+      return res.status(500).json({ error: 'Invalid project data' });
+    }
 
     // Parse JSON data
     const documentData = typeof doc.data === 'string' ? JSON.parse(doc.data) : doc.data;
@@ -295,30 +309,51 @@ router.post('/:id/generate-pdf', authenticate, requirePermission('can_edit_proje
     }
     const tempPath = path.join(tempDir, `${doc.id}.pdf`);
 
-    // Generate PDF to temp file
-    await generateDocumentPDF(doc.document_type, documentData, tempPath);
-
-    // Upload PDF to storage provider
-    const storage = await StorageFactory.getInstance();
-    const basePath = `projects/${projectId}/safety-documents`;
-    const storagePath = generatePartitionedPath(`${doc.id}.pdf`, basePath);
-    
-    // Stream PDF from temp to storage
-    const pdfStream = createReadStream(tempPath);
-    await storage.put(storagePath, pdfStream, {
-      contentType: 'application/pdf',
-    });
-    
-    // Get URL from storage provider
-    const fileUrl = await storage.url(storagePath);
-    
-    // Delete temp file
+    let fileUrl: string;
     try {
-      if (fs.existsSync(tempPath)) {
-        fs.unlinkSync(tempPath);
+      // Generate PDF to temp file
+      await generateDocumentPDF(doc.document_type, documentData, tempPath);
+
+      // Upload PDF to storage provider
+      let storage;
+      try {
+        storage = await StorageFactory.getInstance();
+      } catch (storageInitError: any) {
+        log.error('Failed to initialize storage provider for PDF generation', storageInitError, { docId: doc.id, projectId });
+        throw new Error(`Failed to initialize storage: ${storageInitError.message || 'Unknown error'}`);
       }
-    } catch (cleanupError) {
-      log.error('Failed to cleanup temp PDF file', cleanupError);
+
+      const basePath = `projects/${projectId}/safety-documents`;
+      const storagePath = generatePartitionedPath(`${doc.id}.pdf`, basePath);
+      
+      // Stream PDF from temp to storage
+      try {
+        const pdfStream = createReadStream(tempPath);
+        await storage.put(storagePath, pdfStream, {
+          contentType: 'application/pdf',
+        });
+        
+        // Get URL from storage provider
+        fileUrl = await storage.url(storagePath);
+      } catch (storageError: any) {
+        log.error('Failed to upload PDF to storage', storageError, {
+          docId: doc.id,
+          projectId,
+          storagePath,
+          errorMessage: storageError.message,
+          errorStack: storageError.stack
+        });
+        throw new Error(`Failed to upload PDF to storage: ${storageError.message || 'Unknown error'}`);
+      }
+    } finally {
+      // Always cleanup temp file, even if upload fails
+      try {
+        if (fs.existsSync(tempPath)) {
+          fs.unlinkSync(tempPath);
+        }
+      } catch (cleanupError) {
+        log.error('Failed to cleanup temp PDF file', cleanupError, { tempPath });
+      }
     }
 
     // Update document with file path (URL from storage provider)
@@ -336,7 +371,11 @@ router.post('/:id/generate-pdf', authenticate, requirePermission('can_edit_proje
 
     res.json({ message: 'PDF generated successfully', file_path: fileUrl });
   } catch (error: any) {
-    console.error('Generate PDF error:', error);
+    log.error('Generate PDF error', error, {
+      docId: req.params.id,
+      errorMessage: error.message,
+      errorStack: error.stack
+    });
     const errorMessage = error?.message || 'Failed to generate PDF';
     res.status(500).json({ 
       error: 'Failed to generate PDF',
@@ -415,9 +454,16 @@ router.get('/:id/pdf', authenticate, requirePermission('can_view_financials'), a
     
     // Stream PDF to response
     fileStream.pipe(res);
-  } catch (error) {
-    console.error('Download PDF error:', error);
-    res.status(500).json({ error: 'Failed to download PDF' });
+  } catch (error: any) {
+    log.error('Download PDF error', error, {
+      docId: req.params.id,
+      errorMessage: error.message,
+      errorStack: error.stack
+    });
+    res.status(500).json({ 
+      error: 'Failed to download PDF',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 });
 

@@ -440,37 +440,72 @@ router.post('/logo', authenticate, requireRole('admin'), logoUpload.single('logo
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
+    // Get storage provider
+    let storage;
+    try {
+      storage = await StorageFactory.getInstance();
+    } catch (storageInitError: any) {
+      log.error('Failed to initialize storage provider for logo upload', storageInitError, { userId: req.user!.id });
+      return res.status(500).json({ 
+        error: 'Failed to initialize storage',
+        message: env.NODE_ENV === 'development' ? storageInitError.message : 'Storage initialization failed'
+      });
+    }
+
     // Upload logo to storage provider
-    const storage = await StorageFactory.getInstance();
     const basePath = 'logos';
     const storagePath = generatePartitionedPath(req.file.originalname, basePath);
     
     // Stream file from memory buffer to storage provider
-    const fileStream = bufferToStream(req.file.buffer);
-    await storage.put(storagePath, fileStream, {
-      contentType: req.file.mimetype,
-    });
-    
-    // Get URL from storage provider
-    const logoUrl = await storage.url(storagePath);
+    let logoUrl: string;
+    try {
+      const fileStream = bufferToStream(req.file.buffer);
+      await storage.put(storagePath, fileStream, {
+        contentType: req.file.mimetype,
+      });
+      
+      // Get URL from storage provider
+      logoUrl = await storage.url(storagePath);
+    } catch (storageError: any) {
+      log.error('Failed to upload logo to storage', storageError, {
+        storagePath,
+        userId: req.user!.id,
+        errorMessage: storageError.message,
+        errorStack: storageError.stack
+      });
+      return res.status(500).json({ 
+        error: 'Failed to upload logo',
+        message: env.NODE_ENV === 'development' ? storageError.message : 'An error occurred while uploading the logo'
+      });
+    }
 
-    await query(
-      `INSERT INTO settings (key, value, user_id)
-       VALUES ('company_logo', $1, NULL)
-       ON CONFLICT (key, user_id) DO UPDATE SET value = $1, updated_at = CURRENT_TIMESTAMP`,
-      [logoUrl]
-    );
+    // Save logo URL to settings
+    try {
+      await query(
+        `INSERT INTO settings (key, value, user_id)
+         VALUES ('company_logo', $1, NULL)
+         ON CONFLICT (key, user_id) DO UPDATE SET value = $1, updated_at = CURRENT_TIMESTAMP`,
+        [logoUrl]
+      );
 
-    // Log activity
-    await query(
-      `INSERT INTO activity_logs (user_id, action, entity_type, details) 
-       VALUES ($1, $2, $3, $4)`,
-      [req.user!.id, 'update', 'settings', JSON.stringify({ key: 'company_logo', value: logoUrl })]
-    );
+      // Log activity
+      await query(
+        `INSERT INTO activity_logs (user_id, action, entity_type, details) 
+         VALUES ($1, $2, $3, $4)`,
+        [req.user!.id, 'update', 'settings', JSON.stringify({ key: 'company_logo', value: logoUrl })]
+      );
+    } catch (dbError: any) {
+      log.error('Failed to save logo URL to database', dbError, { logoUrl, userId: req.user!.id });
+      // Still return success since file was uploaded, but log the error
+    }
 
     res.json({ logo_url: logoUrl });
   } catch (error: any) {
-    console.error('Logo upload error:', error);
+    log.error('Logo upload error', error, {
+      userId: req.user!.id,
+      errorMessage: error.message,
+      errorStack: error.stack
+    });
     res.status(500).json({ 
       error: 'Failed to upload logo',
       message: env.NODE_ENV === 'development' ? error.message : 'An error occurred while uploading the logo'
@@ -485,8 +520,19 @@ router.post('/favicon', authenticate, requireRole('admin'), faviconUpload.single
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
+    // Get storage provider
+    let storage;
+    try {
+      storage = await StorageFactory.getInstance();
+    } catch (storageInitError: any) {
+      log.error('Failed to initialize storage provider for favicon upload', storageInitError, { userId: req.user!.id });
+      return res.status(500).json({ 
+        error: 'Failed to initialize storage',
+        message: env.NODE_ENV === 'development' ? storageInitError.message : 'Storage initialization failed'
+      });
+    }
+
     // Upload favicon to storage provider
-    const storage = await StorageFactory.getInstance();
     const basePath = 'logos';
     // For favicon, use a consistent name
     const isIco = path.extname(req.file.originalname).toLowerCase() === '.ico';
@@ -494,31 +540,55 @@ router.post('/favicon', authenticate, requireRole('admin'), faviconUpload.single
     const storagePath = generatePartitionedPath(faviconFilename, basePath);
     
     // Stream file from memory buffer to storage provider
-    const fileStream = bufferToStream(req.file.buffer);
-    await storage.put(storagePath, fileStream, {
-      contentType: req.file.mimetype,
-    });
-    
-    // Get URL from storage provider
-    const faviconUrl = await storage.url(storagePath);
+    let faviconUrl: string;
+    try {
+      const fileStream = bufferToStream(req.file.buffer);
+      await storage.put(storagePath, fileStream, {
+        contentType: req.file.mimetype,
+      });
+      
+      // Get URL from storage provider
+      faviconUrl = await storage.url(storagePath);
+    } catch (storageError: any) {
+      log.error('Failed to upload favicon to storage', storageError, {
+        storagePath,
+        userId: req.user!.id,
+        errorMessage: storageError.message,
+        errorStack: storageError.stack
+      });
+      return res.status(500).json({ 
+        error: 'Failed to upload favicon',
+        message: env.NODE_ENV === 'development' ? storageError.message : 'An error occurred while uploading the favicon'
+      });
+    }
 
-    await query(
-      `INSERT INTO settings (key, value, user_id)
-       VALUES ('company_favicon', $1, NULL)
-       ON CONFLICT (key, user_id) DO UPDATE SET value = $1, updated_at = CURRENT_TIMESTAMP`,
-      [faviconUrl]
-    );
+    // Save favicon URL to settings
+    try {
+      await query(
+        `INSERT INTO settings (key, value, user_id)
+         VALUES ('company_favicon', $1, NULL)
+         ON CONFLICT (key, user_id) DO UPDATE SET value = $1, updated_at = CURRENT_TIMESTAMP`,
+        [faviconUrl]
+      );
 
-    // Log activity
-    await query(
-      `INSERT INTO activity_logs (user_id, action, entity_type, details) 
-       VALUES ($1, $2, $3, $4)`,
-      [req.user!.id, 'update', 'settings', JSON.stringify({ key: 'company_favicon', value: faviconUrl })]
-    );
+      // Log activity
+      await query(
+        `INSERT INTO activity_logs (user_id, action, entity_type, details) 
+         VALUES ($1, $2, $3, $4)`,
+        [req.user!.id, 'update', 'settings', JSON.stringify({ key: 'company_favicon', value: faviconUrl })]
+      );
+    } catch (dbError: any) {
+      log.error('Failed to save favicon URL to database', dbError, { faviconUrl, userId: req.user!.id });
+      // Still return success since file was uploaded, but log the error
+    }
 
     res.json({ favicon_url: faviconUrl });
   } catch (error: any) {
-    console.error('Favicon upload error:', error);
+    log.error('Favicon upload error', error, {
+      userId: req.user!.id,
+      errorMessage: error.message,
+      errorStack: error.stack
+    });
     res.status(500).json({ 
       error: 'Failed to upload favicon',
       message: env.NODE_ENV === 'development' ? error.message : 'An error occurred while uploading the favicon'

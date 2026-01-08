@@ -3,8 +3,11 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { body, validationResult } from 'express-validator';
 import { query } from '../db';
-import { logoUpload } from '../middleware/upload';
+import { logoUpload, bufferToStream } from '../middleware/upload';
 import { env } from '../config/env';
+import { StorageFactory } from '../lib/storage/StorageFactory';
+import { generatePartitionedPath } from '../lib/storage/pathUtils';
+import { log } from '../lib/logger';
 
 const router = Router();
 
@@ -205,8 +208,45 @@ router.post('/logo', logoUpload.single('logo'), async (req, res) => {
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
-    const logoUrl = `/uploads/logos/${req.file.filename}`;
+    // Get storage provider
+    let storage;
+    try {
+      storage = await StorageFactory.getInstance();
+    } catch (storageInitError: any) {
+      log.error('Failed to initialize storage provider for setup logo', storageInitError);
+      return res.status(500).json({ 
+        error: 'Failed to initialize storage',
+        message: env.NODE_ENV === 'development' ? storageInitError.message : 'Storage initialization failed'
+      });
+    }
 
+    // Upload logo to storage provider
+    const basePath = 'logos';
+    const storagePath = generatePartitionedPath(req.file.originalname, basePath);
+    
+    // Stream file from memory buffer to storage provider
+    let logoUrl: string;
+    try {
+      const fileStream = bufferToStream(req.file.buffer);
+      await storage.put(storagePath, fileStream, {
+        contentType: req.file.mimetype,
+      });
+      
+      // Get URL from storage provider
+      logoUrl = await storage.url(storagePath);
+    } catch (storageError: any) {
+      log.error('Failed to upload logo to storage', storageError, {
+        storagePath,
+        errorMessage: storageError.message,
+        errorStack: storageError.stack
+      });
+      return res.status(500).json({ 
+        error: 'Failed to upload logo',
+        message: env.NODE_ENV === 'development' ? storageError.message : 'An error occurred while uploading the logo'
+      });
+    }
+
+    // Save logo URL to settings
     await query(
       `UPDATE settings SET value = $1, updated_at = CURRENT_TIMESTAMP 
        WHERE key = 'company_logo' AND user_id IS NULL`,
@@ -217,13 +257,20 @@ router.post('/logo', logoUpload.single('logo'), async (req, res) => {
     await query(
       `INSERT INTO settings (key, value, user_id)
        VALUES ('company_logo', $1, NULL)
-       ON CONFLICT (key, user_id) DO UPDATE SET value = $1`,
+       ON CONFLICT (key, user_id) DO UPDATE SET value = $1, updated_at = CURRENT_TIMESTAMP`,
       [logoUrl]
     );
 
     res.json({ logo_url: logoUrl });
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to upload logo' });
+  } catch (error: any) {
+    log.error('Setup logo upload error', error, {
+      errorMessage: error.message,
+      errorStack: error.stack
+    });
+    res.status(500).json({ 
+      error: 'Failed to upload logo',
+      message: env.NODE_ENV === 'development' ? error.message : 'An error occurred while uploading the logo'
+    });
   }
 });
 

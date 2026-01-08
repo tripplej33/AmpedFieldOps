@@ -215,7 +215,16 @@ router.post('/', authenticate, uploadLimiter,
     const isFormData = files && files.length > 0;
   
   // Extract and validate required fields from body (works for both JSON and FormData)
-  const project_id = req.body.project_id;
+  const { sanitizeProjectId } = await import('../middleware/validateProject');
+  let project_id: string;
+  try {
+    project_id = sanitizeProjectId(req.body.project_id);
+  } catch (validationError: any) {
+    return res.status(400).json({ 
+      error: 'Invalid project_id',
+      details: validationError.message
+    });
+  }
   const timesheetDate = req.body.date;
   const hoursValue = req.body.hours;
   const timesheetActivityTypeId = req.body.activity_type_id;
@@ -436,7 +445,16 @@ router.put('/:id', authenticate,
     const isFormData = files && files.length > 0;
     
     // Extract fields from body (works for both JSON and FormData)
-    const project_id = req.body.project_id;
+    const { sanitizeProjectId } = await import('../middleware/validateProject');
+    let project_id: string;
+    try {
+      project_id = sanitizeProjectId(req.body.project_id);
+    } catch (validationError: any) {
+      return res.status(400).json({ 
+        error: 'Invalid project_id',
+        details: validationError.message
+      });
+    }
     const date = req.body.date;
     const hours = req.body.hours ? parseFloat(req.body.hours) : undefined;
     const activity_type_id = req.body.activity_type_id;
@@ -451,7 +469,16 @@ router.put('/:id', authenticate,
     
     if (isFormData && files.length > 0) {
       // Files were uploaded - upload to storage provider
-      const storage = await StorageFactory.getInstance();
+      let storage;
+      try {
+        storage = await StorageFactory.getInstance();
+      } catch (storageError: any) {
+        log.error('Failed to initialize storage provider', storageError, { project_id, timesheetId: req.params.id });
+        return res.status(500).json({ 
+          error: 'Failed to initialize file storage',
+          details: process.env.NODE_ENV === 'development' ? storageError.message : undefined
+        });
+      }
       const basePath = `projects/${project_id}`;
       
       // Upload each new file to storage provider
@@ -729,11 +756,20 @@ router.post('/:id/images', authenticate,
         return res.status(400).json({ error: 'No files uploaded' });
       }
 
-      // Get project_id from request body (already set in previous middleware)
+      // Get project_id from request body (already set and sanitized in previous middleware)
       const project_id = req.body.project_id;
     
     // Upload files to storage provider
-    const storage = await StorageFactory.getInstance();
+    let storage;
+    try {
+      storage = await StorageFactory.getInstance();
+    } catch (storageError: any) {
+      log.error('Failed to initialize storage provider', storageError, { project_id, timesheetId: req.params.id });
+      return res.status(500).json({ 
+        error: 'Failed to initialize file storage',
+        details: process.env.NODE_ENV === 'development' ? storageError.message : undefined
+      });
+    }
     const basePath = `projects/${project_id}`;
     let imageUrls: string[] = [];
     

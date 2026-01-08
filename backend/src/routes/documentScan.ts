@@ -46,9 +46,22 @@ router.post(
     }
 
     // Get storage provider
-    const storage = await StorageFactory.getInstance();
+    let storage;
+    try {
+      storage = await StorageFactory.getInstance();
+    } catch (storageInitError: any) {
+      log.error('Failed to initialize storage provider for document scan', storageInitError, { project_id });
+      throw new ValidationError(`Failed to initialize storage: ${storageInitError.message || 'Unknown error'}`);
+    }
+
     const { sanitizeProjectId } = await import('../middleware/validateProject');
-    const projectId = sanitizeProjectId(project_id);
+    let projectId: string;
+    try {
+      projectId = sanitizeProjectId(project_id);
+    } catch (validationError: any) {
+      log.error('Invalid project_id in document scan upload', validationError, { project_id });
+      throw new ValidationError(validationError.message || 'Invalid project_id');
+    }
     
     // Generate partitioned path for storage
     const basePath = `projects/${projectId}/files${cost_center_id ? `/${cost_center_id}` : ''}`;
