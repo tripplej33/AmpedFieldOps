@@ -20,8 +20,8 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Install postgresql-client for pg_isready (before switching user)
-RUN apk add --no-cache postgresql-client wget
+# Install postgresql-client for pg_isready and su-exec for user switching (before switching user)
+RUN apk add --no-cache postgresql-client wget su-exec
 
 # Copy package files with correct ownership
 # Note: node user already exists in node:20-alpine image
@@ -48,8 +48,9 @@ RUN mkdir -p uploads/logos uploads/projects uploads/temp backups logs && \
     chown -R node:node /app/backups && \
     chown -R node:node /app/logs
 
-# Use non-root user
-USER node
+# Note: We start as root to fix permissions in entrypoint, then switch to node user
+# This allows fixing permissions on mounted volumes
+USER root
 
 # Expose port
 EXPOSE 3001
