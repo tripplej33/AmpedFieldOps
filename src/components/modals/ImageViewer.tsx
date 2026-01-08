@@ -21,12 +21,40 @@ export default function ImageViewer({
   onDelete,
   showDelete = false,
 }: ImageViewerProps) {
+  // All hooks must be called before any conditional returns
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
 
   useEffect(() => {
     setCurrentIndex(initialIndex);
   }, [initialIndex, open]);
 
+  // Keyboard navigation - must be called before any early returns
+  useEffect(() => {
+    // Always call the hook - conditionally add event listener inside
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (!open) return; // Early return inside handler, not in hook
+      
+      if (e.key === 'ArrowLeft' && currentIndex > 0) {
+        setCurrentIndex(currentIndex - 1);
+      } else if (e.key === 'ArrowRight' && currentIndex < images.length - 1) {
+        setCurrentIndex(currentIndex + 1);
+      } else if (e.key === 'Escape') {
+        onOpenChange(false);
+      }
+    };
+
+    if (open) {
+      window.addEventListener('keydown', handleKeyDown);
+    }
+    
+    return () => {
+      if (open) {
+        window.removeEventListener('keydown', handleKeyDown);
+      }
+    };
+  }, [open, currentIndex, images.length, onOpenChange]);
+
+  // Early return AFTER all hooks
   if (!images || images.length === 0) return null;
 
   const currentImage = images[currentIndex];
@@ -65,32 +93,6 @@ export default function ImageViewer({
     link.click();
     document.body.removeChild(link);
   };
-
-  // Keyboard navigation
-  useEffect(() => {
-    // Always call the hook - conditionally add event listener inside
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (!open) return; // Early return inside handler, not in hook
-      
-      if (e.key === 'ArrowLeft' && currentIndex > 0) {
-        setCurrentIndex(currentIndex - 1);
-      } else if (e.key === 'ArrowRight' && currentIndex < images.length - 1) {
-        setCurrentIndex(currentIndex + 1);
-      } else if (e.key === 'Escape') {
-        onOpenChange(false);
-      }
-    };
-
-    if (open) {
-      window.addEventListener('keydown', handleKeyDown);
-    }
-    
-    return () => {
-      if (open) {
-        window.removeEventListener('keydown', handleKeyDown);
-      }
-    };
-  }, [open, currentIndex, images.length, onOpenChange]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
