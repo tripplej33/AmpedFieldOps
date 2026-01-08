@@ -1382,7 +1382,29 @@ class ApiClient {
     }
     formData.append('process_ocr', String(processOCR));
 
-    return this.uploadFile('/api/document-scan/upload', file, 'file');
+    try {
+      const response = await fetch(`${API_URL}/api/document-scan/upload`, {
+        method: 'POST',
+        headers: this.token ? { Authorization: `Bearer ${this.token}` } : {},
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({ error: 'Upload failed' }));
+        const error = new Error(errorData.error || 'Upload failed');
+        this.logApiError('/api/document-scan/upload', error, 'api');
+        throw error;
+      }
+
+      return response.json();
+    } catch (error: any) {
+      if (error.name === 'TypeError' && error.message.includes('fetch')) {
+        const networkError = new Error('Network error during file upload');
+        this.logApiError('/api/document-scan/upload', networkError, 'network');
+        throw networkError;
+      }
+      throw error;
+    }
   }
 
   async getDocumentScan(scanId: string) {
