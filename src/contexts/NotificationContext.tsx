@@ -132,9 +132,9 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
 
     if (format === 'csv') {
       // CSV export
-      const headers = ['Date', 'Type', 'Message', 'Endpoint', 'User', 'Details'];
+      const headers = ['Date & Time', 'Type', 'Message', 'Endpoint', 'User', 'Details'];
       const rows = errorLogs.map(log => [
-        new Date(log.created_at).toLocaleString(),
+        new Date(log.created_at).toISOString(),
         log.type,
         `"${(log.message || '').replace(/"/g, '""')}"`,
         log.endpoint || '',
@@ -145,14 +145,19 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
       mimeType = 'text/csv';
       extension = 'csv';
     } else {
-      // JSON export
+      // JSON export (created_at already includes timestamp as ISO string)
       dataStr = JSON.stringify(errorLogs, null, 2);
       mimeType = 'application/json';
       extension = 'json';
     }
 
     const dataUri = `data:${mimeType};charset=utf-8,` + encodeURIComponent(dataStr);
-    const fileName = `error-logs-${new Date().toISOString().split('T')[0]}.${extension}`;
+    // Format: error-logs-2024-01-15_14-30-45.json (readable with timestamp, UTC)
+    const now = new Date();
+    const isoString = now.toISOString(); // 2024-01-15T14:30:45.123Z
+    const [dateStr, timeStr] = isoString.split('T');
+    const timeWithoutMs = timeStr.split('.')[0].replace(/:/g, '-'); // 14-30-45
+    const fileName = `error-logs-${dateStr}_${timeWithoutMs}.${extension}`;
     
     const link = document.createElement('a');
     link.setAttribute('href', dataUri);
