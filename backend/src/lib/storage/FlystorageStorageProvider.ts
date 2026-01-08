@@ -69,16 +69,42 @@ export class FlystorageStorageProvider implements IStorageProvider {
           }
         }
       } else {
-        // Directory exists, verify it's accessible
+        // Directory exists, verify it's accessible and writable
         try {
           fs.accessSync(basePath, fs.constants.R_OK | fs.constants.W_OK);
+          
+          // Additional check: try to write a test file to verify write permissions
+          const testFile = path.join(basePath, '.write-test');
+          try {
+            fs.writeFileSync(testFile, 'test');
+            fs.unlinkSync(testFile);
+          } catch (writeError: any) {
+            log.error('Base storage directory exists but is not writable', writeError, {
+              basePath,
+              errorCode: writeError.code,
+              errorMessage: writeError.message
+            });
+            throw new Error(`Storage directory exists but is not writable: ${writeError.message} (code: ${writeError.code || 'unknown'}). Please check directory permissions.`);
+          }
         } catch (accessError: any) {
           log.error('Base storage directory exists but is not accessible', accessError, {
             basePath,
+            resolvedPath: path.resolve(basePath),
+            cwd: process.cwd(),
             errorCode: accessError.code,
-            errorMessage: accessError.message
+            errorMessage: accessError.message,
+            // Include permission debugging info
+            uid: process.getuid ? process.getuid() : 'N/A',
+            gid: process.getgid ? process.getgid() : 'N/A'
           });
-          throw new Error(`Storage directory exists but is not accessible: ${accessError.message} (code: ${accessError.code || 'unknown'})`);
+          
+          // Provide Docker-specific guidance if in container
+          const isDocker = fs.existsSync('/.dockerenv');
+          const dockerHint = isDocker 
+            ? ' If using Docker, ensure the mounted volume has correct permissions (chmod 755 ./backend/uploads on host, or run container with proper user mapping).'
+            : '';
+          
+          throw new Error(`Storage directory exists but is not accessible: ${accessError.message} (code: ${accessError.code || 'unknown'}). Please check directory permissions.${dockerHint}`);
         }
       }
 

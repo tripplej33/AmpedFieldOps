@@ -126,7 +126,16 @@ export class StorageFactory {
           errorMessage: error.message,
           errorStack: error.stack
         });
-        throw new Error(`Failed to initialize storage provider (${config.driver}): ${error.message}`);
+        
+        // Provide more helpful error messages for common issues
+        let errorMessage = error.message;
+        if (error.message.includes('EACCES') || error.message.includes('permission denied')) {
+          errorMessage = `Storage permission error: The storage directory exists but the application does not have write permissions. Please check directory permissions or configure a different storage driver (S3/Google Drive) in Settings. Original error: ${error.message}`;
+        } else if (error.message.includes('ENOENT') || error.message.includes('does not exist')) {
+          errorMessage = `Storage directory not found: The storage directory does not exist and could not be created. Please check the storage configuration. Original error: ${error.message}`;
+        }
+        
+        throw new Error(`Failed to initialize storage provider (${config.driver}): ${errorMessage}`);
       }
     }
 

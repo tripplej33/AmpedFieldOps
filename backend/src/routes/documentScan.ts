@@ -34,9 +34,15 @@ router.post(
     const project_id = req.body?.project_id || req.body?.projectId;
     const cost_center_id = req.body?.cost_center_id || req.body?.costCenterId;
 
-    if (!project_id) {
-      log.error('Document scan upload failed: project_id missing', { body: req.body, hasFile: !!req.file });
-      throw new ValidationError('project_id is required');
+    // Validate project_id - check for empty string, null, or undefined
+    if (!project_id || (typeof project_id === 'string' && project_id.trim() === '')) {
+      log.error('Document scan upload failed: project_id missing or empty', { 
+        body: req.body, 
+        hasFile: !!req.file,
+        project_id: project_id,
+        projectId: req.body?.projectId
+      });
+      throw new ValidationError('project_id is required and cannot be empty');
     }
 
     // Check if file is an image (validate before uploading)

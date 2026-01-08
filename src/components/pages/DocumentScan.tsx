@@ -106,7 +106,8 @@ export default function DocumentScan() {
     const file = event.target.files?.[0];
     if (!file) return;
 
-    if (!selectedProject) {
+    // Validate project selection - check for empty string, null, or undefined
+    if (!selectedProject || selectedProject.trim() === '') {
       toast.error('Please select a project first');
       return;
     }
@@ -119,7 +120,7 @@ export default function DocumentScan() {
 
     try {
       setIsUploading(true);
-      const result = await api.uploadDocumentForScan(file, selectedProject, undefined, true);
+      const result = await api.uploadDocumentForScan(file, selectedProject.trim(), undefined, true);
       
       toast.success('Document uploaded and processing started');
       
