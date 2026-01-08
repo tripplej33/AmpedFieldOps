@@ -2025,7 +2025,6 @@ function TimesheetForm({
                   );
                 })
               )}
-            </div>
           </div>
         </div>
 
