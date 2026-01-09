@@ -1,8 +1,9 @@
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { X, ChevronLeft, ChevronRight, Download, Trash2 } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight, Download, Trash2, AlertCircle, Loader2 } from 'lucide-react';
 import { useState, useEffect, useCallback } from 'react';
 import { cn } from '@/lib/utils';
+import { api } from '@/lib/api';
 
 interface ImageViewerProps {
   images: string[];
@@ -23,10 +24,23 @@ export default function ImageViewer({
 }: ImageViewerProps) {
   // All hooks must be called before any conditional returns
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
+  const [imageError, setImageError] = useState<string | null>(null);
+  const [imageLoading, setImageLoading] = useState(true);
+  const [imageObjectUrl, setImageObjectUrl] = useState<string | null>(null);
+  const [retryKey, setRetryKey] = useState(0);
 
   useEffect(() => {
     setCurrentIndex(initialIndex);
   }, [initialIndex, open]);
+
+  // Cleanup object URL on unmount
+  useEffect(() => {
+    return () => {
+      if (imageObjectUrl) {
+        URL.revokeObjectURL(imageObjectUrl);
+      }
+    };
+  }, [imageObjectUrl]);
 
   // Keyboard navigation - must be called before any early returns
   useEffect(() => {
@@ -60,6 +74,110 @@ export default function ImageViewer({
   const currentImage = images[currentIndex];
   const hasPrevious = currentIndex > 0;
   const hasNext = currentIndex < images.length - 1;
+
+  // Ensure image URL is properly formatted
+  const getImageUrl = (url: string | undefined | null): string => {
+    if (!url) return '';
+    // If it's already a full URL (http/https), use it as-is (S3 signed URL or external)
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      return url;
+    }
+    // If it's a relative path starting with /uploads, ensure it's properly formatted
+    if (url.startsWith('/uploads')) {
+      return url;
+    }
+    // If it doesn't start with /, add /uploads prefix
+    if (!url.startsWith('/')) {
+      return `/uploads/${url}`;
+    }
+    return url;
+  };
+
+  // Load image when currentImage or currentIndex changes, or on retry
+  useEffect(() => {
+    if (!currentImage || !open) {
+      setImageLoading(false);
+      return;
+    }
+
+    setImageLoading(true);
+    setImageError(null);
+
+    // Cleanup previous object URL
+    setImageObjectUrl((prevUrl) => {
+      if (prevUrl) {
+        URL.revokeObjectURL(prevUrl);
+      }
+      return null;
+    });
+
+    const loadImage = async () => {
+      try {
+        // If it's already a full URL (S3 signed URL), use it directly
+        if (currentImage.startsWith('http://') || currentImage.startsWith('https://')) {
+          setImageObjectUrl(null); // Use direct URL, no blob needed
+          setImageLoading(false);
+          return;
+        }
+
+        // For relative paths, fetch with authentication
+        const formattedUrl = getImageUrl(currentImage);
+        const token = api.getToken();
+        
+        const response = await fetch(formattedUrl, {
+          headers: token ? {
+            'Authorization': `Bearer ${token}`,
+          } : {},
+        });
+
+        if (!response.ok) {
+          if (response.status === 401) {
+            throw new Error('Unauthorized - please log in again');
+          } else if (response.status === 404) {
+            throw new Error('Image not found');
+          } else {
+            throw new Error(`Failed to load image: ${response.status} ${response.statusText}`);
+          }
+        }
+
+        const blob = await response.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        setImageObjectUrl(objectUrl);
+        setImageLoading(false);
+      } catch (error: any) {
+        console.error('Failed to load image:', error, { url: currentImage });
+        setImageError(error.message || 'Failed to load image');
+        setImageLoading(false);
+      }
+    };
+
+    loadImage();
+  }, [currentImage, currentIndex, open, retryKey]);
+
+  const imageUrl = currentImage && imageObjectUrl 
+    ? imageObjectUrl 
+    : (currentImage && (currentImage.startsWith('http://') || currentImage.startsWith('https://'))
+      ? currentImage
+      : imageObjectUrl || getImageUrl(currentImage));
+
+  const handleImageLoad = () => {
+    setImageLoading(false);
+    setImageError(null);
+  };
+
+  const handleImageError = (e: React.SyntheticEvent<HTMLImageElement, Event>) => {
+    setImageLoading(false);
+    const img = e.currentTarget;
+    setImageError(`Failed to display image. URL: ${currentImage || 'undefined'}`);
+    console.error('Image display error:', {
+      src: img.src,
+      naturalWidth: img.naturalWidth,
+      naturalHeight: img.naturalHeight,
+      currentImage,
+      imageUrl,
+      objectUrl: imageObjectUrl
+    });
+  };
 
   const handlePrevious = () => {
     if (hasPrevious) {
@@ -149,13 +267,45 @@ export default function ImageViewer({
 
           {/* Image */}
           <div className="w-full h-full flex items-center justify-center p-4">
-            <img
-              src={currentImage}
-              alt={`Image ${currentIndex + 1}`}
-              className="max-w-full max-h-full object-contain"
-              onClick={handleNext}
-              style={{ cursor: hasNext ? 'pointer' : 'default' }}
-            />
+            {imageLoading && (
+              <div className="flex flex-col items-center justify-center gap-4">
+                <Loader2 className="w-12 h-12 text-white/60 animate-spin" />
+                <p className="text-white/60 text-sm">Loading image...</p>
+              </div>
+            )}
+            {imageError && (
+              <div className="flex flex-col items-center justify-center gap-4 max-w-md text-center p-6">
+                <AlertCircle className="w-12 h-12 text-red-400" />
+                <p className="text-white/90 font-medium">Failed to load image</p>
+                <p className="text-white/60 text-sm">{imageError}</p>
+                <p className="text-white/40 text-xs break-all">{currentImage}</p>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    // Trigger reload by incrementing retry key
+                    setRetryKey(prev => prev + 1);
+                  }}
+                  className="mt-2"
+                >
+                  Retry
+                </Button>
+              </div>
+            )}
+            {!imageError && imageUrl && (
+              <img
+                data-image-viewer
+                src={imageUrl}
+                alt={`Image ${currentIndex + 1}`}
+                className={cn(
+                  "max-w-full max-h-full object-contain",
+                  imageLoading ? "opacity-0" : "opacity-100 transition-opacity"
+                )}
+                onClick={handleNext}
+                onLoad={handleImageLoad}
+                onError={handleImageError}
+                style={{ cursor: hasNext ? 'pointer' : 'default' }}
+              />
+            )}
           </div>
 
           {/* Next Button */}
@@ -186,9 +336,13 @@ export default function ImageViewer({
                     )}
                   >
                     <img
-                      src={img}
+                      src={getImageUrl(img)}
                       alt={`Thumbnail ${idx + 1}`}
                       className="w-full h-full object-cover"
+                      onError={(e) => {
+                        // Fallback for thumbnail errors - show placeholder
+                        e.currentTarget.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiBmaWxsPSIjMzMzMzMzIi8+CjxwYXRoIGQ9Ik0zMiAyMEMzMC4zNCAyMCAyOSAyMS4zNCAyOSAyM1YzM0MyOSAzNC42NiAzMC4zNCAzNiAzMiAzNkgzNkMzNy42NiAzNiAzOSAzNC42NiAzOSAzM1YyM0MzOSAyMS4zNCAzNy42NiAyMCAzNiAyMEgzMloiIGZpbGw9IiM2NjY2NjYiLz4KPC9zdmc+';
+                      }}
                     />
                   </button>
                 ))}
