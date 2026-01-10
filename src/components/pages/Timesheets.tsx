@@ -1419,7 +1419,28 @@ export default function Timesheets() {
                         }}
                         className="w-20 h-20 rounded border border-border overflow-hidden hover:border-electric transition-colors"
                       >
-                        <img src={url} alt={`Photo ${idx + 1}`} className="w-full h-full object-cover" />
+                        <img 
+                          src={url.startsWith('http') ? url : (url.startsWith('/uploads') ? url : `/uploads/${url}`)} 
+                          alt={`Photo ${idx + 1}`} 
+                          className="w-full h-full object-cover"
+                          onError={(e) => {
+                            const img = e.currentTarget;
+                            if (!img.src.startsWith('data:') && !url.startsWith('http')) {
+                              const formattedUrl = url.startsWith('/uploads') ? url : `/uploads/${url}`;
+                              const token = api.getToken();
+                              fetch(formattedUrl, {
+                                headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+                              })
+                                .then(res => res.ok ? res.blob() : Promise.reject())
+                                .then(blob => {
+                                  img.src = URL.createObjectURL(blob);
+                                })
+                                .catch(() => {
+                                  img.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiBmaWxsPSIjMzMzMzMzIi8+CjxwYXRoIGQ9Ik0zMiAyMEMzMC4zNCAyMCAyOSAyMS4zNCAyOSAyM1YzM0MyOSAzNC42NiAzMC4zNCAzNiAzMiAzNkgzNkMzNy42NiAzNiAzOSAzNC42NiAzOSAzM1YyM0MzOSAyMS4zNCAzNy42NiAyMCAzNiAyMEgzMloiIGZpbGw9IiM2NjY2NjYiLz4KPC9zdmc+';
+                                });
+                            }
+                          }}
+                        />
                       </button>
                     ))}
                   </div>

@@ -57,6 +57,16 @@ interface LogoFile {
 }
 
 export default function Files() {
+  // Helper function to get image URL for thumbnails
+  const getThumbnailUrl = (url: string): string => {
+    if (url.startsWith('http://') || url.startsWith('https://')) {
+      return url;
+    }
+    if (url.startsWith('/uploads')) {
+      return url;
+    }
+    return `/uploads/${url}`;
+  };
   const { hasPermission } = useAuth();
   const [clients, setClients] = useState<ClientWithProjects[]>([]);
   const [logos, setLogos] = useState<LogoFile[]>([]);
@@ -77,10 +87,20 @@ export default function Files() {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<Record<number, number>>({});
   const [cloudStorageProvider, setCloudStorageProvider] = useState<string>('local');
+  const [thumbnailObjectUrls, setThumbnailObjectUrls] = useState<Map<string, string>>(new Map());
 
   useEffect(() => {
     loadData();
     loadCloudStorageInfo();
+  }, []);
+
+  // Cleanup thumbnail object URLs on unmount
+  useEffect(() => {
+    return () => {
+      thumbnailObjectUrls.forEach((url) => {
+        URL.revokeObjectURL(url);
+      });
+    };
   }, []);
 
   const loadCloudStorageInfo = async () => {
@@ -635,10 +655,42 @@ export default function Files() {
                                                 className="relative group border border-border rounded-lg overflow-hidden hover:border-electric transition-colors"
                                               >
                                                 <img
-                                                  src={image.url}
+                                                  src={thumbnailObjectUrls.get(image.url) || getThumbnailUrl(image.url)}
                                                   alt={image.filename}
                                                   className="w-full h-24 object-cover cursor-pointer"
                                                   onClick={() => handleViewImage(image.url, allImageUrls, idx)}
+                                                  onError={(e) => {
+                                                    const img = e.currentTarget;
+                                                    const originalSrc = image.url;
+                                                    
+                                                    // If already using object URL or placeholder, don't retry
+                                                    if (img.src.startsWith('data:') || thumbnailObjectUrls.has(originalSrc)) {
+                                                      return;
+                                                    }
+                                                    
+                                                    // Try loading with authentication
+                                                    const formattedUrl = getThumbnailUrl(originalSrc);
+                                                    const token = api.getToken();
+                                                    
+                                                    fetch(formattedUrl, {
+                                                      headers: token ? { 'Authorization': `Bearer ${token}` } : {}
+                                                    })
+                                                      .then(res => {
+                                                        if (res.ok) {
+                                                          return res.blob();
+                                                        }
+                                                        throw new Error('Failed to load');
+                                                      })
+                                                      .then(blob => {
+                                                        const objectUrl = URL.createObjectURL(blob);
+                                                        setThumbnailObjectUrls(prev => new Map(prev).set(originalSrc, objectUrl));
+                                                        img.src = objectUrl;
+                                                      })
+                                                      .catch(() => {
+                                                        // Fallback placeholder
+                                                        img.src = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjQiIGhlaWdodD0iNjQiIHZpZXdCb3g9IjAgMCA2NCA2NCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHJlY3Qgd2lkdGg9IjY0IiBoZWlnaHQ9IjY0IiBmaWxsPSIjMzMzMzMzIi8+CjxwYXRoIGQ9Ik0zMiAyMEMzMC4zNCAyMCAyOSAyMS4zNCAyOSAyM1YzM0MyOSAzNC42NiAzMC4zNCAzNiAzMiAzNkgzNkMzNy42NiAzNiAzOSAzNC42NiAzOSAzM1YyM0MzOSAyMS4zNCAzNy42NiAyMCAzNiAyMEgzMloiIGZpbGw9IiM2NjY2NjYiLz4KPC9zdmc+';
+                                                      });
+                                                  }}
                                                 />
                                                 <div className="absolute inset-0 bg-black/0 group-hover:bg-black/50 transition-colors flex items-center justify-center gap-2 opacity-0 group-hover:opacity-100">
                                                   <Button
@@ -664,9 +716,7 @@ export default function Files() {
                                                     <Trash2 className="w-3 h-3" />
                                                   </Button>
                                                 </div>
-                                                <div className="absolute bottom-0 left-0 right-0 bg-black/70 text-white text-xs p-1 truncate">
-                                                  {image.filename}
-                                                </div>
+                                                {/* Filename overlay removed - can view filename in ImageViewer if needed */}
                                               </div>
                                             );
                                           })}
