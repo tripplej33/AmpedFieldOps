@@ -1,7 +1,7 @@
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { X, ChevronLeft, ChevronRight, Download, Trash2, AlertCircle, Loader2 } from 'lucide-react';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { cn } from '@/lib/utils';
 import { api } from '@/lib/api';
 
@@ -22,18 +22,40 @@ export default function ImageViewer({
   onDelete,
   showDelete = false,
 }: ImageViewerProps) {
+  // Normalize images to always be an array - memoize to prevent unnecessary re-renders
+  const normalizedImages = useMemo(() => images || [], [images]);
+  const imageCount = normalizedImages.length;
+  
   // All hooks must be called before any conditional returns
-  const [currentIndex, setCurrentIndex] = useState(initialIndex);
+  const [currentIndex, setCurrentIndex] = useState(() => {
+    const count = (images || []).length;
+    return Math.max(0, Math.min(initialIndex, Math.max(0, count - 1)));
+  });
   const [imageError, setImageError] = useState<string | null>(null);
   const [imageLoading, setImageLoading] = useState(true);
   const [imageObjectUrl, setImageObjectUrl] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
 
+  // Update currentIndex when initialIndex or images change
   useEffect(() => {
-    setCurrentIndex(initialIndex);
-  }, [initialIndex, open]);
+    if (imageCount > 0) {
+      const validIndex = Math.max(0, Math.min(initialIndex, imageCount - 1));
+      setCurrentIndex(prev => {
+        // Only update if it's actually different to avoid unnecessary re-renders
+        return prev !== validIndex ? validIndex : prev;
+      });
+    }
+  }, [initialIndex, imageCount]);
 
-  // Cleanup object URL on unmount
+  // Reset states when dialog closes
+  useEffect(() => {
+    if (!open) {
+      setImageError(null);
+      setImageLoading(false);
+    }
+  }, [open]);
+
+  // Cleanup object URL on unmount or when changing
   useEffect(() => {
     return () => {
       if (imageObjectUrl) {
@@ -44,36 +66,23 @@ export default function ImageViewer({
 
   // Keyboard navigation - must be called before any early returns
   useEffect(() => {
-    // Always call the hook - conditionally add event listener inside
+    if (!open || imageCount === 0) return;
+    
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (!open) return; // Early return inside handler, not in hook
-      
       if (e.key === 'ArrowLeft' && currentIndex > 0) {
         setCurrentIndex(currentIndex - 1);
-      } else if (e.key === 'ArrowRight' && currentIndex < images.length - 1) {
+      } else if (e.key === 'ArrowRight' && currentIndex < imageCount - 1) {
         setCurrentIndex(currentIndex + 1);
       } else if (e.key === 'Escape') {
         onOpenChange(false);
       }
     };
 
-    if (open) {
-      window.addEventListener('keydown', handleKeyDown);
-    }
-    
+    window.addEventListener('keydown', handleKeyDown);
     return () => {
-      if (open) {
-        window.removeEventListener('keydown', handleKeyDown);
-      }
+      window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [open, currentIndex, images.length, onOpenChange]);
-
-  // Early return AFTER all hooks
-  if (!images || images.length === 0) return null;
-
-  const currentImage = images[currentIndex];
-  const hasPrevious = currentIndex > 0;
-  const hasNext = currentIndex < images.length - 1;
+  }, [open, currentIndex, imageCount, onOpenChange]);
 
   // Ensure image URL is properly formatted
   const getImageUrl = (url: string | undefined | null): string => {
@@ -93,9 +102,17 @@ export default function ImageViewer({
     return url;
   };
 
+  // Get current image - safely handle empty arrays - memoize to stabilize reference
+  const currentImage = useMemo(() => {
+    if (imageCount === 0 || currentIndex < 0 || currentIndex >= imageCount) {
+      return null;
+    }
+    return normalizedImages[currentIndex] || null;
+  }, [normalizedImages, currentIndex, imageCount]);
+
   // Load image when currentImage or currentIndex changes, or on retry
   useEffect(() => {
-    if (!currentImage || !open) {
+    if (!currentImage || !open || imageCount === 0) {
       setImageLoading(false);
       return;
     }
@@ -152,13 +169,21 @@ export default function ImageViewer({
     };
 
     loadImage();
-  }, [currentImage, currentIndex, open, retryKey]);
+  }, [currentImage, open, retryKey]);
 
-  const imageUrl = currentImage && imageObjectUrl 
+  // Early return AFTER all hooks - but use normalizedImages to avoid hook count issues
+  if (!open || imageCount === 0 || !currentImage) {
+    return null;
+  }
+
+  const hasPrevious = currentIndex > 0;
+  const hasNext = currentIndex < imageCount - 1;
+
+  const imageUrl = imageObjectUrl 
     ? imageObjectUrl 
-    : (currentImage && (currentImage.startsWith('http://') || currentImage.startsWith('https://'))
+    : (currentImage.startsWith('http://') || currentImage.startsWith('https://')
       ? currentImage
-      : imageObjectUrl || getImageUrl(currentImage));
+      : getImageUrl(currentImage));
 
   const handleImageLoad = () => {
     setImageLoading(false);
@@ -194,17 +219,18 @@ export default function ImageViewer({
   const handleDelete = () => {
     if (onDelete) {
       onDelete(currentIndex);
-      if (images.length === 1) {
+      if (imageCount === 1) {
         onOpenChange(false);
-      } else if (currentIndex === images.length - 1) {
+      } else if (currentIndex === imageCount - 1) {
         setCurrentIndex(currentIndex - 1);
       }
     }
   };
 
   const handleDownload = () => {
+    if (!currentImage) return;
     const link = document.createElement('a');
-    link.href = currentImage;
+    link.href = imageUrl || currentImage;
     link.download = `image-${currentIndex + 1}.jpg`;
     link.target = '_blank';
     document.body.appendChild(link);
@@ -228,7 +254,7 @@ export default function ImageViewer({
 
           {/* Image Counter */}
           <div className="absolute top-4 left-4 z-50 bg-black/50 text-white px-3 py-1 rounded-md text-sm">
-            {currentIndex + 1} / {images.length}
+            {currentIndex + 1} / {imageCount}
           </div>
 
           {/* Action Buttons */}
@@ -291,7 +317,7 @@ export default function ImageViewer({
                 </Button>
               </div>
             )}
-            {!imageError && imageUrl && (
+            {!imageError && imageUrl && currentImage && (
               <img
                 data-image-viewer
                 src={imageUrl}
@@ -321,10 +347,10 @@ export default function ImageViewer({
           )}
 
           {/* Thumbnail Strip */}
-          {images.length > 1 && (
+          {imageCount > 1 && (
             <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 z-50">
               <div className="flex gap-2 bg-black/50 px-4 py-2 rounded-lg overflow-x-auto max-w-[90vw]">
-                {images.map((img, idx) => (
+                {normalizedImages.map((img, idx) => (
                   <button
                     key={idx}
                     onClick={() => setCurrentIndex(idx)}
