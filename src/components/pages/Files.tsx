@@ -670,7 +670,7 @@ export default function Files() {
                                                     
                                                     // Try loading with authentication
                                                     const formattedUrl = getThumbnailUrl(originalSrc);
-                                                    const token = api.getToken();
+                                                    const token = await api.getToken();
                                                     
                                                     fetch(formattedUrl, {
                                                       headers: token ? { 'Authorization': `Bearer ${token}` } : {}

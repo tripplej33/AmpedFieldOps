@@ -126,11 +126,14 @@ function AppRoutes() {
 function App() {
   // Load favicon on app startup if user is authenticated
   useEffect(() => {
-    const token = api.getToken();
-    if (token) {
-      // User is authenticated, try to load favicon
-      loadFaviconFromSettings(api);
-    }
+    const loadFavicon = async () => {
+      const token = await api.getToken();
+      if (token) {
+        // User is authenticated, try to load favicon
+        loadFaviconFromSettings(api);
+      }
+    };
+    loadFavicon();
   }, []);
 
   return (

@@ -45,6 +45,7 @@ import FinancialReportsTab from './FinancialReportsTab';
 import { XeroPayment, PurchaseOrder, Bill, Expense } from '@/types';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { supabase } from '@/lib/supabase';
 
 interface LineItem {
   description: string;
@@ -328,8 +329,7 @@ export default function Financials() {
         toast.success(`Invoice created. Syncing to Xero...`);
         if (invoiceId) {
           setSyncingInvoices(prev => new Set(prev).add(invoiceId));
-          // Poll for sync status
-          pollInvoiceSyncStatus(invoiceId);
+          // Realtime subscription will handle status updates automatically
         }
       } else {
         toast.success(`Invoice created from ${timesheetCount} timesheet${timesheetCount !== 1 ? 's' : ''}`);
@@ -354,57 +354,68 @@ export default function Financials() {
     }
   };
 
-  // Poll for invoice sync status
-  const pollInvoiceSyncStatus = async (invoiceId: string, retries = 0) => {
-    if (retries > 20) { // Stop after 20 attempts (100 seconds)
-      setSyncingInvoices(prev => {
-        const next = new Set(prev);
-        next.delete(invoiceId);
-        return next;
-      });
-      toast.error('Sync status check timed out. Please refresh to see current status.');
-      return;
-    }
+  // Subscribe to invoice sync status changes via Realtime
+  useEffect(() => {
+    if (syncingInvoices.size === 0) return;
 
-    try {
-      const status = await api.getInvoiceSyncStatus(invoiceId);
-      
-      if (status.sync_status === 'synced') {
-        setSyncingInvoices(prev => {
-          const next = new Set(prev);
-          next.delete(invoiceId);
-          return next;
-        });
-        toast.success('Invoice synced to Xero successfully!');
-        loadData();
-      } else if (status.sync_status === 'failed') {
-        setSyncingInvoices(prev => {
-          const next = new Set(prev);
-          next.delete(invoiceId);
-          return next;
-        });
-        // Load error details
-        try {
-          const logs = await api.getSyncLogs('invoice', invoiceId);
-          const errorLog = logs.find((log: any) => log.status_code && log.status_code >= 400);
-          if (errorLog) {
-            setSyncErrors(prev => ({ ...prev, [`invoice-${invoiceId}`]: errorLog }));
+    const channels: any[] = [];
+
+    // Subscribe to each syncing invoice
+    syncingInvoices.forEach((invoiceId) => {
+      const channel = supabase
+        .channel(`invoice-sync-${invoiceId}`)
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'xero_invoices',
+            filter: `id=eq.${invoiceId}`,
+          },
+          async (payload) => {
+            const newStatus = payload.new?.sync_status;
+            const invoiceId = payload.new?.id;
+
+            if (newStatus === 'synced') {
+              setSyncingInvoices(prev => {
+                const next = new Set(prev);
+                next.delete(invoiceId);
+                return next;
+              });
+              toast.success('Invoice synced to Xero successfully!');
+              loadData();
+            } else if (newStatus === 'failed') {
+              setSyncingInvoices(prev => {
+                const next = new Set(prev);
+                next.delete(invoiceId);
+                return next;
+              });
+              // Load error details
+              try {
+                const logs = await api.getSyncLogs('invoice', invoiceId);
+                const errorLog = logs.find((log: any) => log.status_code && log.status_code >= 400);
+                if (errorLog) {
+                  setSyncErrors(prev => ({ ...prev, [`invoice-${invoiceId}`]: errorLog }));
+                }
+              } catch (e) {
+                console.error('Failed to load error details:', e);
+              }
+              toast.error('Invoice sync to Xero failed. Click "View Error Details" for more information.');
+              loadData();
+            }
           }
-        } catch (e) {
-          console.error('Failed to load error details:', e);
-        }
-        toast.error('Invoice sync to Xero failed. Click "View Error Details" for more information.');
-        loadData();
-      } else {
-        // Still pending, poll again after 5 seconds
-        setTimeout(() => pollInvoiceSyncStatus(invoiceId, retries + 1), 5000);
-      }
-    } catch (error) {
-      console.error('Failed to check sync status:', error);
-      // Continue polling on error
-      setTimeout(() => pollInvoiceSyncStatus(invoiceId, retries + 1), 5000);
-    }
-  };
+        )
+        .subscribe();
+
+      channels.push(channel);
+    });
+
+    return () => {
+      channels.forEach(channel => {
+        supabase.removeChannel(channel);
+      });
+    };
+  }, [syncingInvoices]);
 
   const handleMarkAsPaid = async (invoiceId: string) => {
     try {

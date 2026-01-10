@@ -112,9 +112,9 @@ export default function Login() {
   };
 
   const handleAdminSetupSuccess = async (user: any, token: string) => {
-    // Set token
-    api.setToken(token);
-    // Update auth context with user data
+    // With Supabase, the AuthContext handles authentication automatically
+    // The token is managed by Supabase, so we just update the user in context
+    // The admin setup should have already signed in via Supabase Auth
     updateUser(user);
     // Small delay to ensure state is updated
     setTimeout(() => {

@@ -1423,11 +1423,11 @@ export default function Timesheets() {
                           src={url.startsWith('http') ? url : (url.startsWith('/uploads') ? url : `/uploads/${url}`)} 
                           alt={`Photo ${idx + 1}`} 
                           className="w-full h-full object-cover"
-                          onError={(e) => {
+                          onError={async (e) => {
                             const img = e.currentTarget;
                             if (!img.src.startsWith('data:') && !url.startsWith('http')) {
                               const formattedUrl = url.startsWith('/uploads') ? url : `/uploads/${url}`;
-                              const token = api.getToken();
+                              const token = await api.getToken();
                               fetch(formattedUrl, {
                                 headers: token ? { 'Authorization': `Bearer ${token}` } : {}
                               })

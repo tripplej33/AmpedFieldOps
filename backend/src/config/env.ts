@@ -9,11 +9,15 @@ dotenv.config({
 });
 
 interface EnvConfig {
-  // Database
-  DATABASE_URL: string;
+  // Database (PostgreSQL connection string)
+  // For Supabase: Use the direct PostgreSQL connection string from Supabase
+  // Local: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+  // Production: Get from Supabase dashboard or supabase status
+  DATABASE_URL?: string;
   
-  // Auth
-  JWT_SECRET: string;
+  // Supabase (required)
+  SUPABASE_URL: string;
+  SUPABASE_SERVICE_ROLE_KEY: string;
   
   // Server
   PORT: number;
@@ -53,15 +57,20 @@ function getEnvVar(key: string, required = true, defaultValue?: string): string 
 }
 
 function validateEnv(): EnvConfig {
-  // Validate required variables
-  const jwtSecret = getEnvVar('JWT_SECRET');
-  if (jwtSecret.length < AUTH_CONSTANTS.MIN_JWT_SECRET_LENGTH) {
-    throw new Error(`JWT_SECRET must be at least ${AUTH_CONSTANTS.MIN_JWT_SECRET_LENGTH} characters long`);
+  // Try to derive DATABASE_URL from Supabase if not provided
+  const supabaseUrl = getEnvVar('SUPABASE_URL', false, 'http://127.0.0.1:54321');
+  let databaseUrl = getEnvVar('DATABASE_URL', false);
+  
+  // If DATABASE_URL not provided, try to derive from Supabase URL
+  // For local Supabase: postgresql://postgres:postgres@127.0.0.1:54322/postgres
+  if (!databaseUrl && supabaseUrl.includes('127.0.0.1:54321')) {
+    databaseUrl = 'postgresql://postgres:postgres@127.0.0.1:54322/postgres';
   }
-
+  
   return {
-    DATABASE_URL: getEnvVar('DATABASE_URL'),
-    JWT_SECRET: jwtSecret,
+    DATABASE_URL: databaseUrl,
+    SUPABASE_URL: supabaseUrl,
+    SUPABASE_SERVICE_ROLE_KEY: getEnvVar('SUPABASE_SERVICE_ROLE_KEY'),
     PORT: parseInt(getEnvVar('PORT', false, '3001'), 10),
     NODE_ENV: (getEnvVar('NODE_ENV', false, 'development') as 'development' | 'production' | 'test'),
     FRONTEND_URL: getEnvVar('FRONTEND_URL', false, 'http://localhost:5173'),

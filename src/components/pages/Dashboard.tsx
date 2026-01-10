@@ -8,6 +8,7 @@ import { TrendingUp, TrendingDown, Briefcase, Clock, DollarSign, Activity, Loade
 import { cn } from '@/lib/utils';
 import { useNotifications } from '@/contexts/NotificationContext';
 import { useAuth } from '@/contexts/AuthContext';
+import { supabase } from '@/lib/supabase';
 
 export default function Dashboard() {
   const [metrics, setMetrics] = useState<DashboardMetrics | null>(null);
@@ -22,13 +23,60 @@ export default function Dashboard() {
 
   useEffect(() => {
     loadDashboardData();
-    
-    // Auto-refresh every 30 seconds
-    const interval = setInterval(() => {
-      loadDashboardData();
-    }, 30000);
+  }, []);
 
-    return () => clearInterval(interval);
+  // Subscribe to real-time updates for timesheets and projects
+  useEffect(() => {
+    // Subscribe to timesheet changes
+    const timesheetChannel = supabase
+      .channel('dashboard-timesheets')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'timesheets',
+        },
+        () => {
+          // Reload recent timesheets when changes occur
+          api.getRecentTimesheets(5)
+            .then(setRecentTimesheets)
+            .catch(() => {});
+          // Also reload metrics to update totals
+          api.getDashboardMetrics()
+            .then(setMetrics)
+            .catch(() => {});
+        }
+      )
+      .subscribe();
+
+    // Subscribe to project changes
+    const projectChannel = supabase
+      .channel('dashboard-projects')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'projects',
+        },
+        () => {
+          // Reload active projects when changes occur
+          api.getActiveProjects(5)
+            .then(setActiveProjects)
+            .catch(() => {});
+          // Also reload metrics
+          api.getDashboardMetrics()
+            .then(setMetrics)
+            .catch(() => {});
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(timesheetChannel);
+      supabase.removeChannel(projectChannel);
+    };
   }, []);
 
   // Show welcome notification once per session

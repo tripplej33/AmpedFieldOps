@@ -108,7 +108,7 @@ export default function ImageViewer({
 
           // For relative paths, fetch with authentication
           const formattedUrl = getImageUrl(img);
-          const token = api.getToken();
+          const token = await api.getToken();
           
           const response = await fetch(formattedUrl, {
             headers: token ? {
@@ -232,7 +232,7 @@ export default function ImageViewer({
 
         // For relative paths, fetch with authentication
         const formattedUrl = getImageUrl(currentImage);
-        const token = api.getToken();
+        const token = await api.getToken();
         
         const response = await fetch(formattedUrl, {
           headers: token ? {

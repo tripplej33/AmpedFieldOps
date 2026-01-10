@@ -1,7 +1,6 @@
 import { Request, Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
+import { supabase } from '../lib/supabase';
 import { query } from '../db';
-import { env } from '../config/env';
 
 export interface AuthRequest extends Request {
   user?: {
@@ -23,35 +22,49 @@ export const authenticate = async (req: AuthRequest, res: Response, next: NextFu
     
     const token = authHeader.split(' ')[1];
     
-    const decoded = jwt.verify(token, env.JWT_SECRET) as {
-      id: string;
-      email: string;
-      name: string;
-      role: string;
-    };
+    // Verify token with Supabase
+    const { data: { user: supabaseUser }, error } = await supabase.auth.getUser(token);
+    
+    if (error || !supabaseUser) {
+      return res.status(401).json({ error: 'Invalid token' });
+    }
+    
+    // Get user profile
+    const profileResult = await query(
+      'SELECT name, role, is_active FROM user_profiles WHERE id = $1',
+      [supabaseUser.id]
+    );
+    
+    if (profileResult.rows.length === 0) {
+      return res.status(401).json({ error: 'User profile not found' });
+    }
+    
+    const profile = profileResult.rows[0];
+    
+    if (!profile.is_active) {
+      return res.status(401).json({ error: 'Account is deactivated' });
+    }
     
     // Get user permissions
     const permResult = await query(
       'SELECT permission FROM user_permissions WHERE user_id = $1 AND granted = true',
-      [decoded.id]
+      [supabaseUser.id]
     );
     
     const permissions = permResult.rows.map(p => p.permission);
     
     req.user = {
-      id: decoded.id,
-      email: decoded.email,
-      name: decoded.name,
-      role: decoded.role as 'admin' | 'manager' | 'user',
+      id: supabaseUser.id,
+      email: supabaseUser.email || '',
+      name: profile.name,
+      role: profile.role as 'admin' | 'manager' | 'user',
       permissions
     };
     
     next();
   } catch (error) {
-    if (error instanceof jwt.TokenExpiredError) {
-      return res.status(401).json({ error: 'Token expired' });
-    }
-    return res.status(401).json({ error: 'Invalid token' });
+    console.error('Auth middleware error:', error);
+    return res.status(401).json({ error: 'Authentication failed' });
   }
 };
 
@@ -96,25 +109,37 @@ export const optionalAuth = async (req: AuthRequest, res: Response, next: NextFu
     
     if (authHeader && authHeader.startsWith('Bearer ')) {
       const token = authHeader.split(' ')[1];
-      const decoded = jwt.verify(token, env.JWT_SECRET) as {
-        id: string;
-        email: string;
-        name: string;
-        role: string;
-      };
       
-      const permResult = await query(
-        'SELECT permission FROM user_permissions WHERE user_id = $1 AND granted = true',
-        [decoded.id]
-      );
+      // Verify token with Supabase
+      const { data: { user: supabaseUser }, error } = await supabase.auth.getUser(token);
       
-      req.user = {
-        id: decoded.id,
-        email: decoded.email,
-        name: decoded.name,
-        role: decoded.role as 'admin' | 'manager' | 'user',
-        permissions: permResult.rows.map(p => p.permission)
-      };
+      if (!error && supabaseUser) {
+        // Get user profile
+        const profileResult = await query(
+          'SELECT name, role, is_active FROM user_profiles WHERE id = $1',
+          [supabaseUser.id]
+        );
+        
+        if (profileResult.rows.length > 0) {
+          const profile = profileResult.rows[0];
+          
+          if (profile.is_active) {
+            // Get user permissions
+            const permResult = await query(
+              'SELECT permission FROM user_permissions WHERE user_id = $1 AND granted = true',
+              [supabaseUser.id]
+            );
+            
+            req.user = {
+              id: supabaseUser.id,
+              email: supabaseUser.email || '',
+              name: profile.name,
+              role: profile.role as 'admin' | 'manager' | 'user',
+              permissions: permResult.rows.map(p => p.permission)
+            };
+          }
+        }
+      }
     }
     
     next();

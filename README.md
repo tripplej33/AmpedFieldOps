@@ -36,8 +36,7 @@ A mobile-first service business management platform designed for electrical cont
 
 ### Backend
 - Node.js with Express
-- PostgreSQL database
-- JWT authentication
+- Supabase (PostgreSQL, Auth, Realtime, Storage)
 - Xero API integration
 - Nodemailer for email delivery
 
@@ -87,9 +86,11 @@ npm install
 # Install backend dependencies
 cd backend && npm install && cd ..
 
-# Copy environment file
-cp .env.example .env
-# Edit .env with your database credentials
+# Copy environment files
+cp .env.example .env.local  # Frontend
+cd backend && cp env.example .env && cd ..  # Backend
+# Edit .env.local and backend/.env with your Supabase credentials
+# See ENV_SETUP.md for detailed instructions
 
 # Run migrations
 cd backend && npm run migrate && cd ..
@@ -106,14 +107,28 @@ npm run dev
 
 ## Environment Variables
 
-Create a `.env` file in the `backend` directory based on `.env.example`:
+### Frontend
+
+Create a `.env.local` file in the root directory based on `.env.example`:
 
 ```env
-# Database
-DATABASE_URL=postgresql://user:password@localhost:5432/ampedfieldops
+# Supabase Configuration
+VITE_SUPABASE_URL=http://127.0.0.1:54321
+VITE_SUPABASE_ANON_KEY=  # Optional for local, uses default
+```
 
-# Authentication
-JWT_SECRET=your-secret-key-min-32-characters
+### Backend
+
+Create a `.env` file in the `backend` directory based on `env.example`:
+
+```env
+# Supabase Configuration (Required)
+SUPABASE_URL=http://127.0.0.1:54321
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key-here
+
+# Database (Optional - for backups and direct DB access)
+# Get from: supabase status (local) or Supabase dashboard (production)
+DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres
 
 # Server
 PORT=3001
@@ -127,7 +142,6 @@ XERO_CLIENT_SECRET=
 XERO_REDIRECT_URI=http://localhost:3001/api/xero/callback
 
 # Email/SMTP (Optional - can be configured in Settings page)
-# These are fallback values if not set in the Settings page
 SMTP_HOST=
 SMTP_PORT=
 SMTP_USER=
@@ -135,7 +149,11 @@ SMTP_PASSWORD=
 SMTP_FROM=
 ```
 
-> **Note:** Email settings can be managed through the Settings page (Admin only). Environment variables serve as fallback values.
+> **Note:** 
+> - For detailed environment variable setup, see [ENV_SETUP.md](./ENV_SETUP.md)
+> - Get Supabase keys by running `supabase status` (local) or from Supabase dashboard (production)
+> - Email settings can be managed through the Settings page (Admin only)
+> - JWT_SECRET is no longer needed (Supabase handles authentication)
 
 ## First-Time Setup
 

@@ -56,8 +56,21 @@ function getSslConfig(): boolean | { rejectUnauthorized: boolean } {
   return false;
 }
 
+// For Supabase, we can use the direct PostgreSQL connection
+// If DATABASE_URL is not set, we'll need to construct it from Supabase URL
+const connectionString = env.DATABASE_URL || (() => {
+  // Fallback: Try to construct from Supabase URL
+  // This is a fallback - DATABASE_URL should be set explicitly
+  console.warn('DATABASE_URL not set. Some features (backups, direct DB access) may not work.');
+  return '';
+})();
+
+if (!connectionString) {
+  throw new Error('DATABASE_URL is required for database operations. Please set it in your environment variables.');
+}
+
 const pool = new Pool({
-  connectionString: env.DATABASE_URL,
+  connectionString,
   ssl: getSslConfig()
 });
 

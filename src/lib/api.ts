@@ -3,6 +3,7 @@
 const API_URL = '';
 
 import type { DocumentScan, DocumentMatch } from '@/types';
+import { supabase } from './supabase';
 
 interface ApiOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
@@ -32,7 +33,18 @@ class ApiClient {
   private token: string | null = null;
 
   constructor() {
-    this.token = localStorage.getItem('auth_token');
+    // Initialize token from Supabase session
+    this.initializeToken();
+  }
+
+  private async initializeToken() {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      this.token = session?.access_token || null;
+    } catch (error) {
+      console.error('Failed to get Supabase session:', error);
+      this.token = null;
+    }
   }
 
   private logApiError(endpoint: string, error: Error, type: 'api' | 'auth' | 'network' = 'api') {
@@ -59,21 +71,28 @@ class ApiClient {
     }
   }
 
-  setToken(token: string | null) {
+  async setToken(token: string | null) {
     this.token = token;
-    if (token) {
-      localStorage.setItem('auth_token', token);
-    } else {
-      localStorage.removeItem('auth_token');
-    }
+    // Note: Supabase manages tokens internally, we just store the access token for API calls
   }
 
-  getToken() {
-    return this.token;
+  async getToken(): Promise<string | null> {
+    // Always get fresh token from Supabase session
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      this.token = session?.access_token || null;
+      return this.token;
+    } catch (error) {
+      console.error('Failed to get Supabase session:', error);
+      return null;
+    }
   }
 
   async request<T>(endpoint: string, options: ApiOptions = {}): Promise<T> {
     const { method = 'GET', body, headers = {} } = options;
+
+    // Get fresh token from Supabase session
+    const token = await this.getToken();
 
     const config: RequestInit = {
       method,
@@ -83,8 +102,8 @@ class ApiClient {
       },
     };
 
-    if (this.token) {
-      (config.headers as Record<string, string>)['Authorization'] = `Bearer ${this.token}`;
+    if (token) {
+      (config.headers as Record<string, string>)['Authorization'] = `Bearer ${token}`;
     }
 
     if (body) {
@@ -95,7 +114,9 @@ class ApiClient {
       const response = await fetch(`${API_URL}${endpoint}`, config);
 
       if (response.status === 401) {
-        this.setToken(null);
+        // Sign out from Supabase on 401
+        await supabase.auth.signOut();
+        this.token = null;
         const error = new Error('Unauthorized - session expired');
         this.logApiError(endpoint, error, 'auth');
         window.location.href = '/login';
@@ -160,9 +181,10 @@ class ApiClient {
     formData.append(fieldName, file);
 
     try {
+      const token = await this.getToken();
       const response = await fetch(`${API_URL}${endpoint}`, {
         method: 'POST',
-        headers: this.token ? { Authorization: `Bearer ${this.token}` } : {},
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: formData,
       });
 
@@ -184,45 +206,133 @@ class ApiClient {
     }
   }
 
-  // Auth
+  // Auth - Migrated to Supabase Auth
+  // These methods are kept for backward compatibility but now use Supabase Auth
   async login(email: string, password: string) {
-    const result = await this.request<{ user: any; token: string }>('/api/auth/login', {
-      method: 'POST',
-      body: { email, password },
+    // Use Supabase Auth for login
+    const { supabase } = await import('./supabase');
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
     });
-    this.setToken(result.token);
-    return result;
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    // Get user profile
+    const { getCurrentUserProfile } = await import('./supabase');
+    const userProfile = await getCurrentUserProfile();
+
+    return {
+      user: userProfile,
+      token: data.session?.access_token || '',
+    };
   }
 
   async register(email: string, password: string, name: string) {
-    const result = await this.request<{ user: any; token: string }>('/api/auth/register', {
-      method: 'POST',
-      body: { email, password, name },
+    // Use Supabase Auth for registration
+    const { supabase, getCurrentUserProfile } = await import('./supabase');
+    const { data, error } = await supabase.auth.signUp({
+      email,
+      password,
     });
-    this.setToken(result.token);
-    return result;
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    if (!data.user) {
+      throw new Error('Registration failed');
+    }
+
+    // Create user profile
+    const { data: profile, error: profileError } = await supabase
+      .from('user_profiles')
+      .insert({
+        id: data.user.id,
+        name,
+        role: 'user',
+      })
+      .select()
+      .single();
+
+    if (profileError) {
+      // If profile creation fails, try to delete the auth user
+      await supabase.auth.admin.deleteUser(data.user.id);
+      throw new Error(`Failed to create user profile: ${profileError.message}`);
+    }
+
+    // Set default permissions
+    const { getDefaultPermissions } = await import('../contexts/AuthContext');
+    const defaultPermissions = getDefaultPermissions('user');
+    
+    if (defaultPermissions.length > 0) {
+      const permissionInserts = defaultPermissions.map(permission => ({
+        user_id: data.user.id,
+        permission,
+        granted: true,
+      }));
+
+      await supabase
+        .from('user_permissions')
+        .insert(permissionInserts);
+    }
+
+    const userProfile = await getCurrentUserProfile();
+
+    return {
+      user: userProfile,
+      token: data.session?.access_token || '',
+    };
   }
 
   async logout() {
+    const { supabase } = await import('./supabase');
+    await supabase.auth.signOut();
     this.setToken(null);
   }
 
   async getCurrentUser() {
-    return this.request<any>('/api/auth/me');
+    const { getCurrentUserProfile } = await import('./supabase');
+    return getCurrentUserProfile();
   }
 
   async refreshToken() {
-    const result = await this.request<{ token: string }>('/api/auth/refresh', { method: 'POST' });
-    this.setToken(result.token);
-    return result;
+    // Supabase Auth handles token refresh automatically
+    // This method is kept for compatibility but doesn't need to do anything
+    const token = await this.getToken();
+    return { token };
   }
 
   async forgotPassword(email: string) {
-    return this.request('/api/auth/forgot-password', { method: 'POST', body: { email } });
+    // Use Supabase Auth for password reset
+    const { supabase } = await import('./supabase');
+    const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      redirectTo: `${window.location.origin}/reset-password`,
+    });
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    return { message: 'Password reset email sent' };
   }
 
   async resetPassword(token: string, password: string) {
-    return this.request('/api/auth/reset-password', { method: 'POST', body: { token, password } });
+    // Note: Supabase password reset uses a different flow
+    // The token is handled via URL hash, not a separate API call
+    // This method may need to be updated based on your reset password flow
+    const { supabase } = await import('./supabase');
+    const { error } = await supabase.auth.updateUser({
+      password,
+    });
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    return { message: 'Password reset successfully' };
   }
 
   async updateProfile(data: { name?: string; email?: string; avatar?: string }) {
@@ -298,7 +408,7 @@ class ApiClient {
     return this.request<any>('/api/dashboard/quick-stats');
   }
 
-  // Clients
+  // Clients - Migrated to Supabase
   async getClients(params?: { 
     status?: string; 
     search?: string;
@@ -306,45 +416,33 @@ class ApiClient {
     limit?: number;
     sort?: string;
     order?: 'asc' | 'desc';
+    client_type?: string;
   }) {
-    const searchParams = new URLSearchParams();
-    if (params) {
-      Object.entries(params).forEach(([key, value]) => {
-        if (value !== undefined && value !== null && value !== '') {
-          searchParams.append(key, String(value));
-        }
-      });
-    }
-    return this.request<{
-      data: any[];
-      pagination: {
-        page: number;
-        limit: number;
-        total: number;
-        totalPages: number;
-        hasNext: boolean;
-        hasPrev: boolean;
-      };
-    }>(`/api/clients?${searchParams}`);
+    const { clientsQueries } = await import('./supabase-queries');
+    return clientsQueries.getAll(params);
   }
 
   async getClient(id: string) {
-    return this.request<any>(`/api/clients/${id}`);
+    const { clientsQueries } = await import('./supabase-queries');
+    return clientsQueries.getById(id);
   }
 
   async createClient(data: any) {
-    return this.request('/api/clients', { method: 'POST', body: data });
+    const { clientsQueries } = await import('./supabase-queries');
+    return clientsQueries.create(data);
   }
 
   async updateClient(id: string, data: any) {
-    return this.request(`/api/clients/${id}`, { method: 'PUT', body: data });
+    const { clientsQueries } = await import('./supabase-queries');
+    return clientsQueries.update(id, data);
   }
 
   async deleteClient(id: string) {
-    return this.request(`/api/clients/${id}`, { method: 'DELETE' });
+    const { clientsQueries } = await import('./supabase-queries');
+    return clientsQueries.delete(id);
   }
 
-  // Projects
+  // Projects - Migrated to Supabase
   async getProjects(params?: { 
     status?: string; 
     client_id?: string; 
@@ -354,44 +452,31 @@ class ApiClient {
     sort?: string;
     order?: 'asc' | 'desc';
   }) {
-    const searchParams = new URLSearchParams();
-    if (params) {
-      Object.entries(params).forEach(([key, value]) => {
-        if (value !== undefined && value !== null && value !== '') {
-          searchParams.append(key, String(value));
-        }
-      });
-    }
-    return this.request<{
-      data: any[];
-      pagination: {
-        page: number;
-        limit: number;
-        total: number;
-        totalPages: number;
-        hasNext: boolean;
-        hasPrev: boolean;
-      };
-    }>(`/api/projects?${searchParams}`);
+    const { projectsQueries } = await import('./supabase-queries');
+    return projectsQueries.getAll(params);
   }
 
   async getProject(id: string) {
-    return this.request<any>(`/api/projects/${id}`);
+    const { projectsQueries } = await import('./supabase-queries');
+    return projectsQueries.getById(id);
   }
 
   async createProject(data: any) {
-    return this.request('/api/projects', { method: 'POST', body: data });
+    const { projectsQueries } = await import('./supabase-queries');
+    return projectsQueries.create(data);
   }
 
   async updateProject(id: string, data: any) {
-    return this.request(`/api/projects/${id}`, { method: 'PUT', body: data });
+    const { projectsQueries } = await import('./supabase-queries');
+    return projectsQueries.update(id, data);
   }
 
   async deleteProject(id: string) {
-    return this.request(`/api/projects/${id}`, { method: 'DELETE' });
+    const { projectsQueries } = await import('./supabase-queries');
+    return projectsQueries.delete(id);
   }
 
-  // Timesheets
+  // Timesheets - Migrated to Supabase (basic CRUD, file uploads still use backend)
   async getTimesheets(params?: { 
     user_id?: string; 
     project_id?: string; 
@@ -403,55 +488,49 @@ class ApiClient {
     page?: number;
     limit?: number;
   }) {
-    const searchParams = new URLSearchParams();
-    if (params) {
-      Object.entries(params).forEach(([key, value]) => {
-        if (value !== undefined && value !== null && value !== '') {
-          searchParams.append(key, String(value));
-        }
-      });
-    }
-    return this.request<{
-      data: any[];
-      pagination: {
-        page: number;
-        limit: number;
-        total: number;
-        totalPages: number;
-        hasNext: boolean;
-        hasPrev: boolean;
-      };
-    }>(`/api/timesheets?${searchParams}`);
+    const { timesheetsQueries } = await import('./supabase-queries');
+    return timesheetsQueries.getAll(params);
   }
 
   async getTimesheet(id: string) {
-    return this.request<any>(`/api/timesheets/${id}`);
+    const { timesheetsQueries } = await import('./supabase-queries');
+    return timesheetsQueries.getById(id);
   }
 
   async createTimesheet(data: any) {
-    // If there are image files, use FormData
+    // If there are image files, upload to Supabase Storage
     if (data.image_files && data.image_files.length > 0) {
-      const formData = new FormData();
-      formData.append('project_id', data.project_id);
-      formData.append('activity_type_id', data.activity_type_id);
-      formData.append('cost_center_id', data.cost_center_id);
-      if (data.user_id) {
-        formData.append('user_id', data.user_id);
-      }
-      formData.append('date', data.date);
-      formData.append('hours', data.hours.toString());
-      if (data.notes) formData.append('notes', data.notes);
-      if (data.location) formData.append('location', data.location);
-      
-      data.image_files.forEach((file: File, index: number) => {
-        formData.append(`images`, file);
-      });
+      const { timesheetImagesStorage } = await import('./supabase-storage');
+      const imageUrls: string[] = [];
 
-      return this.requestFormData('/api/timesheets', formData);
+      // Upload each image to Supabase Storage
+      for (const file of data.image_files) {
+        try {
+          const { url } = await timesheetImagesStorage.upload(
+            file,
+            data.project_id,
+            undefined // timesheetId will be set after creation
+          );
+          imageUrls.push(url);
+        } catch (error: any) {
+          console.error('Failed to upload timesheet image:', error);
+          // Continue with other images even if one fails
+        }
+      }
+
+      // Create timesheet with image URLs
+      const { image_files, ...timesheetData } = data;
+      const { timesheetsQueries } = await import('./supabase-queries');
+      return timesheetsQueries.create({
+        ...timesheetData,
+        image_urls: imageUrls,
+      });
     }
     
-    const { image_files, ...jsonData } = data;
-    return this.request('/api/timesheets', { method: 'POST', body: jsonData });
+    // Create timesheet without images
+    const { image_files, ...timesheetData } = data;
+    const { timesheetsQueries } = await import('./supabase-queries');
+    return timesheetsQueries.create(timesheetData);
   }
 
   async requestFormData<T>(endpoint: string, formData: FormData): Promise<T> {
@@ -483,55 +562,90 @@ class ApiClient {
   }
 
   async updateTimesheet(id: string, data: any) {
-    // If data is FormData, use requestFormData
+    // If data is FormData, extract files and upload to Supabase Storage
     if (data instanceof FormData) {
-      const config: RequestInit = {
-        method: 'PUT',
-        body: data,
-      };
-
-      if (this.token) {
-        config.headers = {
-          'Authorization': `Bearer ${this.token}`,
-        };
+      const { timesheetImagesStorage } = await import('./supabase-storage');
+      const { timesheetsQueries } = await import('./supabase-queries');
+      
+      // Get current timesheet
+      const timesheet = await timesheetsQueries.getById(id);
+      
+      // Extract files from FormData
+      const files: File[] = [];
+      const formDataObj: Record<string, any> = {};
+      
+      for (const [key, value] of data.entries()) {
+        if (value instanceof File) {
+          files.push(value);
+        } else {
+          formDataObj[key] = value;
+        }
       }
 
-      const response = await fetch(`${API_URL}/api/timesheets/${id}`, config);
-
-      if (response.status === 401) {
-        this.setToken(null);
-        window.location.href = '/login';
-        throw new Error('Unauthorized');
+      // Upload new images if any
+      const imageUrls: string[] = [];
+      if (files.length > 0) {
+        for (const file of files) {
+          try {
+            const { url } = await timesheetImagesStorage.upload(
+              file,
+              timesheet.project_id,
+              id
+            );
+            imageUrls.push(url);
+          } catch (error: any) {
+            console.error('Failed to upload timesheet image:', error);
+          }
+        }
       }
 
-      if (!response.ok) {
-        const error = await response.json().catch(() => ({ error: 'Request failed' }));
-        throw new Error(error.error || error.message || 'Request failed');
-      }
-
-      return response.json();
+      // Update timesheet with new data and image URLs
+      const existingUrls = (timesheet.image_urls as string[]) || [];
+      return timesheetsQueries.update(id, {
+        ...formDataObj,
+        image_urls: [...existingUrls, ...imageUrls],
+      });
     }
     
-    // Otherwise, use regular JSON request
-    return this.request(`/api/timesheets/${id}`, { method: 'PUT', body: data });
+    // Use Supabase for basic updates
+    const { timesheetsQueries } = await import('./supabase-queries');
+    return timesheetsQueries.update(id, data);
   }
 
   async deleteTimesheet(id: string) {
-    return this.request(`/api/timesheets/${id}`, { method: 'DELETE' });
+    const { timesheetsQueries } = await import('./supabase-queries');
+    return timesheetsQueries.delete(id);
   }
 
   async uploadTimesheetImages(id: string, files: File[]) {
-    const formData = new FormData();
-    files.forEach(file => formData.append('images', file));
+    // Use Supabase Storage for image uploads
+    const { timesheetImagesStorage } = await import('./supabase-storage');
+    const { timesheetsQueries } = await import('./supabase-queries');
+    
+    // Get current timesheet to find project_id
+    const timesheet = await timesheetsQueries.getById(id);
+    const imageUrls: string[] = [];
 
-    const response = await fetch(`${API_URL}/api/timesheets/${id}/images`, {
-      method: 'POST',
-      headers: this.token ? { Authorization: `Bearer ${this.token}` } : {},
-      body: formData,
+    // Upload each image to Supabase Storage
+    for (const file of files) {
+      try {
+        const { url } = await timesheetImagesStorage.upload(
+          file,
+          timesheet.project_id,
+          id
+        );
+        imageUrls.push(url);
+      } catch (error: any) {
+        console.error('Failed to upload timesheet image:', error);
+        // Continue with other images even if one fails
+      }
+    }
+
+    // Update timesheet with new image URLs
+    const existingUrls = (timesheet.image_urls as string[]) || [];
+    return timesheetsQueries.update(id, {
+      image_urls: [...existingUrls, ...imageUrls],
     });
-
-    if (!response.ok) throw new Error('Upload failed');
-    return response.json();
   }
 
   async deleteTimesheetImage(timesheetId: string, imageIndex: number) {
@@ -577,49 +691,59 @@ class ApiClient {
     return this.request<{ message: string }>(`/api/files/logos/${encodeURIComponent(filename)}`, { method: 'DELETE' });
   }
 
-  // Cost Centers
+  // Cost Centers - Migrated to Supabase
   async getCostCenters(activeOnly = false, projectId?: string) {
-    const params = new URLSearchParams();
-    if (activeOnly) params.append('active_only', 'true');
-    if (projectId) params.append('project_id', projectId);
-    return this.request<any[]>(`/api/cost-centers?${params}`);
+    const { costCentersQueries } = await import('./supabase-queries');
+    return costCentersQueries.getAll({
+      active_only: activeOnly,
+      project_id: projectId,
+    });
   }
 
   async getCostCenter(id: string) {
-    return this.request<any>(`/api/cost-centers/${id}`);
+    const { costCentersQueries } = await import('./supabase-queries');
+    return costCentersQueries.getById(id);
   }
 
   async createCostCenter(data: any) {
-    return this.request('/api/cost-centers', { method: 'POST', body: data });
+    const { costCentersQueries } = await import('./supabase-queries');
+    return costCentersQueries.create(data);
   }
 
   async updateCostCenter(id: string, data: any) {
-    return this.request(`/api/cost-centers/${id}`, { method: 'PUT', body: data });
+    const { costCentersQueries } = await import('./supabase-queries');
+    return costCentersQueries.update(id, data);
   }
 
   async deleteCostCenter(id: string) {
-    return this.request(`/api/cost-centers/${id}`, { method: 'DELETE' });
+    const { costCentersQueries } = await import('./supabase-queries');
+    return costCentersQueries.delete(id);
   }
 
-  // Activity Types
+  // Activity Types - Migrated to Supabase
   async getActivityTypes(activeOnly = false) {
-    return this.request<any[]>(`/api/activity-types?active_only=${activeOnly}`);
+    const { activityTypesQueries } = await import('./supabase-queries');
+    return activityTypesQueries.getAll({ active_only: activeOnly });
   }
 
   async getActivityType(id: string) {
-    return this.request<any>(`/api/activity-types/${id}`);
+    const { activityTypesQueries } = await import('./supabase-queries');
+    return activityTypesQueries.getById(id);
   }
 
   async createActivityType(data: any) {
-    return this.request('/api/activity-types', { method: 'POST', body: data });
+    const { activityTypesQueries } = await import('./supabase-queries');
+    return activityTypesQueries.create(data);
   }
 
   async updateActivityType(id: string, data: any) {
-    return this.request(`/api/activity-types/${id}`, { method: 'PUT', body: data });
+    const { activityTypesQueries } = await import('./supabase-queries');
+    return activityTypesQueries.update(id, data);
   }
 
   async deleteActivityType(id: string) {
-    return this.request(`/api/activity-types/${id}`, { method: 'DELETE' });
+    const { activityTypesQueries } = await import('./supabase-queries');
+    return activityTypesQueries.delete(id);
   }
 
   // Users
@@ -680,11 +804,21 @@ class ApiClient {
   }
 
   async uploadCompanyLogo(file: File) {
-    return this.uploadFile('/api/settings/logo', file, 'logo');
+    // Use Supabase Storage for logo uploads
+    const { logosStorage } = await import('./supabase-storage');
+    const { url } = await logosStorage.upload(file, 'logo');
+    
+    // Update settings with new logo URL
+    return this.updateSetting('company_logo', url);
   }
 
   async uploadFavicon(file: File) {
-    return this.uploadFile('/api/settings/favicon', file, 'favicon');
+    // Use Supabase Storage for favicon uploads
+    const { logosStorage } = await import('./supabase-storage');
+    const { url } = await logosStorage.upload(file, 'favicon');
+    
+    // Update settings with new favicon URL
+    return this.updateSetting('company_favicon', url);
   }
 
   async sendTestEmail(email: string) {
@@ -813,11 +947,12 @@ class ApiClient {
   }
 
   async previewInvoiceFromTimesheets(data: { client_id: string; project_id?: string; date_from?: string; date_to?: string; period?: 'week' | 'month' }) {
+    const token = await this.getToken();
     const response = await fetch(`${API_URL}/api/xero/invoices/from-timesheets/preview`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       body: JSON.stringify(data),
     });
@@ -829,11 +964,12 @@ class ApiClient {
   }
 
   async createInvoiceFromTimesheets(data: { client_id: string; project_id?: string; date_from?: string; date_to?: string; period?: 'week' | 'month'; due_date?: string; invoice_number?: string }) {
+    const token = await this.getToken();
     const response = await fetch(`${API_URL}/api/xero/invoices/from-timesheets`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       body: JSON.stringify(data),
     });
@@ -931,11 +1067,12 @@ class ApiClient {
   }
 
   async createPurchaseOrder(data: { supplier_id: string; project_id: string; date: string; delivery_date?: string; line_items: Array<{ description: string; quantity: number; unit_amount: number; account_code?: string; cost_center_id?: string; item_id?: string }>; notes?: string; currency?: string }) {
+    const token = await this.getToken();
     const response = await fetch(`${API_URL}/api/xero/purchase-orders`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       body: JSON.stringify(data),
     });
@@ -1139,54 +1276,131 @@ class ApiClient {
 
 
   async uploadProjectFile(file: File, projectId: string, costCenterId?: string): Promise<import('../types').ProjectFile> {
-    // Create FormData manually to include additional fields
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('project_id', projectId);
-    if (costCenterId) {
-      formData.append('cost_center_id', costCenterId);
-    }
-
-    const headers: Record<string, string> = {};
-    if (this.token) {
-      headers['Authorization'] = `Bearer ${this.token}`;
-    }
-
+    // Use Supabase Storage for file uploads
+    const { projectFilesStorage } = await import('./supabase-storage');
+    
     try {
-      const response = await fetch(`${API_URL}/api/files`, {
-        method: 'POST',
-        headers,
-        body: formData,
-      });
+      // Upload file to Supabase Storage
+      const { path, url } = await projectFilesStorage.upload(file, projectId, costCenterId);
 
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Upload failed' }));
-        const error = new Error(errorData.error || 'Upload failed');
-        this.logApiError('/api/files', error, 'api');
-        throw error;
+      // Create database record via Supabase
+      const { supabase } = await import('./supabase');
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) {
+        throw new Error('User not authenticated');
       }
 
-      return response.json();
+      // Determine file type
+      let fileType = 'document';
+      if (file.type.startsWith('image/')) {
+        fileType = 'image';
+      } else if (file.type === 'application/pdf') {
+        fileType = 'pdf';
+      }
+
+      // Insert into project_files table
+      const { data: projectFile, error } = await supabase
+        .from('project_files')
+        .insert({
+          project_id: projectId,
+          cost_center_id: costCenterId || null,
+          file_name: file.name,
+          file_path: url, // Store the Supabase Storage URL
+          file_type: fileType,
+          file_size: file.size,
+          mime_type: file.type,
+          uploaded_by: user.id,
+        })
+        .select()
+        .single();
+
+      if (error) {
+        // If database insert fails, try to delete the uploaded file
+        try {
+          await projectFilesStorage.delete(path);
+        } catch (deleteError) {
+          console.error('Failed to cleanup uploaded file:', deleteError);
+        }
+        throw new Error(`Failed to create file record: ${error.message}`);
+      }
+
+      return projectFile as import('../types').ProjectFile;
     } catch (error: any) {
-      if (error.name === 'TypeError' && error.message.includes('fetch')) {
-        const networkError = new Error('Network error during file upload');
-        this.logApiError('/api/files', networkError, 'network');
-        throw networkError;
-      }
+      this.logApiError('/api/files', error, 'api');
       throw error;
     }
   }
 
   async deleteFile(id: string) {
-    return this.request<{ message: string }>(`/api/files/${id}`, { method: 'DELETE' });
+    // Get file record from Supabase
+    const { supabase } = await import('./supabase');
+    const { data: file, error: fetchError } = await supabase
+      .from('project_files')
+      .select('file_path')
+      .eq('id', id)
+      .single();
+
+    if (fetchError || !file) {
+      throw new Error('File not found');
+    }
+
+    // Try to delete from Supabase Storage if it's a Supabase Storage URL
+    // file_path format: https://<project>.supabase.co/storage/v1/object/public/<bucket>/<path>
+    // or: /storage/v1/object/public/<bucket>/<path>
+    const urlMatch = file.file_path.match(/\/storage\/v1\/object\/(?:public|sign\/[^/]+)\/([^/]+)\/(.+)$/);
+    if (urlMatch) {
+      const [, bucket, path] = urlMatch;
+      try {
+        const { deleteFile: deleteFromStorage } = await import('./supabase-storage');
+        await deleteFromStorage(bucket, decodeURIComponent(path));
+      } catch (storageError: any) {
+        // Log error but continue with database deletion
+        console.warn('Failed to delete file from storage:', storageError.message);
+      }
+    }
+
+    // Delete database record
+    const { error: deleteError } = await supabase
+      .from('project_files')
+      .delete()
+      .eq('id', id);
+
+    if (deleteError) {
+      throw new Error(`Failed to delete file record: ${deleteError.message}`);
+    }
+
+    return { message: 'File deleted' };
   }
 
   async downloadFile(id: string): Promise<Blob> {
-    const response = await fetch(`/api/files/${id}/download`, {
-      headers: {
-        'Authorization': `Bearer ${this.getToken()}`,
-      },
-    });
+    // Get file record from Supabase
+    const { supabase } = await import('./supabase');
+    const { data: file, error: fetchError } = await supabase
+      .from('project_files')
+      .select('file_path')
+      .eq('id', id)
+      .single();
+
+    if (fetchError || !file) {
+      throw new Error('File not found');
+    }
+
+    // Try to download from Supabase Storage if it's a Supabase Storage URL
+    const urlMatch = file.file_path.match(/\/storage\/v1\/object\/(?:public|sign\/[^/]+)\/([^/]+)\/(.+)$/);
+    if (urlMatch) {
+      const [, bucket, path] = urlMatch;
+      try {
+        const { downloadFile: downloadFromStorage } = await import('./supabase-storage');
+        return downloadFromStorage(bucket, decodeURIComponent(path));
+      } catch (storageError: any) {
+        // Fallback to direct URL fetch if storage download fails
+        console.warn('Failed to download from storage, trying direct URL:', storageError.message);
+      }
+    }
+
+    // Fallback: try to fetch from URL directly (works for both Supabase Storage and legacy URLs)
+    const response = await fetch(file.file_path);
     if (!response.ok) {
       throw new Error('Failed to download file');
     }
@@ -1239,9 +1453,10 @@ class ApiClient {
   }
 
   async downloadSafetyDocumentPDF(id: string): Promise<Blob> {
+    const token = await this.getToken();
     const response = await fetch(`/api/safety-documents/${id}/pdf`, {
       headers: {
-        'Authorization': `Bearer ${this.getToken()}`,
+        'Authorization': `Bearer ${token}`,
       },
     });
     if (!response.ok) {
@@ -1305,9 +1520,10 @@ class ApiClient {
   }
 
   async downloadBackup(id: string): Promise<Blob> {
+    const token = await this.getToken();
     const response = await fetch(`/api/backups/${id}/download`, {
       headers: {
-        'Authorization': `Bearer ${this.getToken()}`,
+        'Authorization': `Bearer ${token}`,
       },
     });
     if (!response.ok) {
@@ -1383,9 +1599,10 @@ class ApiClient {
     formData.append('process_ocr', String(processOCR));
 
     try {
+      const token = await this.getToken();
       const response = await fetch(`${API_URL}/api/document-scan/upload`, {
         method: 'POST',
-        headers: this.token ? { Authorization: `Bearer ${this.token}` } : {},
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
         body: formData,
       });
 

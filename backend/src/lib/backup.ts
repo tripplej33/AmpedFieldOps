@@ -49,7 +49,7 @@ async function ensureBackupDir() {
 export function getDatabaseConfig() {
   const dbUrl = env.DATABASE_URL;
   if (!dbUrl) {
-    throw new Error('DATABASE_URL not configured');
+    throw new Error('DATABASE_URL not configured. Required for database backups. Set it in your environment variables or get it from `supabase status` for local development.');
   }
 
   // Parse PostgreSQL connection string

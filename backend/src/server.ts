@@ -14,13 +14,16 @@ import { resolveStoragePath } from './lib/storage/pathUtils';
 import { authenticate } from './middleware/auth';
 
 // Import routes
+// Note: Many routes have been migrated to Supabase and removed
+// - clients, projects, timesheets, costCenters, activityTypes: Now use Supabase directly
+// - files: Now use Supabase Storage directly
 import authRoutes from './routes/auth';
 import usersRoutes from './routes/users';
-import clientsRoutes from './routes/clients';
-import projectsRoutes from './routes/projects';
-import timesheetsRoutes from './routes/timesheets';
-import costCentersRoutes from './routes/costCenters';
-import activityTypesRoutes from './routes/activityTypes';
+// Removed: clientsRoutes - migrated to Supabase
+// Removed: projectsRoutes - migrated to Supabase
+// Removed: timesheetsRoutes - migrated to Supabase
+// Removed: costCentersRoutes - migrated to Supabase
+// Removed: activityTypesRoutes - migrated to Supabase
 import searchRoutes from './routes/search';
 import setupRoutes from './routes/setup';
 import xeroRoutes from './routes/xero';
@@ -30,7 +33,7 @@ import rolePermissionsRoutes from './routes/role-permissions';
 import dashboardRoutes from './routes/dashboard';
 import healthRoutes from './routes/health';
 import troubleshooterRoutes from './routes/troubleshooter';
-import filesRoutes from './routes/files';
+// Removed: filesRoutes - migrated to Supabase Storage
 import safetyDocumentsRoutes from './routes/safetyDocuments';
 import backupsRoutes from './routes/backups';
 import documentScanRoutes from './routes/documentScan';
@@ -162,13 +165,14 @@ app.get('/uploads/:path*', authenticate, async (req, res, next) => {
 app.use('/api', globalApiRateLimit);
 
 // API Routes
+// Note: Many routes migrated to Supabase - see BACKEND_CLEANUP.md for details
 app.use('/api/auth', authRoutes);
 app.use('/api/users', usersRoutes);
-app.use('/api/clients', clientsRoutes);
-app.use('/api/projects', projectsRoutes);
-app.use('/api/timesheets', timesheetsRoutes);
-app.use('/api/cost-centers', costCentersRoutes);
-app.use('/api/activity-types', activityTypesRoutes);
+// Removed: /api/clients - migrated to Supabase
+// Removed: /api/projects - migrated to Supabase
+// Removed: /api/timesheets - migrated to Supabase
+// Removed: /api/cost-centers - migrated to Supabase
+// Removed: /api/activity-types - migrated to Supabase
 app.use('/api/search', searchRoutes);
 app.use('/api/setup', setupRoutes);
 app.use('/api/xero', xeroRoutes);
@@ -178,7 +182,7 @@ app.use('/api/role-permissions', rolePermissionsRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/health', healthRoutes);
 app.use('/api/troubleshooter', troubleshooterRoutes);
-app.use('/api/files', filesRoutes);
+// Removed: /api/files - migrated to Supabase Storage
 app.use('/api/safety-documents', safetyDocumentsRoutes);
 app.use('/api/backups', backupsRoutes);
 app.use('/api/document-scan', documentScanRoutes);
