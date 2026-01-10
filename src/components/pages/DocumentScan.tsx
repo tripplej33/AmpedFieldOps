@@ -7,7 +7,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { api } from '@/lib/api';
-import { DocumentScan, DocumentMatch, Project, Client } from '@/types';
+import type { DocumentScan, DocumentMatch } from '@/types';
+import { Project, Client } from '@/types';
 import { 
   Upload, 
   FileText, 
@@ -76,7 +77,9 @@ export default function DocumentScan() {
       // Handle paginated response: { data: [...], pagination: {...} }
       const projectsList = Array.isArray(response) 
         ? response 
-        : (response?.data || response?.items || []);
+        : ((response && typeof response === 'object' && ('data' in response || 'items' in response)) 
+          ? (('data' in response && Array.isArray(response.data)) ? response.data : (('items' in response && Array.isArray(response.items)) ? response.items : []))
+          : []);
       setProjects(projectsList);
     } catch (error: any) {
       console.error('Failed to load projects:', error);
@@ -90,7 +93,9 @@ export default function DocumentScan() {
       // Handle paginated response: { data: [...], pagination: {...} }
       const clientsList = Array.isArray(response) 
         ? response 
-        : (response?.data || response?.items || []);
+        : ((response && typeof response === 'object' && ('data' in response || 'items' in response)) 
+          ? (('data' in response && Array.isArray(response.data)) ? response.data : (('items' in response && Array.isArray(response.items)) ? response.items : []))
+          : []);
       setClients(clientsList);
     } catch (error: any) {
       console.error('Failed to load clients:', error);

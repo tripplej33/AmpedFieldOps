@@ -258,7 +258,9 @@ export default function Timesheets() {
   const loadUsers = async () => {
     try {
       const data = await api.getUsers();
-      const usersList = data.data || (Array.isArray(data) ? data : []);
+      const usersList = (data && typeof data === 'object' && 'data' in data && Array.isArray(data.data)) 
+        ? data.data 
+        : (Array.isArray(data) ? data : []);
       setUsers(Array.isArray(usersList) ? usersList.filter(u => u.id) : []);
     } catch (error) {
       console.error('Failed to load users:', error);
@@ -1285,6 +1287,8 @@ export default function Timesheets() {
             handleDragLeave={handleDragLeave}
             handleDragOver={handleDragOver}
             handleDrop={handleDrop}
+            expandedActivities={expandedActivities}
+            setExpandedActivities={setExpandedActivities}
           />
         </DialogContent>
       </Dialog>
@@ -1605,9 +1609,9 @@ function TimesheetForm({
   useEffect(() => {
     if (costCenters.length > 0 && formData.activity_entries.length > 0) {
       const firstCostCenterId = costCenters[0].id;
-      setFormData(prev => ({
+      setFormData((prev: typeof formData) => ({
         ...prev,
-        activity_entries: prev.activity_entries.map(entry => ({
+        activity_entries: prev.activity_entries.map((entry: ActivityTypeEntry) => ({
           ...entry,
           cost_center_id: entry.cost_center_id || firstCostCenterId
         }))

@@ -107,9 +107,9 @@ export default function ClientDetailModal({ client, open, onOpenChange, onClient
           api.getXeroInvoices({ client_id: client.id }).catch(() => []),
           api.getPayments().catch(() => []),
         ]);
-        setProjects(Array.isArray(projectsData) ? projectsData : (projectsData?.data || []));
-        setTimesheets(Array.isArray(timesheetsData) ? timesheetsData : (timesheetsData?.data || []));
-        setInvoices(Array.isArray(invoicesData) ? invoicesData : (invoicesData?.data || []));
+        setProjects(Array.isArray(projectsData) ? projectsData : ((projectsData && typeof projectsData === 'object' && 'data' in projectsData && Array.isArray(projectsData.data)) ? projectsData.data : []));
+        setTimesheets(Array.isArray(timesheetsData) ? timesheetsData : ((timesheetsData && typeof timesheetsData === 'object' && 'data' in timesheetsData && Array.isArray(timesheetsData.data)) ? timesheetsData.data : []));
+        setInvoices(Array.isArray(invoicesData) ? invoicesData : ((invoicesData && typeof invoicesData === 'object' && 'data' in invoicesData && Array.isArray(invoicesData.data)) ? invoicesData.data : []));
         // Filter payments by client invoices
         const clientInvoiceIds = Array.isArray(invoicesData) ? invoicesData.map((inv: any) => inv.id) : [];
         const filteredPayments = Array.isArray(paymentsData) 
@@ -124,8 +124,8 @@ export default function ClientDetailModal({ client, open, onOpenChange, onClient
           api.getPurchaseOrders({ supplier_id: client.id }).catch(() => []),
           api.getBills({ supplier_id: client.id }).catch(() => []),
         ]);
-        setPurchaseOrders(Array.isArray(posData) ? posData : (posData?.data || []));
-        setBills(Array.isArray(billsData) ? billsData : (billsData?.data || []));
+        setPurchaseOrders(Array.isArray(posData) ? posData : ((posData && typeof posData === 'object' && 'data' in posData && Array.isArray(posData.data)) ? posData.data : []));
+        setBills(Array.isArray(billsData) ? billsData : ((billsData && typeof billsData === 'object' && 'data' in billsData && Array.isArray(billsData.data)) ? billsData.data : []));
       }
     } catch (error) {
       console.error('Failed to load client data:', error);

@@ -416,8 +416,12 @@ export default function Clients() {
             {pagination.totalPages > 1 && (
               <div className="flex justify-center mt-6">
                 <Pagination
-                  currentPage={pagination.page}
+                  page={pagination.page}
+                  limit={pagination.limit || 20}
+                  total={pagination.total || 0}
                   totalPages={pagination.totalPages}
+                  hasNext={pagination.hasNext || false}
+                  hasPrev={pagination.hasPrev || false}
                   onPageChange={setPage}
                 />
               </div>
@@ -550,8 +554,12 @@ export default function Clients() {
             {pagination.totalPages > 1 && (
               <div className="flex justify-center mt-6">
                 <Pagination
-                  currentPage={pagination.page}
+                  page={pagination.page}
+                  limit={pagination.limit || 20}
+                  total={pagination.total || 0}
                   totalPages={pagination.totalPages}
+                  hasNext={pagination.hasNext || false}
+                  hasPrev={pagination.hasPrev || false}
                   onPageChange={setPage}
                 />
               </div>

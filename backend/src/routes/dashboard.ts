@@ -1,8 +1,22 @@
 import { Router, Response } from 'express';
 import { query } from '../db';
 import { authenticate, AuthRequest } from '../middleware/auth';
+import { log } from '../lib/logger';
 
 const router = Router();
+
+// Root endpoint - returns available dashboard endpoints
+router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
+  res.json({
+    message: 'Dashboard API',
+    availableEndpoints: [
+      '/api/dashboard/metrics',
+      '/api/dashboard/recent-timesheets',
+      '/api/dashboard/active-projects',
+      '/api/dashboard/quick-stats'
+    ]
+  });
+});
 
 // Get dashboard metrics
 router.get('/metrics', authenticate, async (req: AuthRequest, res: Response) => {
@@ -78,7 +92,7 @@ router.get('/metrics', authenticate, async (req: AuthRequest, res: Response) => 
       }))
     });
   } catch (error) {
-    console.error('Dashboard metrics error:', error);
+    log.error('Dashboard metrics error', error);
     res.status(500).json({ error: 'Failed to fetch dashboard metrics' });
   }
 });

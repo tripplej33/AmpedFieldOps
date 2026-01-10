@@ -286,7 +286,7 @@ export function ComplianceCreateForm({
 
           {Array.isArray((formData as ComplianceData).testing_results) && (formData as ComplianceData).testing_results!.length > 0 ? (
             <div className="space-y-3">
-              {(formData as ComplianceData).testing_results!.map((result: { test: string; result: string }, index: number) => (
+              {((formData as ComplianceData).testing_results as Array<{ test: string; result: string }>).map((result: { test: string; result: string }, index: number) => (
                 <Card key={index} className="p-4 border border-border">
                   <div className="flex items-start justify-between mb-3">
                     <h4 className="font-medium">Test #{index + 1}</h4>

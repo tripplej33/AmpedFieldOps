@@ -84,7 +84,9 @@ export default function MobileTimesheetModal({ open, onOpenChange }: MobileTimes
       setClients(Array.isArray(clientsList) ? clientsList.filter(c => c.id) : []);
       setActivityTypes(Array.isArray(activityData) ? activityData.filter(a => a.id) : []);
       
-      const usersList = usersData.data || (Array.isArray(usersData) ? usersData : []);
+      const usersList = (usersData && typeof usersData === 'object' && 'data' in usersData && Array.isArray(usersData.data)) 
+        ? usersData.data 
+        : (Array.isArray(usersData) ? usersData : []);
       setUsers(Array.isArray(usersList) ? usersList.filter(u => u.id) : []);
       
       setCostCenters([]);
