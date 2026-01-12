@@ -165,7 +165,7 @@ if command -v supabase &> /dev/null; then
     show_step "Step 6: Running Supabase Migrations"
     if supabase migration status 2>/dev/null; then
         echo -e "${YELLOW}Applying Supabase migrations...${NC}"
-        supabase migration run || echo "supabase migration run failed or no migrations to run"
+        supabase migration up --yes || echo "supabase migration up failed or no migrations to run"
     else
         echo -e "${YELLOW}No Supabase migrations detected or command unavailable.${NC}"
     fi
@@ -180,11 +180,23 @@ if command -v tsx &> /dev/null; then
 elif command -v npx &> /dev/null; then
     npx tsx scripts/create-storage-buckets.ts || echo "Bucket creation failed or already exists"
 elif command -v npm &> /dev/null; then
-    # Use npm exec as a fallback (npm 7+)
-    npm exec -- tsx scripts/create-storage-buckets.ts || echo "Bucket creation failed or tsx not installed"
+    # Prefer installing tsx globally if missing
+    if ! command -v tsx &> /dev/null; then
+        read -p "Install 'tsx' globally via npm now? (requires npm) [y/N]: " install_tsx
+        if [[ "$install_tsx" =~ ^[Yy]$ ]]; then
+            echo -e "${YELLOW}Installing tsx via npm...${NC}"
+            npm install -g tsx || echo "npm global install failed; you can run 'npx tsx scripts/create-storage-buckets.ts' if npx is available"
+        fi
+    fi
+    if command -v tsx &> /dev/null; then
+        tsx scripts/create-storage-buckets.ts || echo "Bucket creation failed or already exists"
+    else
+        echo -e "${YELLOW}Attempting to run via 'npm exec'...${NC}"
+        npm exec -- tsx scripts/create-storage-buckets.ts || echo "Bucket creation failed or tsx not installed"
+    fi
 else
     echo -e "${YELLOW}Skipping bucket creation: no runner (tsx/npx/npm) available.${NC}"
-    echo "To create buckets manually, run: supabase storage create <bucket-name> or install tsx (npm i -g tsx) and re-run this installer."
+    echo "To create buckets manually, run: supabase storage create <bucket-name> or install Node.js and tsx (https://nodejs.org) and re-run this installer."
 fi
 
 echo ""
