@@ -73,64 +73,78 @@ if command -v supabase &> /dev/null; then
     echo -e "${YELLOW}Starting Supabase (this may pull containers)...${NC}"
     supabase start || true
 
-    # Try to extract credentials from supabase status (JSON preferred)
-    SUPABASE_STATUS=""
-    if SUPABASE_STATUS=$(supabase status --output json 2>/dev/null); then
-        : # got JSON in SUPABASE_STATUS
-    else
-        SUPABASE_STATUS=$(supabase status 2>/dev/null || true)
-    fi
+    # Try to reliably fetch Supabase keys and wait for Supabase to be healthy
+    show_step "Step 3a: Waiting for Supabase to be healthy"
+    MAX_RETRIES=60
+    RETRY=0
+    KEYS_OK=0
+    while [ $RETRY -lt $MAX_RETRIES ]; do
+        if command -v ./scripts/fetch_supabase_keys.sh &> /dev/null; then
+            if ./scripts/fetch_supabase_keys.sh > /tmp/sb_keys.env 2>/dev/null; then
+                # ensure we have values
+                if grep -q '^SUPABASE_URL=' /tmp/sb_keys.env && grep -q '^DATABASE_URL=' /tmp/sb_keys.env; then
+                    KEYS_OK=1
+                    break
+                fi
+            fi
+        else
+            # fallback to supabase status parsing using node/python
+            if SUPABASE_STATUS=$(supabase status --output json 2>/dev/null); then
+                :
+            else
+                SUPABASE_STATUS=$(supabase status 2>/dev/null || true)
+            fi
+            if command -v node &> /dev/null && [ -n "$SUPABASE_STATUS" ]; then
+                API_URL=$(printf "%s" "$SUPABASE_STATUS" | node -e "try{const s=JSON.parse(require('fs').readFileSync(0,'utf8')); console.log(s.project?.api?.url||s.api?.url||'') }catch(e){}") || true
+                DB_URL=$(printf "%s" "$SUPABASE_STATUS" | node -e "try{const s=JSON.parse(require('fs').readFileSync(0,'utf8')); console.log(s.project?.db?.url||s.db?.url||'') }catch(e){}") || true
+                if [ -n "$API_URL" ] && [ -n "$DB_URL" ]; then
+                    echo "SUPABASE_URL=$API_URL" > /tmp/sb_keys.env
+                    echo "DATABASE_URL=$DB_URL" >> /tmp/sb_keys.env
+                    # do not attempt to extract secrets here; prompt later if missing
+                    KEYS_OK=1
+                    break
+                fi
+            fi
+        fi
 
-    # Parse with python if possible (accept 'python3' or 'python')
-    PYTHON_CMD=""
-    if command -v python3 &> /dev/null; then
-        PYTHON_CMD=python3
-    elif command -v python &> /dev/null; then
-        PYTHON_CMD=python
-    fi
-    if [ -n "$PYTHON_CMD" ] && [ -n "$SUPABASE_STATUS" ]; then
-        API_URL=$(printf "%s" "$SUPABASE_STATUS" | $PYTHON_CMD -c "import sys,json;d=json.load(sys.stdin);print(d.get('api',{}).get('url','')) if isinstance(d,dict) else print('')" 2>/dev/null || true)
-        DB_URL=$(printf "%s" "$SUPABASE_STATUS" | $PYTHON_CMD -c "import sys,json;d=json.load(sys.stdin);print(d.get('db',{}).get('url','')) if isinstance(d,dict) else print('')" 2>/dev/null || true)
-        SERVICE_ROLE_KEY=$(printf "%s" "$SUPABASE_STATUS" | $PYTHON_CMD -c "import sys,json;d=json.load(sys.stdin);print(d.get('secrets',{}).get('service_role','')) if isinstance(d,dict) else print('')" 2>/dev/null || true)
-        ANON_KEY=$(printf "%s" "$SUPABASE_STATUS" | $PYTHON_CMD -c "import sys,json;d=json.load(sys.stdin);print(d.get('secrets',{}).get('anon','')) if isinstance(d,dict) else print('')" 2>/dev/null || true)
-    fi
+        RETRY=$((RETRY+1))
+        sleep 2
+    done
 
-    # Prompt for any missing values
-    if [ -z "${API_URL:-}" ]; then
+    if [ $KEYS_OK -ne 1 ]; then
+        echo -e "${YELLOW}Warning: Could not auto-detect Supabase keys after waiting. You will be prompted to enter them.${NC}"
         read -p "Supabase API URL (e.g. http://127.0.0.1:54321): " API_URL
-    fi
-    if [ -z "${DB_URL:-}" ]; then
         read -p "Database URL (Postgres) from Supabase (DATABASE_URL): " DB_URL
-    fi
-    if [ -z "${SERVICE_ROLE_KEY:-}" ]; then
         read -p "Supabase service_role key (SUPABASE_SERVICE_ROLE_KEY): " SERVICE_ROLE_KEY
-    fi
-    if [ -z "${ANON_KEY:-}" ]; then
         read -p "Supabase anon key for frontend (VITE_SUPABASE_ANON_KEY): " ANON_KEY
+        echo "SUPABASE_URL=${API_URL}" > /tmp/sb_keys.env
+        echo "DATABASE_URL=${DB_URL}" >> /tmp/sb_keys.env
+        echo "SUPABASE_SERVICE_ROLE_KEY=${SERVICE_ROLE_KEY}" >> /tmp/sb_keys.env
+        echo "VITE_SUPABASE_ANON_KEY=${ANON_KEY}" >> /tmp/sb_keys.env
+    else
+        # If helper provided values, also ensure ANON and SERVICE_ROLE are present; prompt if not
+        if ! grep -q '^VITE_SUPABASE_ANON_KEY=' /tmp/sb_keys.env 2>/dev/null; then
+            read -p "Supabase anon key for frontend (VITE_SUPABASE_ANON_KEY): " ANON_KEY
+            echo "VITE_SUPABASE_ANON_KEY=${ANON_KEY}" >> /tmp/sb_keys.env
+        fi
+        if ! grep -q '^SUPABASE_SERVICE_ROLE_KEY=' /tmp/sb_keys.env 2>/dev/null; then
+            read -p "Supabase service_role key (SUPABASE_SERVICE_ROLE_KEY): " SERVICE_ROLE_KEY
+            echo "SUPABASE_SERVICE_ROLE_KEY=${SERVICE_ROLE_KEY}" >> /tmp/sb_keys.env
+        fi
     fi
 
-    # Persist into .env (replace if present, append if missing)
-    sed -i.bak \
-        -e "s|^SUPABASE_URL=.*|SUPABASE_URL=${API_URL}|g" \
-        -e "s|^DATABASE_URL=.*|DATABASE_URL=${DB_URL}|g" \
-        -e "s|^SUPABASE_SERVICE_ROLE_KEY=.*|SUPABASE_SERVICE_ROLE_KEY=${SERVICE_ROLE_KEY}|g" \
-        -e "s|^VITE_SUPABASE_ANON_KEY=.*|VITE_SUPABASE_ANON_KEY=${ANON_KEY}|g" .env 2>/dev/null || true
+    # Merge/replace keys in .env safely
+    # Remove existing keys then append values from /tmp/sb_keys.env
+    grep -vE '^(SUPABASE_URL|DATABASE_URL|SUPABASE_SERVICE_ROLE_KEY|VITE_SUPABASE_ANON_KEY)=' .env > .env.tmp || cp .env .env.tmp
+    cat /tmp/sb_keys.env >> .env.tmp
+    mv .env.tmp .env
 
-    # Append missing keys (sed only replaces existing lines)
-    if ! grep -q '^SUPABASE_URL=' .env 2>/dev/null; then
-        echo "SUPABASE_URL=${API_URL}" >> .env
-    fi
-    if ! grep -q '^DATABASE_URL=' .env 2>/dev/null; then
-        echo "DATABASE_URL=${DB_URL}" >> .env
-    fi
-    if ! grep -q '^SUPABASE_SERVICE_ROLE_KEY=' .env 2>/dev/null; then
-        echo "SUPABASE_SERVICE_ROLE_KEY=${SERVICE_ROLE_KEY}" >> .env
-    fi
-    if ! grep -q '^VITE_SUPABASE_ANON_KEY=' .env 2>/dev/null; then
-        echo "VITE_SUPABASE_ANON_KEY=${ANON_KEY}" >> .env
+    # Sync to backend/.env for local backend runtime
+    if [ -d backend ]; then
+        cp .env backend/.env || true
     fi
 
-    echo -e "${GREEN}✓ Supabase credentials written to .env${NC}"
+    echo -e "${GREEN}✓ Supabase credentials written to .env and backend/.env${NC}"
 else
     echo -e "${YELLOW}Skipping Supabase automatic start - Supabase CLI not available.${NC}"
     echo "Please ensure SUPABASE_URL, DATABASE_URL, VITE_SUPABASE_ANON_KEY, and SUPABASE_SERVICE_ROLE_KEY are set in .env before proceeding."
