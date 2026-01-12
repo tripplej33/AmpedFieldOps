@@ -1,0 +1,80 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="1200" height="800" viewBox="0 0 1200 800" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    .bg { fill: #0f172a; }
+    .nav { fill: #0b1220; }
+    .sidebar { fill: #071024; }
+    .card { fill: #0b1226; stroke: #1f2937; stroke-width: 1; rx: 8; }
+    .accent { fill: #06b6d4; }
+    .muted { fill: #94a3b8; }
+    text { font-family: Inter, Arial, sans-serif; fill: #e6eef8; }
+    .title { font-size: 18px; font-weight: 600; }
+    .h1 { font-size: 22px; font-weight: 700; }
+  </style>
+
+  <!-- background -->
+  <rect class="bg" width="1200" height="800" />
+
+  <!-- top nav -->
+  <rect class="nav" x="0" y="0" width="1200" height="64" />
+  <text x="24" y="40" class="h1">AmpedFieldOps</text>
+  <rect x="1060" y="12" width="120" height="40" rx="6" fill="#0b1226" stroke="#1f2937" />
+  <text x="1094" y="38" font-size="13">Sign in</text>
+
+  <!-- sidebar -->
+  <rect class="sidebar" x="0" y="64" width="220" height="736" />
+  <text x="20" y="100" class="title">Dashboard</text>
+  <text x="20" y="130" class="muted">Projects</text>
+  <text x="20" y="150" class="muted">Clients</text>
+  <text x="20" y="170" class="muted">Timesheets</text>
+  <text x="20" y="190" class="muted">Files</text>
+  <text x="20" y="210" class="muted">Settings</text>
+
+  <!-- main area -->
+  <rect x="240" y="84" width="928" height="680" fill="transparent" />
+
+  <!-- top cards -->
+  <g transform="translate(240,84)">
+    <rect class="card" x="0" y="0" width="280" height="100" />
+    <text x="16" y="26" class="muted">Active Projects</text>
+    <text x="16" y="62" class="h1">24</text>
+
+    <rect class="card" x="304" y="0" width="280" height="100" />
+    <text x="320" y="26" class="muted">Open Timesheets</text>
+    <text x="320" y="62" class="h1">18</text>
+
+    <rect class="card" x="608" y="0" width="280" height="100" />
+    <text x="624" y="26" class="muted">Unprocessed OCR</text>
+    <text x="624" y="62" class="h1">6</text>
+
+    <!-- project list -->
+    <rect class="card" x="0" y="124" width="600" height="420" />
+    <text x="16" y="150" class="title">Recent Projects</text>
+    <g transform="translate(16,170)">
+      <rect x="0" y="0" width="560" height="56" rx="6" fill="#071827" />
+      <text x="12" y="36">Project: Main Street Rewire — Due 2026-02-10</text>
+      <rect x="0" y="76" width="560" height="56" rx="6" fill="#071827" />
+      <text x="12" y="112">Project: New Substation — Due 2026-01-28</text>
+      <rect x="0" y="152" width="560" height="56" rx="6" fill="#071827" />
+      <text x="12" y="188">Project: Office Fitout — Due 2026-03-05</text>
+    </g>
+
+    <!-- timesheet panel -->
+    <rect class="card" x="616" y="124" width="312" height="420" />
+    <text x="632" y="150" class="title">Timesheets</text>
+    <g transform="translate(632,170)">
+      <rect x="0" y="0" width="280" height="64" rx="6" fill="#071827" />
+      <text x="12" y="38">John D — 2026-01-12 — 6h — Project: Main Street</text>
+      <rect x="0" y="80" width="280" height="64" rx="6" fill="#071827" />
+      <text x="12" y="118">Maria S — 2026-01-12 — 8h — Project: New Substation</text>
+    </g>
+
+    <!-- right column small cards -->
+    <rect x="908" y="0" width="280" height="100" class="card" />
+    <text x="924" y="26" class="muted">Notifications</text>
+    <text x="924" y="62" class="muted">3 new</text>
+  </g>
+
+  <!-- footer / annotations -->
+  <text x="240" y="780" font-size="12" class="muted">Prototype: import into Penpot for further refinement</text>
+</svg>

@@ -116,6 +116,13 @@ The following variables are no longer needed after the Supabase migration:
 - **`JWT_SECRET`**: Supabase handles JWT generation
 - **`DATABASE_URL`**: Still used for direct DB access, but can be derived from Supabase
 
+> Security note: The codebase includes a local `JWT_SECRET` fallback to ease
+> bootstrapping during development. This fallback is intended for local use
+> only. For any production deployment, set an explicit `JWT_SECRET` (min 32
+> chars) in your backend `.env` and never commit it to source control. Also
+> ensure `SUPABASE_SERVICE_ROLE_KEY` remains backend-only and is not exposed
+> to frontend builds.
+
 ## Production Setup
 
 For production (self-hosted Supabase):

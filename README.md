@@ -371,32 +371,40 @@ activity_logs         - Audit trail
 
 ## Backup & Restore
 
-### Docker
+Use the `DATABASE_URL` in your backend environment to run `pg_dump`/`psql` against the active Postgres instance (Supabase or self-hosted).
+
+Cross-platform examples:
+
+Linux / macOS (uses `PGPASSWORD`):
 ```bash
 # Backup
-docker exec ampedfieldops-db pg_dump -U ampedfieldops ampedfieldops > backup.sql
+PGPASSWORD="$DB_PASSWORD" pg_dump "$DATABASE_URL" > backup.sql
 
 # Restore
-docker exec -i ampedfieldops-db psql -U ampedfieldops ampedfieldops < backup.sql
+PGPASSWORD="$DB_PASSWORD" psql "$DATABASE_URL" < backup.sql
 ```
 
-### Local PostgreSQL
-```bash
+Windows (PowerShell):
+```powershell
 # Backup
-pg_dump -U postgres ampedfieldops > backup.sql
+$env:PGPASSWORD = $env:DATABASE_PASSWORD; pg_dump $env:DATABASE_URL > backup.sql
 
 # Restore
-psql -U postgres ampedfieldops < backup.sql
+$env:PGPASSWORD = $env:DATABASE_PASSWORD; psql $env:DATABASE_URL < backup.sql
 ```
+
+Notes:
+- If you use the local Supabase CLI (`supabase start`), the `DATABASE_URL` is shown by `supabase status`.
+- You can also export data from Supabase Studio or use the Supabase API/CLI tooling for managed backups.
 
 ## Troubleshooting
 
 ### Common Issues
 
 **"Database connection failed"**
-- Verify PostgreSQL is running
-- Check `DATABASE_URL` in `.env`
-- Ensure database exists
+- Verify Supabase is running (`supabase status`) or that the database server is reachable
+- Check `DATABASE_URL` / `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` in your backend `.env`
+- Ensure your RLS and connection permissions allow the requested operation
 
 **"Xero connection failed"**
 - Verify Xero credentials in Settings page
