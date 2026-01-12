@@ -659,7 +659,7 @@ export default function Files() {
                                                   alt={image.filename}
                                                   className="w-full h-24 object-cover cursor-pointer"
                                                   onClick={() => handleViewImage(image.url, allImageUrls, idx)}
-                                                  onError={(e) => {
+                                                  onError={async (e) => {
                                                     const img = e.currentTarget;
                                                     const originalSrc = image.url;
                                                     

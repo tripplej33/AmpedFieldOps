@@ -62,6 +62,9 @@
     "tailwindcss-animate": "^1.0.7",
     "vaul": "^0.9.9",
     "zod": "^3.25.76"
+    ,
+    "@supabase/supabase-js": "^2.0.0",
+    "@supabase/postgrest-js": "^1.0.0"
   },
   "devDependencies": {
     "@types/node": "^20.14.2",
