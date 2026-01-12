@@ -28,9 +28,19 @@ if ! command -v docker &> /dev/null; then
 fi
 
 if ! command -v supabase &> /dev/null; then
-    echo -e "${YELLOW}Warning: Supabase CLI not found. Please install it:${NC}"
-    echo "  https://supabase.com/docs/guides/cli"
-    echo "Continuing without Supabase CLI will require manual Supabase setup."
+    echo -e "${YELLOW}Warning: Supabase CLI not found.${NC}"
+    if command -v npm &> /dev/null; then
+        read -p "Install Supabase CLI globally via npm now? (requires npm) [y/N]: " install_supabase
+        if [[ "$install_supabase" =~ ^[Yy]$ ]]; then
+            echo -e "${YELLOW}Installing supabase CLI via npm...${NC}"
+            npm install -g supabase || echo "npm global install failed; please install supabase manually: https://supabase.com/docs/guides/cli"
+        else
+            echo "Supabase CLI not installed. See: https://supabase.com/docs/guides/cli"
+        fi
+    else
+        echo "Please install the Supabase CLI: https://supabase.com/docs/guides/cli"
+        echo "Continuing without Supabase CLI will require manual Supabase setup."
+    fi
 fi
 
 if docker compose version &> /dev/null; then
@@ -151,10 +161,16 @@ fi
 
 # Create storage buckets using project script
 show_step "Step 7: Creating Storage Buckets"
-if command -v npx &> /dev/null; then
-    npx ts-node scripts/create-storage-buckets.ts || echo "Bucket creation failed or already exists"
+if command -v tsx &> /dev/null; then
+    tsx scripts/create-storage-buckets.ts || echo "Bucket creation failed or already exists"
+elif command -v npx &> /dev/null; then
+    npx tsx scripts/create-storage-buckets.ts || echo "Bucket creation failed or already exists"
+elif command -v npm &> /dev/null; then
+    # Use npm exec as a fallback (npm 7+)
+    npm exec -- tsx scripts/create-storage-buckets.ts || echo "Bucket creation failed or tsx not installed"
 else
-    echo -e "${YELLOW}Skipping bucket creation: npx/ts-node not available.${NC}"
+    echo -e "${YELLOW}Skipping bucket creation: no runner (tsx/npx/npm) available.${NC}"
+    echo "To create buckets manually, run: supabase storage create <bucket-name> or install tsx (npm i -g tsx) and re-run this installer."
 fi
 
 echo ""
