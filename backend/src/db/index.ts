@@ -7,60 +7,48 @@ import { env } from '../config/env';
  * - For internal Docker networks, SSL is not needed
  * - For external production databases, require proper SSL with certificate validation
  */
-function getSslConfig(): boolean | { rejectUnauthorized: boolean } {
-  const dbUrl = env.DATABASE_URL.toLowerCase();
+function getSslConfig(dbUrl: string): boolean | { rejectUnauthorized: boolean } {
+  const lowerUrl = dbUrl.toLowerCase();
   
   // If DATABASE_URL explicitly specifies SSL mode, parse it
-  if (dbUrl.includes('sslmode=')) {
-    const sslMode = dbUrl.match(/sslmode=([^&]+)/)?.[1];
+  if (lowerUrl.includes('sslmode=')) {
+    const sslMode = lowerUrl.match(/sslmode=([^&]+)/)?.[1];
     
     if (sslMode === 'require' || sslMode === 'prefer') {
-      // For require/prefer, use SSL but allow self-signed certs (common in managed services)
-      // In production, you should use verify-full with proper certificates
       return { rejectUnauthorized: false };
     }
     
     if (sslMode === 'verify-full' || sslMode === 'verify-ca') {
-      // Full certificate validation - most secure
       return { rejectUnauthorized: true };
     }
     
     if (sslMode === 'disable') {
-      // Explicitly disabled
       return false;
     }
   }
-  
+
   // For Docker internal networks (localhost, container names, or internal IPs), SSL not needed
   const isInternalNetwork = 
-    dbUrl.includes('@localhost') ||
-    dbUrl.includes('@127.0.0.1') ||
-    dbUrl.includes('@postgres') ||  // Docker service name
-    dbUrl.includes('@172.') ||      // Docker internal network
-    dbUrl.includes('@10.') ||       // Private network
-    dbUrl.includes('@192.168.');    // Private network
-  
+    lowerUrl.includes('@localhost') ||
+    lowerUrl.includes('@127.0.0.1') ||
+    lowerUrl.includes('@postgres') ||
+    lowerUrl.includes('@172.') ||
+    lowerUrl.includes('@10.') ||
+    lowerUrl.includes('@192.168.');
+
   if (isInternalNetwork) {
     return false;
   }
-  
-  // For external production databases without explicit SSL mode, require SSL with validation
+
   if (env.NODE_ENV === 'production') {
-    // Production external database - require SSL with certificate validation
-    // Note: For managed services (AWS RDS, Google Cloud SQL, etc.), you may need to
-    // set rejectUnauthorized: false and provide CA certificate, or use verify-full mode
     return { rejectUnauthorized: true };
   }
-  
-  // Development - no SSL by default
+
   return false;
 }
 
 // For Supabase, we can use the direct PostgreSQL connection
-// If DATABASE_URL is not set, we'll need to construct it from Supabase URL
 const connectionString = env.DATABASE_URL || (() => {
-  // Fallback: Try to construct from Supabase URL
-  // This is a fallback - DATABASE_URL should be set explicitly
   console.warn('DATABASE_URL not set. Some features (backups, direct DB access) may not work.');
   return '';
 })();
@@ -71,7 +59,7 @@ if (!connectionString) {
 
 const pool = new Pool({
   connectionString,
-  ssl: getSslConfig()
+  ssl: getSslConfig(connectionString)
 });
 
 export const query = (text: string, params?: any[]) => pool.query(text, params);

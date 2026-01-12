@@ -44,6 +44,7 @@ interface EnvConfig {
   
   // OCR Service (optional)
   OCR_SERVICE_URL?: string;
+  JWT_SECRET?: string;
 }
 
 function getEnvVar(key: string, required = true, defaultValue?: string): string {
@@ -87,6 +88,7 @@ function validateEnv(): EnvConfig {
     SMTP_PASSWORD: getEnvVar('SMTP_PASSWORD', false),
     SMTP_FROM: getEnvVar('SMTP_FROM', false),
     OCR_SERVICE_URL: getEnvVar('OCR_SERVICE_URL', false, 'http://ocr-service:8000'),
+      JWT_SECRET: getEnvVar('JWT_SECRET', false),
   };
 }
 
