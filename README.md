@@ -44,7 +44,7 @@ A mobile-first service business management platform designed for electrical cont
 
 ### Prerequisites
 - Node.js 18+
-- PostgreSQL 14+
+- Supabase CLI (optional, for local Supabase): https://supabase.com/docs/guides/cli
 - Docker (optional, for containerized setup)
 
 ### Option 1: Docker Installation (Recommended)
@@ -54,20 +54,23 @@ A mobile-first service business management platform designed for electrical cont
 git clone https://github.com/tripplej33/AmpedFieldOps.git
 cd AmpedFieldOps
 
-# Run installation script
+# (optional) Start local Supabase (install the Supabase CLI first)
+# supabase start
+
+# Run installation script (handles Supabase + Docker flow)
 chmod +x install.sh
 ./install.sh
 ```
 
 This will:
-1. Check Docker installation
-2. Generate secure secrets
-3. Prompt for admin credentials
-4. Start all services
-5. Run migrations and seeds
-6. Create your admin account
+1. Check Docker (and Supabase CLI if present)
+2. Create or update `.env` with Supabase credentials (prompts for any missing keys)
+3. Initialize and start Supabase locally (`supabase init` / `supabase start`) if CLI is available
+4. Start backend, frontend, and OCR containers
+5. Run migrations (via Supabase CLI or backend migrations)
+6. Create storage buckets and seed default data
 
-Access the app at **http://localhost:3000**
+Access the app at **http://localhost:3000** (Docker) or **http://localhost:5173** (local dev)
 
 ### Option 2: Local Development
 
@@ -105,29 +108,30 @@ cd backend && npm run dev
 npm run dev
 ```
 
-## Environment Variables
+### Environment Variables
 
-### Frontend
+The project is configured to use Supabase for Auth, Postgres, Realtime and Storage.
+
+Frontend
 
 Create a `.env.local` file in the root directory based on `.env.example`:
 
 ```env
-# Supabase Configuration
+# Supabase Configuration (frontend)
 VITE_SUPABASE_URL=http://127.0.0.1:54321
-VITE_SUPABASE_ANON_KEY=  # Optional for local, uses default
+VITE_SUPABASE_ANON_KEY=your-anon-key-here
 ```
 
-### Backend
+Backend
 
-Create a `.env` file in the `backend` directory based on `env.example`:
+Create a `.env` file in the project root based on `.env.example` (or edit the existing `.env`):
 
 ```env
-# Supabase Configuration (Required)
+# Supabase Configuration (backend - required)
 SUPABASE_URL=http://127.0.0.1:54321
 SUPABASE_SERVICE_ROLE_KEY=your-service-role-key-here
 
-# Database (Optional - for backups and direct DB access)
-# Get from: supabase status (local) or Supabase dashboard (production)
+# Optional - direct DB access (used for backups/migrations)
 DATABASE_URL=postgresql://postgres:postgres@127.0.0.1:54322/postgres
 
 # Server
@@ -135,25 +139,13 @@ PORT=3001
 NODE_ENV=development
 FRONTEND_URL=http://localhost:5173
 BACKEND_URL=http://localhost:3001
-
-# Xero Integration (Optional - can also be configured in Settings)
-XERO_CLIENT_ID=
-XERO_CLIENT_SECRET=
-XERO_REDIRECT_URI=http://localhost:3001/api/xero/callback
-
-# Email/SMTP (Optional - can be configured in Settings page)
-SMTP_HOST=
-SMTP_PORT=
-SMTP_USER=
-SMTP_PASSWORD=
-SMTP_FROM=
 ```
 
-> **Note:** 
-> - For detailed environment variable setup, see [ENV_SETUP.md](./ENV_SETUP.md)
-> - Get Supabase keys by running `supabase status` (local) or from Supabase dashboard (production)
-> - Email settings can be managed through the Settings page (Admin only)
-> - JWT_SECRET is no longer needed (Supabase handles authentication)
+Notes:
+- For detailed environment variable setup, see [ENV_SETUP.md](./ENV_SETUP.md)
+- Get Supabase keys by running `supabase status` (local) or from Supabase dashboard (production)
+- Supabase Studio (local) is typically available at `http://127.0.0.1:54323`
+- `JWT_SECRET` is no longer required for auth when using Supabase; the backend includes a local fallback for bootstrapping only
 
 ## First-Time Setup
 

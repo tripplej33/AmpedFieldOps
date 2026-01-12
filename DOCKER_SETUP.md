@@ -6,7 +6,11 @@
    - Windows: Download from https://www.docker.com/products/docker-desktop/
    - Make sure Docker Desktop is running before proceeding
 
-2. **Verify Docker Installation**:
+2. **(Optional) Install Supabase CLI** for local Supabase instances and easier key extraction:
+   - https://supabase.com/docs/guides/cli
+   - Useful commands: `supabase init`, `supabase start`, `supabase status`
+
+3. **Verify Docker Installation**:
    ```powershell
    docker --version
    docker compose version
@@ -16,19 +20,26 @@
 
 ### 1. Create Environment File
 
-A `.env` file has been created with secure random secrets. You can edit it if needed:
+An `.env` file will be created by `install.sh` (or copy from `.env.example`). Edit if needed to add Supabase keys:
 
 ```env
-DB_PASSWORD=changeme123
-JWT_SECRET=your-super-secret-jwt-key-change-in-production
+# Example .env entries (edit with your Supabase values)
+SUPABASE_URL=http://127.0.0.1:54321
+SUPABASE_SERVICE_ROLE_KEY=your-service-role-key-here
+VITE_SUPABASE_ANON_KEY=your-anon-key-here
 FRONTEND_URL=http://localhost:3000
 API_URL=http://localhost:3001
 ```
 
 ### 2. Build and Start Containers
 
+If using the Supabase CLI locally you can start Supabase first (optional):
+
 ```powershell
-# Build and start all services
+# Start local Supabase (optional)
+supabase start
+
+# Build and start the application services
 docker compose up --build
 
 # Or run in detached mode (background)
@@ -51,7 +62,7 @@ docker compose logs -f postgres
 
 - **Frontend**: http://localhost:3000
 - **Backend API**: http://localhost:3001
-- **PostgreSQL**: localhost:5432
+- **Supabase Studio (local)**: http://127.0.0.1:54323
 
 ### 5. Stop Containers
 
@@ -63,41 +74,43 @@ docker compose down
 docker compose down -v
 ```
 
-## Troubleshooting
 
-### Database Connection Issues
+### Troubleshooting
 
-If the backend can't connect to the database:
+### Database / Supabase Connection Issues
 
-1. Check if PostgreSQL container is running:
+If the backend can't connect to Supabase or the database:
+
+1. If using local Supabase, check Supabase status:
+   ```powershell
+   supabase status
+   ```
+
+2. Check containers' status and logs:
    ```powershell
    docker compose ps
+   docker compose logs -f backend
    ```
 
-2. Check PostgreSQL logs:
-   ```powershell
-   docker compose logs postgres
-   ```
-
-3. Verify database credentials in `.env` match `docker-compose.yml`
+3. If you need direct DB access, get the `DATABASE_URL` from `supabase status` and use `psql` or `pg_dump` as needed.
 
 ### Backend Migration Issues
 
-The backend automatically runs migrations on startup. If migrations fail:
+The backend attempts to run migrations on startup. If migrations fail:
 
 1. Check backend logs:
    ```powershell
    docker compose logs backend
    ```
 
-2. Manually run migrations:
+2. If using Supabase CLI, prefer `supabase migration run` for Supabase-managed migrations:
    ```powershell
-   docker compose exec backend npm run migrate
+   supabase migration run
    ```
 
-3. Run fresh migration (WARNING: deletes all data):
+3. Or run legacy migrations via the backend container:
    ```powershell
-   docker compose exec backend npm run migrate -- --fresh
+   docker compose exec backend npm run migrate
    docker compose exec backend npm run seed
    ```
 
@@ -125,14 +138,10 @@ If you get "port already in use" errors:
    ```powershell
    netstat -ano | findstr :3000
    netstat -ano | findstr :3001
-   netstat -ano | findstr :5432
+   netstat -ano | findstr :54323  # Supabase Studio
    ```
 
-2. Change ports in `docker-compose.yml`:
-   ```yaml
-   ports:
-     - "3002:3001"  # Change external port
-   ```
+2. Change ports in `.env` or `docker-compose.yml` if required.
 
 ### Rebuild After Code Changes
 
@@ -181,13 +190,13 @@ SELECT * FROM users;
 
 ## Environment Variables
 
-The `.env` file contains:
-- `DB_PASSWORD`: PostgreSQL password
-- `JWT_SECRET`: JWT signing secret (must be 32+ characters)
-- `FRONTEND_URL`: Frontend URL for CORS
-- `API_URL`: Backend API URL
-- `XERO_CLIENT_ID`: Xero OAuth client ID (optional)
-- `XERO_CLIENT_SECRET`: Xero OAuth secret (optional)
+The `.env` file should include Supabase-related values and server settings. Key entries:
+- `SUPABASE_URL` - e.g. `http://127.0.0.1:54321`
+- `SUPABASE_SERVICE_ROLE_KEY` - secret, backend only
+- `DATABASE_URL` - optional direct Postgres connection string (used for backups/migrations)
+- `VITE_SUPABASE_ANON_KEY` - frontend anon key
+- `FRONTEND_URL` - frontend URL for CORS
+- `API_URL` - backend API URL
 
 ## First-Time Setup
 
