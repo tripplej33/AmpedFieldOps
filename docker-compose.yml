@@ -84,25 +84,5 @@ services:
       timeout: 10s
       retries: 3
 
-  ocr-service:
-    build:
-      context: ./ocr-service
-      dockerfile: Dockerfile
-    container_name: ampedfieldops-ocr
-    restart: unless-stopped
-    ports:
-      - "8000:8000"
-    environment:
-      OCR_HOST: 0.0.0.0
-      OCR_PORT: 8000
-      TESSERACT_CMD: /usr/bin/tesseract
-      TESSERACT_LANG: eng
-      LOG_LEVEL: INFO
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-
 volumes:
   redis_data:
