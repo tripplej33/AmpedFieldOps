@@ -71,12 +71,18 @@ if command -v supabase &> /dev/null; then
         SUPABASE_STATUS=$(supabase status 2>/dev/null || true)
     fi
 
-    # Parse with python if possible
-    if command -v python3 &> /dev/null && [ -n "$SUPABASE_STATUS" ]; then
-        API_URL=$(printf "%s" "$SUPABASE_STATUS" | python3 -c "import sys,json;d=json.load(sys.stdin);print(d.get('api',{}).get('url','')) if isinstance(d,dict) else print('')" 2>/dev/null || true)
-        DB_URL=$(printf "%s" "$SUPABASE_STATUS" | python3 -c "import sys,json;d=json.load(sys.stdin);print(d.get('db',{}).get('url','')) if isinstance(d,dict) else print('')" 2>/dev/null || true)
-        SERVICE_ROLE_KEY=$(printf "%s" "$SUPABASE_STATUS" | python3 -c "import sys,json;d=json.load(sys.stdin);print(d.get('secrets',{}).get('service_role','')) if isinstance(d,dict) else print('')" 2>/dev/null || true)
-        ANON_KEY=$(printf "%s" "$SUPABASE_STATUS" | python3 -c "import sys,json;d=json.load(sys.stdin);print(d.get('secrets',{}).get('anon','')) if isinstance(d,dict) else print('')" 2>/dev/null || true)
+    # Parse with python if possible (accept 'python3' or 'python')
+    PYTHON_CMD=""
+    if command -v python3 &> /dev/null; then
+        PYTHON_CMD=python3
+    elif command -v python &> /dev/null; then
+        PYTHON_CMD=python
+    fi
+    if [ -n "$PYTHON_CMD" ] && [ -n "$SUPABASE_STATUS" ]; then
+        API_URL=$(printf "%s" "$SUPABASE_STATUS" | $PYTHON_CMD -c "import sys,json;d=json.load(sys.stdin);print(d.get('api',{}).get('url','')) if isinstance(d,dict) else print('')" 2>/dev/null || true)
+        DB_URL=$(printf "%s" "$SUPABASE_STATUS" | $PYTHON_CMD -c "import sys,json;d=json.load(sys.stdin);print(d.get('db',{}).get('url','')) if isinstance(d,dict) else print('')" 2>/dev/null || true)
+        SERVICE_ROLE_KEY=$(printf "%s" "$SUPABASE_STATUS" | $PYTHON_CMD -c "import sys,json;d=json.load(sys.stdin);print(d.get('secrets',{}).get('service_role','')) if isinstance(d,dict) else print('')" 2>/dev/null || true)
+        ANON_KEY=$(printf "%s" "$SUPABASE_STATUS" | $PYTHON_CMD -c "import sys,json;d=json.load(sys.stdin);print(d.get('secrets',{}).get('anon','')) if isinstance(d,dict) else print('')" 2>/dev/null || true)
     fi
 
     # Prompt for any missing values
@@ -93,12 +99,26 @@ if command -v supabase &> /dev/null; then
         read -p "Supabase anon key for frontend (VITE_SUPABASE_ANON_KEY): " ANON_KEY
     fi
 
-    # Persist into .env
+    # Persist into .env (replace if present, append if missing)
     sed -i.bak \
-        -e "s|SUPABASE_URL=.*|SUPABASE_URL=${API_URL}|g" \
-        -e "s|DATABASE_URL=.*|DATABASE_URL=${DB_URL}|g" \
-        -e "s|SUPABASE_SERVICE_ROLE_KEY=.*|SUPABASE_SERVICE_ROLE_KEY=${SERVICE_ROLE_KEY}|g" \
-        -e "s|VITE_SUPABASE_ANON_KEY=.*|VITE_SUPABASE_ANON_KEY=${ANON_KEY}|g" .env 2>/dev/null || true
+        -e "s|^SUPABASE_URL=.*|SUPABASE_URL=${API_URL}|g" \
+        -e "s|^DATABASE_URL=.*|DATABASE_URL=${DB_URL}|g" \
+        -e "s|^SUPABASE_SERVICE_ROLE_KEY=.*|SUPABASE_SERVICE_ROLE_KEY=${SERVICE_ROLE_KEY}|g" \
+        -e "s|^VITE_SUPABASE_ANON_KEY=.*|VITE_SUPABASE_ANON_KEY=${ANON_KEY}|g" .env 2>/dev/null || true
+
+    # Append missing keys (sed only replaces existing lines)
+    if ! grep -q '^SUPABASE_URL=' .env 2>/dev/null; then
+        echo "SUPABASE_URL=${API_URL}" >> .env
+    fi
+    if ! grep -q '^DATABASE_URL=' .env 2>/dev/null; then
+        echo "DATABASE_URL=${DB_URL}" >> .env
+    fi
+    if ! grep -q '^SUPABASE_SERVICE_ROLE_KEY=' .env 2>/dev/null; then
+        echo "SUPABASE_SERVICE_ROLE_KEY=${SERVICE_ROLE_KEY}" >> .env
+    fi
+    if ! grep -q '^VITE_SUPABASE_ANON_KEY=' .env 2>/dev/null; then
+        echo "VITE_SUPABASE_ANON_KEY=${ANON_KEY}" >> .env
+    fi
 
     echo -e "${GREEN}✓ Supabase credentials written to .env${NC}"
 else
