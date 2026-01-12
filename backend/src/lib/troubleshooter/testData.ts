@@ -55,7 +55,7 @@ export async function createTestUsers(): Promise<TestUser[]> {
     // Generate token
     const token = jwt.sign(
       { id: user.id, email: user.email, name: user.name, role: user.role },
-      env.JWT_SECRET,
+      env.JWT_SECRET || 'dev_jwt_secret',
       { expiresIn: '1h' }
     );
 
