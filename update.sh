@@ -102,22 +102,6 @@ echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━�
 echo -e "${YELLOW}Step 3: Waiting for services to be ready${NC}"
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
-# Wait for PostgreSQL
-echo -e "${YELLOW}Waiting for PostgreSQL...${NC}"
-sleep 3
-MAX_RETRIES=30
-RETRY_COUNT=0
-until $COMPOSE_CMD exec -T postgres pg_isready -U ampedfieldops -d ampedfieldops > /dev/null 2>&1; do
-    RETRY_COUNT=$((RETRY_COUNT + 1))
-    if [ $RETRY_COUNT -ge $MAX_RETRIES ]; then
-        echo -e "${RED}Error: PostgreSQL failed to start${NC}"
-        exit 1
-    fi
-    printf "\r${YELLOW}Waiting for PostgreSQL... (${RETRY_COUNT}/${MAX_RETRIES})${NC}"
-    sleep 2
-done
-printf "\r${GREEN}✓ PostgreSQL is ready${NC}\n"
-
 # Wait for backend
 echo -e "${YELLOW}Waiting for backend API...${NC}"
 MAX_RETRIES=30
@@ -141,8 +125,11 @@ echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━�
 echo -e "${YELLOW}Step 4: Running database migrations${NC}"
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 
-if $COMPOSE_CMD exec -T backend node dist/db/migrate.js 2>/dev/null; then
-    echo -e "${GREEN}✓ Migrations completed${NC}"
+if command -v supabase &> /dev/null; then
+    echo -e "${YELLOW}Running Supabase migrations...${NC}"
+    supabase migration run || echo "Supabase migrations failed or none to run"
+elif $COMPOSE_CMD exec -T backend node dist/db/migrate.js 2>/dev/null; then
+    echo -e "${GREEN}✓ Legacy migrations completed${NC}"
 else
     echo -e "${YELLOW}Note: Migrations may have already been applied or backend is still starting${NC}"
 fi
@@ -156,7 +143,7 @@ echo ""
 echo -e "${YELLOW}Services:${NC}"
 echo -e "  Frontend:  ${GREEN}http://localhost:3000${NC}"
 echo -e "  Backend:   ${GREEN}http://localhost:3001${NC}"
-echo -e "  Database:  ${GREEN}http://localhost:8080${NC} (Adminer)"
+echo -e "  Database (Supabase Studio):  ${GREEN}http://127.0.0.1:54323${NC}"
 echo ""
 echo -e "${YELLOW}Useful commands:${NC}"
 echo "  View logs:    $COMPOSE_CMD logs -f"

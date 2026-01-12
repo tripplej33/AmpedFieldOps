@@ -1,24 +1,6 @@
 version: '3.8'
 
 services:
-  postgres:
-    image: postgres:15-alpine
-    container_name: ampedfieldops-db
-    restart: unless-stopped
-    environment:
-      POSTGRES_DB: ampedfieldops
-      POSTGRES_USER: ampedfieldops
-      POSTGRES_PASSWORD: ${DB_PASSWORD:-changeme123}
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ampedfieldops -d ampedfieldops"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
   redis:
     image: redis:7-alpine
     container_name: ampedfieldops-redis
@@ -40,16 +22,16 @@ services:
     container_name: ampedfieldops-api
     restart: unless-stopped
     depends_on:
-      postgres:
-        condition: service_healthy
       redis:
         condition: service_healthy
       ocr-service:
         condition: service_healthy
     environment:
       NODE_ENV: production
-      DATABASE_URL: postgresql://ampedfieldops:${DB_PASSWORD:-changeme123}@postgres:5432/ampedfieldops
-      JWT_SECRET: ${JWT_SECRET:-your-super-secret-jwt-key-change-in-production}
+      # Supabase configuration - Supabase CLI provides these in local development
+      SUPABASE_URL: ${SUPABASE_URL:-http://127.0.0.1:54321}
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
+      DATABASE_URL: ${DATABASE_URL}
       PORT: 3001
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
       REDIS_HOST: redis
@@ -102,17 +84,25 @@ services:
       timeout: 10s
       retries: 3
 
-  adminer:
-    image: adminer:latest
-    container_name: ampedfieldops-db-ui
+  ocr-service:
+    build:
+      context: ./ocr-service
+      dockerfile: Dockerfile
+    container_name: ampedfieldops-ocr
     restart: unless-stopped
-    depends_on:
-      - postgres
     ports:
-      - "8080:8080"
+      - "8000:8000"
     environment:
-      ADMINER_DEFAULT_SERVER: postgres
+      OCR_HOST: 0.0.0.0
+      OCR_PORT: 8000
+      TESSERACT_CMD: /usr/bin/tesseract
+      TESSERACT_LANG: eng
+      LOG_LEVEL: INFO
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
 
 volumes:
-  postgres_data:
   redis_data:

@@ -1,28 +1,22 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
-# AmpedFieldOps Installation Script (Docker)
-# ==========================================
+# AmpedFieldOps Installation Script (Supabase + Docker)
+# ================================================
 
-set -e
+set -euo pipefail
 
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 
-# Simple step header
 show_step() {
     echo ""
     echo -e "${YELLOW}$1${NC}"
     echo "----------------------------------------"
 }
 
-echo -e "${GREEN}"
-echo "╔═══════════════════════════════════════════════════════════╗"
-echo "║           AmpedFieldOps Installation Script               ║"
-echo "║        Electrical Contracting Service Management          ║"
-echo "╚═══════════════════════════════════════════════════════════╝"
-echo -e "${NC}"
+echo -e "${GREEN}Starting AmpedFieldOps installer (Supabase-enabled)${NC}"
 
 # Check for Docker
 show_step "Step 1: Checking Prerequisites"
@@ -33,171 +27,129 @@ if ! command -v docker &> /dev/null; then
     exit 1
 fi
 
-if ! command -v docker-compose &> /dev/null && ! docker compose version &> /dev/null; then
-    echo -e "${RED}Error: Docker Compose is not installed.${NC}"
-    echo "Please install Docker Compose from https://docs.docker.com/compose/install/"
-    exit 1
+if ! command -v supabase &> /dev/null; then
+    echo -e "${YELLOW}Warning: Supabase CLI not found. Please install it:${NC}"
+    echo "  https://supabase.com/docs/guides/cli"
+    echo "Continuing without Supabase CLI will require manual Supabase setup."
 fi
 
-echo -e "${GREEN}✓ Docker and Docker Compose are installed${NC}"
-
-# Create .env file if it doesn't exist
-show_step "Step 2: Configuring Environment"
-
-if [ ! -f .env ]; then
-    echo -e "${YELLOW}Creating .env file from template...${NC}"
-    cp .env.example .env 2>/dev/null || true
-    
-    # Generate secure JWT secret (alphanumeric only to avoid sed issues)
-    echo -e "${YELLOW}Generating secure secrets...${NC}"
-    JWT_SECRET=$(openssl rand -base64 48 | tr -dc 'a-zA-Z0-9' | head -c 32)
-    sed -i "s|your-super-secret-jwt-key-change-in-production-min-32-chars|$JWT_SECRET|" .env 2>/dev/null || \
-    sed -i '' "s|your-super-secret-jwt-key-change-in-production-min-32-chars|$JWT_SECRET|" .env
-    
-    # Generate secure DB password
-    DB_PASSWORD=$(openssl rand -base64 24 | tr -dc 'a-zA-Z0-9' | head -c 16)
-    sed -i "s|changeme123|$DB_PASSWORD|g" .env 2>/dev/null || \
-    sed -i '' "s|changeme123|$DB_PASSWORD|g" .env
-    
-    echo -e "${GREEN}✓ .env file created with secure secrets${NC}"
-else
-    echo -e "${YELLOW}✓ .env file already exists${NC}"
-fi
-
-echo ""
-echo -e "${YELLOW}Network Configuration${NC}"
-echo "---------------------"
-echo "If accessing from another machine (e.g., running in a VM/LXC),"
-echo "enter the server's IP address. Otherwise press Enter for localhost."
-echo ""
-read -p "Server IP address [localhost]: " SERVER_IP
-SERVER_IP=${SERVER_IP:-localhost}
-
-# Update .env with server IP
-if [ "$SERVER_IP" != "localhost" ]; then
-    # Use perl for safer string replacement if available, otherwise use sed with proper escaping
-    if command -v perl &> /dev/null; then
-        perl -i -pe "s|VITE_API_URL=http://localhost:3001|VITE_API_URL=http://$SERVER_IP:3001|g" .env
-        perl -i -pe "s|FRONTEND_URL=http://localhost:3000|FRONTEND_URL=http://$SERVER_IP:3000|g" .env
-        perl -i -pe "s|FRONTEND_URL=http://localhost:5173|FRONTEND_URL=http://$SERVER_IP:3000|g" .env
-    else
-        # Escape special characters in SERVER_IP for sed
-        ESCAPED_IP=$(printf '%s\n' "$SERVER_IP" | sed 's/[[\.*^$()+?{|]/\\&/g')
-        sed -i "s|VITE_API_URL=http://localhost:3001|VITE_API_URL=http://${ESCAPED_IP}:3001|g" .env 2>/dev/null || \
-        sed -i '' "s|VITE_API_URL=http://localhost:3001|VITE_API_URL=http://${ESCAPED_IP}:3001|g" .env
-        sed -i "s|FRONTEND_URL=http://localhost:3000|FRONTEND_URL=http://${ESCAPED_IP}:3000|g" .env 2>/dev/null || \
-        sed -i '' "s|FRONTEND_URL=http://localhost:3000|FRONTEND_URL=http://${ESCAPED_IP}:3000|g" .env
-        sed -i "s|FRONTEND_URL=http://localhost:5173|FRONTEND_URL=http://${ESCAPED_IP}:3000|g" .env 2>/dev/null || \
-        sed -i '' "s|FRONTEND_URL=http://localhost:5173|FRONTEND_URL=http://${ESCAPED_IP}:3000|g" .env
-    fi
-    echo -e "${GREEN}✓ Configured for remote access at $SERVER_IP${NC}"
-fi
-
-# Use docker compose or docker-compose depending on what's available
 if docker compose version &> /dev/null; then
     COMPOSE_CMD="docker compose"
 else
     COMPOSE_CMD="docker-compose"
 fi
 
+echo -e "${GREEN}✓ Prerequisites check complete${NC}"
+
+# Prepare .env
+show_step "Step 2: Configuring Environment"
+
+if [ ! -f .env ]; then
+    echo -e "${YELLOW}Creating .env file from template...${NC}"
+    cp .env.example .env 2>/dev/null || true
+    echo -e "${GREEN}✓ .env file created from .env.example${NC}"
+else
+    echo -e "${YELLOW}Using existing .env file${NC}"
+fi
+
+# Supabase init & start
+if command -v supabase &> /dev/null; then
+    show_step "Step 3: Initializing/Starting Supabase (local)"
+    if [ ! -f supabase/config.toml ]; then
+        echo -e "${YELLOW}Running 'supabase init'...${NC}"
+        supabase init || true
+    fi
+
+    echo -e "${YELLOW}Starting Supabase (this may pull containers)...${NC}"
+    supabase start || true
+
+    # Try to extract credentials from supabase status (JSON preferred)
+    SUPABASE_STATUS=""
+    if SUPABASE_STATUS=$(supabase status --output json 2>/dev/null); then
+        : # got JSON in SUPABASE_STATUS
+    else
+        SUPABASE_STATUS=$(supabase status 2>/dev/null || true)
+    fi
+
+    # Parse with python if possible
+    if command -v python3 &> /dev/null && [ -n "$SUPABASE_STATUS" ]; then
+        API_URL=$(printf "%s" "$SUPABASE_STATUS" | python3 -c "import sys,json;d=json.load(sys.stdin);print(d.get('api',{}).get('url','')) if isinstance(d,dict) else print('')" 2>/dev/null || true)
+        DB_URL=$(printf "%s" "$SUPABASE_STATUS" | python3 -c "import sys,json;d=json.load(sys.stdin);print(d.get('db',{}).get('url','')) if isinstance(d,dict) else print('')" 2>/dev/null || true)
+        SERVICE_ROLE_KEY=$(printf "%s" "$SUPABASE_STATUS" | python3 -c "import sys,json;d=json.load(sys.stdin);print(d.get('secrets',{}).get('service_role','')) if isinstance(d,dict) else print('')" 2>/dev/null || true)
+        ANON_KEY=$(printf "%s" "$SUPABASE_STATUS" | python3 -c "import sys,json;d=json.load(sys.stdin);print(d.get('secrets',{}).get('anon','')) if isinstance(d,dict) else print('')" 2>/dev/null || true)
+    fi
+
+    # Prompt for any missing values
+    if [ -z "${API_URL:-}" ]; then
+        read -p "Supabase API URL (e.g. http://127.0.0.1:54321): " API_URL
+    fi
+    if [ -z "${DB_URL:-}" ]; then
+        read -p "Database URL (Postgres) from Supabase (DATABASE_URL): " DB_URL
+    fi
+    if [ -z "${SERVICE_ROLE_KEY:-}" ]; then
+        read -p "Supabase service_role key (SUPABASE_SERVICE_ROLE_KEY): " SERVICE_ROLE_KEY
+    fi
+    if [ -z "${ANON_KEY:-}" ]; then
+        read -p "Supabase anon key for frontend (VITE_SUPABASE_ANON_KEY): " ANON_KEY
+    fi
+
+    # Persist into .env
+    sed -i.bak \
+        -e "s|SUPABASE_URL=.*|SUPABASE_URL=${API_URL}|g" \
+        -e "s|DATABASE_URL=.*|DATABASE_URL=${DB_URL}|g" \
+        -e "s|SUPABASE_SERVICE_ROLE_KEY=.*|SUPABASE_SERVICE_ROLE_KEY=${SERVICE_ROLE_KEY}|g" \
+        -e "s|VITE_SUPABASE_ANON_KEY=.*|VITE_SUPABASE_ANON_KEY=${ANON_KEY}|g" .env 2>/dev/null || true
+
+    echo -e "${GREEN}✓ Supabase credentials written to .env${NC}"
+else
+    echo -e "${YELLOW}Skipping Supabase automatic start - Supabase CLI not available.${NC}"
+    echo "Please ensure SUPABASE_URL, DATABASE_URL, VITE_SUPABASE_ANON_KEY, and SUPABASE_SERVICE_ROLE_KEY are set in .env before proceeding."
+fi
+
 # Create uploads directories
-show_step "Step 3: Creating Directories"
-echo -e "${YELLOW}Creating upload directories...${NC}"
+show_step "Step 4: Creating Directories"
 mkdir -p backend/uploads/logos
 echo -e "${GREEN}✓ Directories created${NC}"
 
-# Start Docker containers
-show_step "Step 4: Building and Starting Docker Containers"
-echo -e "${YELLOW}Building and starting containers (this may take a few minutes)...${NC}"
-echo ""
-
-# Run docker compose build and start (show all output)
+# Build and start other services (backend, frontend, ocr)
+show_step "Step 5: Building and Starting Docker Containers"
+echo -e "${YELLOW}Building and starting containers (backend, frontend, ocr)...${NC}"
 $COMPOSE_CMD up -d --build
 
-# Wait for PostgreSQL to be ready
-show_step "Step 5: Waiting for PostgreSQL"
-echo -e "${YELLOW}Waiting for PostgreSQL to be ready...${NC}"
-sleep 3
-
-MAX_RETRIES=30
-RETRY_COUNT=0
-until $COMPOSE_CMD exec -T postgres pg_isready -U ampedfieldops > /dev/null 2>&1; do
-    RETRY_COUNT=$((RETRY_COUNT + 1))
-    if [ $RETRY_COUNT -ge $MAX_RETRIES ]; then
-        echo -e "${RED}Error: PostgreSQL failed to start${NC}"
-        exit 1
+# Run Supabase migrations if possible
+if command -v supabase &> /dev/null; then
+    show_step "Step 6: Running Supabase Migrations"
+    if supabase migration status 2>/dev/null; then
+        echo -e "${YELLOW}Applying Supabase migrations...${NC}"
+        supabase migration run || echo "supabase migration run failed or no migrations to run"
+    else
+        echo -e "${YELLOW}No Supabase migrations detected or command unavailable.${NC}"
     fi
-    printf "\r${YELLOW}Waiting for PostgreSQL... (${RETRY_COUNT}/${MAX_RETRIES})${NC}"
-    sleep 2
-done
-printf "\r${GREEN}✓ PostgreSQL is ready${NC}\n"
-
-# Ensure database exists (connect to postgres database to check/create)
-echo -e "${YELLOW}Ensuring database exists...${NC}"
-DB_EXISTS=$($COMPOSE_CMD exec -T postgres psql -U ampedfieldops -d postgres -tc "SELECT 1 FROM pg_database WHERE datname = 'ampedfieldops'" 2>/dev/null | tr -d '[:space:]')
-if [ "$DB_EXISTS" != "1" ]; then
-    $COMPOSE_CMD exec -T postgres psql -U ampedfieldops -d postgres -c "CREATE DATABASE ampedfieldops" > /dev/null 2>&1
-    echo -e "${GREEN}✓ Database created${NC}"
 else
-    echo -e "${GREEN}✓ Database already exists${NC}"
+    echo -e "${YELLOW}Skipping migrations: Supabase CLI not available.${NC}"
 fi
 
-# Wait for the database to be ready for connections
-sleep 2
-MAX_RETRIES=10
-RETRY_COUNT=0
-until $COMPOSE_CMD exec -T postgres pg_isready -U ampedfieldops -d ampedfieldops > /dev/null 2>&1; do
-    RETRY_COUNT=$((RETRY_COUNT + 1))
-    if [ $RETRY_COUNT -ge $MAX_RETRIES ]; then
-        echo -e "${RED}Error: Database not ready for connections${NC}"
-        exit 1
-    fi
-    sleep 1
-done
-echo -e "${GREEN}✓ Database ready for connections${NC}"
-
-# Run migrations
-show_step "Step 6: Running Database Migrations"
-echo -e "${YELLOW}Running database migrations...${NC}"
-$COMPOSE_CMD exec -T backend node dist/db/migrate.js
-echo -e "${GREEN}✓ Migrations completed${NC}"
-
-# Run seeds
-show_step "Step 7: Seeding Default Data"
-echo -e "${YELLOW}Seeding default data...${NC}"
-$COMPOSE_CMD exec -T backend node dist/db/seed.js
-echo -e "${GREEN}✓ Default data seeded (including admin user)${NC}"
-
-# Mark setup as complete
-show_step "Step 8: Completing Setup"
-echo -e "${YELLOW}Completing setup...${NC}"
-sleep 2
-curl -s -X POST http://localhost:3001/api/setup/complete > /dev/null 2>&1 || true
-echo -e "${GREEN}✓ Setup marked complete${NC}"
+# Create storage buckets using project script
+show_step "Step 7: Creating Storage Buckets"
+if command -v npx &> /dev/null; then
+    npx ts-node scripts/create-storage-buckets.ts || echo "Bucket creation failed or already exists"
+else
+    echo -e "${YELLOW}Skipping bucket creation: npx/ts-node not available.${NC}"
+fi
 
 echo ""
 echo -e "${GREEN}╔═══════════════════════════════════════════════════════════╗"
 echo "║              Installation Complete! 🎉                     ║"
 echo "╚═══════════════════════════════════════════════════════════╝${NC}"
 echo ""
-echo -e "Access AmpedFieldOps at: ${GREEN}http://$SERVER_IP:3000${NC}"
-echo -e "API endpoint: ${GREEN}http://$SERVER_IP:3001${NC}"
+echo -e "Access AmpedFieldOps frontend at: ${GREEN}http://localhost:3000${NC}"
+echo -e "API endpoint: ${GREEN}http://localhost:3001${NC}"
 echo ""
-echo -e "${YELLOW}Default Admin Login:${NC}"
-echo -e "  Email: ${YELLOW}admin@ampedfieldops.com${NC}"
-echo -e "  Password: ${YELLOW}admin123${NC}"
-echo ""
-echo -e "${RED}⚠️  IMPORTANT: Please change the admin password immediately after first login!${NC}"
-echo ""
-echo -e "${YELLOW}Next steps:${NC}"
-echo "  1. Open http://$SERVER_IP:3000 in your browser"
-echo "  2. Log in with the default credentials above"
-echo "  3. Change your password in Settings > Profile"
-echo "  4. Configure Xero integration in Settings (optional)"
-echo "  5. Add your first client and project"
+echo -e "${YELLOW}Supabase Studio (local):${NC} http://127.0.0.1:54323"
 echo ""
 echo -e "${YELLOW}Useful commands:${NC}"
 echo "  View logs:    $COMPOSE_CMD logs -f"
 echo "  Stop:         $COMPOSE_CMD down"
 echo "  Restart:      $COMPOSE_CMD restart"
+echo "  Supabase CLI: supabase status | supabase stop | supabase start"
 echo ""
