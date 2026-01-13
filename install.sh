@@ -71,48 +71,15 @@ if command -v supabase &> /dev/null; then
     fi
 
     echo -e "${YELLOW}Starting Supabase (this may pull containers)...${NC}"
-    supabase start || true
+    supabase start --no-telemetry || true
 
-    # Try to reliably fetch Supabase keys and wait for Supabase to be healthy
-    show_step "Step 3a: Waiting for Supabase to be healthy"
-    MAX_RETRIES=60
-    RETRY=0
-    KEYS_OK=0
-    while [ $RETRY -lt $MAX_RETRIES ]; do
-        if command -v ./scripts/fetch_supabase_keys.sh &> /dev/null; then
-            if ./scripts/fetch_supabase_keys.sh > /tmp/sb_keys.env 2>/dev/null; then
-                # ensure we have values
-                if grep -q '^SUPABASE_URL=' /tmp/sb_keys.env && grep -q '^DATABASE_URL=' /tmp/sb_keys.env; then
-                    KEYS_OK=1
-                    break
-                fi
-            fi
-        else
-            # fallback to supabase status parsing using node/python
-            if SUPABASE_STATUS=$(supabase status --output json 2>/dev/null); then
-                :
-            else
-                SUPABASE_STATUS=$(supabase status 2>/dev/null || true)
-            fi
-            if command -v node &> /dev/null && [ -n "$SUPABASE_STATUS" ]; then
-                API_URL=$(printf "%s" "$SUPABASE_STATUS" | node -e "try{const s=JSON.parse(require('fs').readFileSync(0,'utf8')); console.log(s.project?.api?.url||s.api?.url||'') }catch(e){}") || true
-                DB_URL=$(printf "%s" "$SUPABASE_STATUS" | node -e "try{const s=JSON.parse(require('fs').readFileSync(0,'utf8')); console.log(s.project?.db?.url||s.db?.url||'') }catch(e){}") || true
-                if [ -n "$API_URL" ] && [ -n "$DB_URL" ]; then
-                    echo "SUPABASE_URL=$API_URL" > /tmp/sb_keys.env
-                    echo "DATABASE_URL=$DB_URL" >> /tmp/sb_keys.env
-                    # do not attempt to extract secrets here; prompt later if missing
-                    KEYS_OK=1
-                    break
-                fi
-            fi
-        fi
-
-        RETRY=$((RETRY+1))
-        sleep 2
-    done
-
-    if [ $KEYS_OK -ne 1 ]; then
-        echo -e "${YELLOW}Warning: Could not auto-detect Supabase keys after waiting. You will be prompted to enter them.${NC}"
+    show_step "Step 3a: Fetching Supabase keys"
+    SCRIPTS_DIR=$(dirname "$0")/scripts
+    mkdir -p /tmp
+    if bash "$SCRIPTS_DIR"/fetch_supabase_keys_fixed.sh > /tmp/sb_keys.env 2>/dev/null; then
+        echo "Fetched Supabase keys to /tmp/sb_keys.env"
+    else
+        echo -e "${YELLOW}Could not fetch Supabase keys automatically. Falling back to prompting for values.${NC}"
         read -p "Supabase API URL (e.g. http://127.0.0.1:54321): " API_URL
         read -p "Database URL (Postgres) from Supabase (DATABASE_URL): " DB_URL
         read -p "Supabase service_role key (SUPABASE_SERVICE_ROLE_KEY): " SERVICE_ROLE_KEY
@@ -121,23 +88,28 @@ if command -v supabase &> /dev/null; then
         echo "DATABASE_URL=${DB_URL}" >> /tmp/sb_keys.env
         echo "SUPABASE_SERVICE_ROLE_KEY=${SERVICE_ROLE_KEY}" >> /tmp/sb_keys.env
         echo "VITE_SUPABASE_ANON_KEY=${ANON_KEY}" >> /tmp/sb_keys.env
-    else
-        # If helper provided values, also ensure ANON and SERVICE_ROLE are present; prompt if not
-        if ! grep -q '^VITE_SUPABASE_ANON_KEY=' /tmp/sb_keys.env 2>/dev/null; then
-            read -p "Supabase anon key for frontend (VITE_SUPABASE_ANON_KEY): " ANON_KEY
-            echo "VITE_SUPABASE_ANON_KEY=${ANON_KEY}" >> /tmp/sb_keys.env
-        fi
-        if ! grep -q '^SUPABASE_SERVICE_ROLE_KEY=' /tmp/sb_keys.env 2>/dev/null; then
-            read -p "Supabase service_role key (SUPABASE_SERVICE_ROLE_KEY): " SERVICE_ROLE_KEY
-            echo "SUPABASE_SERVICE_ROLE_KEY=${SERVICE_ROLE_KEY}" >> /tmp/sb_keys.env
-        fi
+    fi
+
+    # Backup existing .env
+    if [ -f .env ]; then
+        cp .env .env.bak || true
     fi
 
     # Merge/replace keys in .env safely
-    # Remove existing keys then append values from /tmp/sb_keys.env
     grep -vE '^(SUPABASE_URL|DATABASE_URL|SUPABASE_SERVICE_ROLE_KEY|VITE_SUPABASE_ANON_KEY)=' .env > .env.tmp || cp .env .env.tmp
     cat /tmp/sb_keys.env >> .env.tmp
     mv .env.tmp .env
+
+    # If SUPABASE_URL or DATABASE_URL point to 127.0.0.1, rewrite host to docker gateway
+    SUPABASE_URL_VAL=$(grep '^SUPABASE_URL=' .env | cut -d= -f2- || true)
+    DATABASE_URL_VAL=$(grep '^DATABASE_URL=' .env | cut -d= -f2- || true)
+    if echo "$DATABASE_URL_VAL" | grep -q "127.0.0.1" || echo "$SUPABASE_URL_VAL" | grep -q "127.0.0.1"; then
+        DOCKER_GW=$(ip route | awk '/default/ {print $3}' || true)
+        if [ -n "$DOCKER_GW" ]; then
+            echo "Rewriting 127.0.0.1 in Supabase URLs to Docker gateway: $DOCKER_GW"
+            sed -i "s/127.0.0.1/$DOCKER_GW/g" .env || true
+        fi
+    fi
 
     # Sync to backend/.env for local backend runtime
     if [ -d backend ]; then
@@ -175,28 +147,25 @@ fi
 
 # Create storage buckets using project script
 show_step "Step 7: Creating Storage Buckets"
-if command -v tsx &> /dev/null; then
-    tsx scripts/create-storage-buckets.ts || echo "Bucket creation failed or already exists"
-elif command -v npx &> /dev/null; then
-    npx tsx scripts/create-storage-buckets.ts || echo "Bucket creation failed or already exists"
-elif command -v npm &> /dev/null; then
-    # Prefer installing tsx globally if missing
-    if ! command -v tsx &> /dev/null; then
-        read -p "Install 'tsx' globally via npm now? (requires npm) [y/N]: " install_tsx
-        if [[ "$install_tsx" =~ ^[Yy]$ ]]; then
-            echo -e "${YELLOW}Installing tsx via npm...${NC}"
-            npm install -g tsx || echo "npm global install failed; you can run 'npx tsx scripts/create-storage-buckets.ts' if npx is available"
-        fi
-    fi
+SCRIPTS_DIR=$(dirname "$0")/scripts
+    if [ -f "$SCRIPTS_DIR/run-tsx-in-docker.sh" ]; then
+    echo "Running bucket creation via dockerized tsx runner"
+    export SUPABASE_URL=$(grep '^SUPABASE_URL=' .env | cut -d= -f2- || true)
+    export SUPABASE_SERVICE_ROLE_KEY=$(grep '^SUPABASE_SERVICE_ROLE_KEY=' .env | cut -d= -f2- || true)
+    export VITE_SUPABASE_ANON_KEY=$(grep '^VITE_SUPABASE_ANON_KEY=' .env | cut -d= -f2- || true)
+    bash "$SCRIPTS_DIR"/run-tsx-in-docker.sh scripts/create-storage-buckets.ts || echo "Bucket creation failed or already exists"
+    echo "Running initial admin creation (idempotent)"
+    bash "$SCRIPTS_DIR"/run-tsx-in-docker.sh scripts/supabase-admin.ts || echo "Admin creation failed or skipped"
+else
+    echo -e "${YELLOW}No dockerized tsx runner found; falling back to host-based runners if available.${NC}"
     if command -v tsx &> /dev/null; then
         tsx scripts/create-storage-buckets.ts || echo "Bucket creation failed or already exists"
+    elif command -v npx &> /dev/null; then
+        npx tsx scripts/create-storage-buckets.ts || echo "Bucket creation failed or already exists"
     else
-        echo -e "${YELLOW}Attempting to run via 'npm exec'...${NC}"
-        npm exec -- tsx scripts/create-storage-buckets.ts || echo "Bucket creation failed or tsx not installed"
+        echo -e "${YELLOW}Skipping bucket creation: no runner (tsx/npx) available.${NC}"
+        echo "To create buckets manually, run: supabase storage create <bucket-name> or install Node.js and tsx and re-run this installer."
     fi
-else
-    echo -e "${YELLOW}Skipping bucket creation: no runner (tsx/npx/npm) available.${NC}"
-    echo "To create buckets manually, run: supabase storage create <bucket-name> or install Node.js and tsx (https://nodejs.org) and re-run this installer."
 fi
 
 echo ""
