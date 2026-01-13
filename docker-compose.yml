@@ -88,8 +88,38 @@ services:
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 30s
-      timeout: 10s
-      retries: 3
-
-volumes:
-  redis_data:
+      backend:
+        build:
+          context: ./backend
+          dockerfile: Dockerfile
+        container_name: ampedfieldops-api
+        restart: unless-stopped
+        depends_on:
+          redis:
+            condition: service_healthy
+          ocr-service:
+            condition: service_healthy
+        environment:
+          NODE_ENV: production
+          # Supabase configuration - Supabase CLI provides these in local development
+          SUPABASE_URL: ${SUPABASE_URL:-http://127.0.0.1:54321}
+          SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
+          DATABASE_URL: ${DATABASE_URL}
+          PORT: 3001
+          FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+          REDIS_HOST: redis
+          REDIS_PORT: 6379
+          REDIS_PASSWORD: ${REDIS_PASSWORD:-}
+          XERO_CLIENT_ID: ${XERO_CLIENT_ID:-}
+          XERO_CLIENT_SECRET: ${XERO_CLIENT_SECRET:-}
+          XERO_REDIRECT_URI: ${XERO_REDIRECT_URI:-http://localhost:3001/api/xero/callback}
+          SMTP_HOST: ${SMTP_HOST:-}
+          SMTP_PORT: ${SMTP_PORT:-}
+          SMTP_USER: ${SMTP_USER:-}
+          SMTP_PASSWORD: ${SMTP_PASSWORD:-}
+          SMTP_FROM: ${SMTP_FROM:-}
+          OCR_SERVICE_URL: http://ocr-service:8000
+        ports:
+          - "3001:3001"
+        extra_hosts:
+          - "host.docker.internal:172.17.0.1"
