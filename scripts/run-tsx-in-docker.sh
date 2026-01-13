@@ -11,10 +11,16 @@ if [ -z "$SCRIPT_PATH" ]; then
   exit 2
 fi
 
-CONTAINER_IMAGE=node:18-bullseye
+CONTAINER_IMAGE=node:20-bullseye
 
 # Ensure absolute path inside container
 WORKDIR=/work
 
-docker run --rm -v "$PWD":$WORKDIR -w $WORKDIR -e SUPABASE_URL -e SUPABASE_SERVICE_ROLE_KEY -e VITE_SUPABASE_ANON_KEY $CONTAINER_IMAGE bash -lc \
+# Use host networking on Linux so the container can reach services bound to 127.0.0.1 on the host
+NETWORK_ARGS=""
+if [ "$(uname -s)" = "Linux" ]; then
+  NETWORK_ARGS="--network host"
+fi
+
+docker run --rm $NETWORK_ARGS -v "$PWD":$WORKDIR -w $WORKDIR -e SUPABASE_URL -e SUPABASE_SERVICE_ROLE_KEY -e VITE_SUPABASE_ANON_KEY $CONTAINER_IMAGE bash -lc \
   "set -euo pipefail; npm init -y >/dev/null 2>&1 || true; npm i tsx @supabase/supabase-js >/dev/null 2>&1; npx tsx $SCRIPT_PATH $*"

@@ -21,6 +21,7 @@ services:
       dockerfile: Dockerfile
     container_name: ampedfieldops-api
     restart: unless-stopped
+    network_mode: host
     depends_on:
       redis:
         condition: service_healthy
@@ -34,7 +35,8 @@ services:
       DATABASE_URL: ${DATABASE_URL}
       PORT: 3001
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
-      REDIS_HOST: redis
+      # When backend runs in host network mode (to reach host-bound Supabase), use localhost
+      REDIS_HOST: 127.0.0.1
       REDIS_PORT: 6379
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}
       XERO_CLIENT_ID: ${XERO_CLIENT_ID:-}
@@ -46,8 +48,8 @@ services:
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       SMTP_FROM: ${SMTP_FROM:-}
       OCR_SERVICE_URL: http://ocr-service:8000
-    ports:
-      - "3001:3001"
+    # When running in host network mode (Linux), ports are bound to the host directly
+    # and Docker port mappings are ignored.
     volumes:
       - ./backend/uploads:/app/uploads
 
@@ -63,7 +65,9 @@ services:
     depends_on:
       - backend
     environment:
-      VITE_API_URL: ${API_URL:-http://localhost:3001}
+      VITE_API_URL: ${API_URL:-http://host.docker.internal:3001}
+    extra_hosts:
+      - "host.docker.internal:172.17.0.1"
     ports:
       - "3000:80"
 

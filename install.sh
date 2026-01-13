@@ -104,7 +104,11 @@ if command -v supabase &> /dev/null; then
     SUPABASE_URL_VAL=$(grep '^SUPABASE_URL=' .env | cut -d= -f2- || true)
     DATABASE_URL_VAL=$(grep '^DATABASE_URL=' .env | cut -d= -f2- || true)
     if echo "$DATABASE_URL_VAL" | grep -q "127.0.0.1" || echo "$SUPABASE_URL_VAL" | grep -q "127.0.0.1"; then
-        DOCKER_GW=$(ip route | awk '/default/ {print $3}' || true)
+        # Prefer docker0 bridge IP (common Docker gateway) over system default route
+        DOCKER_GW=$(ip -4 addr show docker0 2>/dev/null | grep -oP '(?<=inet\s)\d+(?:\.\d+){3}' | head -n1 || true)
+        if [ -z "$DOCKER_GW" ]; then
+            DOCKER_GW=$(ip route | awk '/default/ {print $3}' || true)
+        fi
         if [ -n "$DOCKER_GW" ]; then
             echo "Rewriting 127.0.0.1 in Supabase URLs to Docker gateway: $DOCKER_GW"
             sed -i "s/127.0.0.1/$DOCKER_GW/g" .env || true

@@ -14,8 +14,9 @@ async function ensureAdmin() {
   const email = process.env.ADMIN_EMAIL || 'admin@example.com'
   const password = process.env.ADMIN_PASSWORD || 'ChangeMe123!'
 
-  const { data: existing } = await supabase.auth.admin.listUsers()
-  const found = existing?.find(u => u.email === email)
+  const res = await supabase.auth.admin.listUsers()
+  const users = res?.data?.users ?? res?.data ?? []
+  const found = Array.isArray(users) ? users.find((u: any) => u.email === email) : undefined
   if (found) {
     console.log('Admin already exists:', email)
     return

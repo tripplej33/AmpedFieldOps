@@ -33,7 +33,40 @@ fi
 
 # Wait for PostgreSQL to be ready
 echo "⏳ Waiting for PostgreSQL..."
-until pg_isready -h postgres -U ampedfieldops -d ampedfieldops; do
+# If DATABASE_URL is provided, parse host, port, user, and db from it
+if [ -n "${DATABASE_URL:-}" ]; then
+  # Expected format: postgresql://user:pass@host:port/dbname
+  PG_HOST=$(printf "%s" "$DATABASE_URL" | sed -n 's;.*@\([^:/]*\):\([0-9]*\)/.*;\1;p')
+  PG_PORT=$(printf "%s" "$DATABASE_URL" | sed -n 's;.*@[^:]*:\([0-9]*\)/.*;\1;p')
+  PG_USER=$(printf "%s" "$DATABASE_URL" | sed -n 's;.*//\([^:/]*\):.*@.*;\1;p')
+  PG_DB=$(printf "%s" "$DATABASE_URL" | sed -n 's;.*/\([^/?#]*\).*;\1;p')
+fi
+
+# Fallbacks
+: ${PG_HOST:=postgres}
+: ${PG_PORT:=5432}
+: ${PG_USER:=ampedfieldops}
+: ${PG_DB:=ampedfieldops}
+
+echo "Waiting for PostgreSQL at ${PG_HOST}:${PG_PORT} (db=${PG_DB}, user=${PG_USER})"
+while true; do
+  if pg_isready -h "$PG_HOST" -p "$PG_PORT" -U "$PG_USER" -d "$PG_DB" >/dev/null 2>&1; then
+    echo "✅ PostgreSQL is ready at $PG_HOST:$PG_PORT"
+    break
+  fi
+  # Try localhost (useful when container uses host network)
+  if pg_isready -h 127.0.0.1 -p "$PG_PORT" -U "$PG_USER" -d "$PG_DB" >/dev/null 2>&1; then
+    echo "✅ PostgreSQL is reachable via 127.0.0.1:$PG_PORT; switching host"
+    PG_HOST=127.0.0.1
+    break
+  fi
+  # Try docker gateway IP as a fallback
+  DOCKER_GW=$(ip route | awk '/default/ {print $3}' || true)
+  if [ -n "$DOCKER_GW" ] && pg_isready -h "$DOCKER_GW" -p "$PG_PORT" -U "$PG_USER" -d "$PG_DB" >/dev/null 2>&1; then
+    echo "✅ PostgreSQL is reachable via Docker gateway $DOCKER_GW:$PG_PORT; switching host"
+    PG_HOST=$DOCKER_GW
+    break
+  fi
   sleep 1
 done
 echo "✅ PostgreSQL is ready"
@@ -48,5 +81,28 @@ npx tsx src/db/seed.ts || echo "⚠️  Seed failed or already run"
 
 # Start the application
 echo "🎯 Starting API server..."
+
+# If REDIS_HOST cannot be resolved (e.g., backend running with host networking),
+# attempt fallbacks so the app can connect to Redis.
+if [ -n "${REDIS_HOST:-}" ]; then
+  if ! getent hosts "$REDIS_HOST" >/dev/null 2>&1; then
+    echo "⚠️  Could not resolve REDIS host '$REDIS_HOST' — attempting fallbacks"
+    # Try localhost
+    if nc -z 127.0.0.1 6379 >/dev/null 2>&1; then
+      export REDIS_HOST=127.0.0.1
+      echo "➡️  Falling back to REDIS_HOST=127.0.0.1"
+    else
+      # Try docker0 gateway
+      DGW=$(ip -4 addr show docker0 2>/dev/null | grep -oP '(?<=inet\s)\d+(?:\.\d+){3}' | head -n1 || true)
+      if [ -n "$DGW" ] && nc -z "$DGW" 6379 >/dev/null 2>&1; then
+        export REDIS_HOST=$DGW
+        echo "➡️  Falling back to REDIS_HOST=$DGW"
+      else
+        echo "⚠️  No reachable Redis host found; continuing with REDIS_HOST=$REDIS_HOST (may fail)"
+      fi
+    fi
+  fi
+fi
+
 exec node dist/server.js
 
