@@ -1,5 +1,13 @@
 # Development Memory Log
 
+## Session: Fix Backend Build Errors (Jan 16, 2026)
+- **User Request:** Resolve Docker build failures (`encrypt` undefined, `log` undefined, `log.warn` args)
+- **Actions Implemented:**
+  - Added `import { encrypt } from '../lib/encryption'` in `backend/src/routes/settings.ts`
+  - Added `import { log } from '../lib/logger'` in `backend/src/routes/troubleshooter.ts`
+  - Fixed `log.warn()` call in `backend/src/routes/xero.ts` to use `(message, meta)` signature
+- **Status:** Patches applied; pending CI/Docker rebuild verification
+
 ## Session: First-Time Setup Flow Refinement (Jan 16, 2026)
 - **User Request:** Remove seeded admin user and ensure first setup always directs to user creation
 - **Actions Completed:**

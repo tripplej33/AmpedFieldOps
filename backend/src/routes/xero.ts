@@ -387,7 +387,8 @@ router.get('/callback', async (req, res) => {
         frontendUrl = redirectUrl.origin;
         log.debug('[Xero] Using frontend URL from redirect URI', { frontendUrl });
       } catch (e) {
-        log.warn('[Xero] Could not parse redirect URI for frontend URL', e instanceof Error ? e : null, { redirectUri });
+        // Provide error details inside meta for warn signature compatibility
+        log.warn('[Xero] Could not parse redirect URI for frontend URL', { redirectUri, error: e instanceof Error ? e.message : e });
       }
     }
   } catch (e) {

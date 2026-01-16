@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import { authenticate, requirePermission, AuthRequest } from '../middleware/auth';
 import { TestRunner } from '../lib/troubleshooter/testRunner';
 import { scanRoutes } from '../lib/troubleshooter/routeScanner';
+import { log } from '../lib/logger';
 
 const router = Router();
 

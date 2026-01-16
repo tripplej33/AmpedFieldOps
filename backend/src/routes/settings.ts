@@ -12,6 +12,7 @@ import { isGoogleDriveConnected } from '../lib/googleDrive';
 import fs from 'fs';
 import path from 'path';
 import { env } from '../config/env';
+import { encrypt } from '../lib/encryption';
 
 const router = Router();
 
