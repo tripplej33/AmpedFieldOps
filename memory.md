@@ -8,6 +8,13 @@
   - Fixed `log.warn()` call in `backend/src/routes/xero.ts` to use `(message, meta)` signature
 - **Status:** Patches applied; pending CI/Docker rebuild verification
 
+## Session: Frontend Loading Guard (Jan 16, 2026)
+- **User Request:** Page stuck showing "Loading..." after migrations
+- **Actions Implemented:**
+  - Added 5s timeout guard around `supabase.auth.getSession()` in `src/contexts/AuthContext.tsx` to prevent infinite loading when Supabase is unreachable
+  - Logs timeout via structured logger; falls back to unauthenticated state so login renders
+- **Status:** Build not run locally (npm unavailable in current shell); needs CI/Docker rebuild to verify
+
 ## Session: First-Time Setup Flow Refinement (Jan 16, 2026)
 - **User Request:** Remove seeded admin user and ensure first setup always directs to user creation
 - **Actions Completed:**

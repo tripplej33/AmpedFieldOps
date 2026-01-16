@@ -34,7 +34,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // Check for existing session
     const initAuth = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession()
+        // Fail fast if Supabase is unreachable to avoid infinite loading states
+        const { data: { session } } = await Promise.race([
+          supabase.auth.getSession(),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Supabase auth timeout (5s)')), 5000))
+        ]) as Awaited<ReturnType<typeof supabase.auth.getSession>>
         
         if (session?.user) {
           const userProfile = await getCurrentUserProfile()
