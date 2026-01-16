@@ -153,6 +153,20 @@ export interface QuickStats {
   overdueProjects: number;
 }
 
+export interface LineItem {
+  description: string;
+  quantity: number;
+  unit_amount: number;
+  line_amount: number;
+  account_code?: string;
+  cost_center_id?: string;
+  cost_center_code?: string;
+  cost_center_name?: string;
+  item_code?: string;
+  tax_type?: string;
+  tax_amount?: number;
+}
+
 export interface DocumentScan {
   id: string;
   file_id: string;
@@ -167,7 +181,7 @@ export interface DocumentScan {
     tax_amount?: number;
     vendor_name?: string;
     vendor_address?: string;
-    line_items?: any[];
+    line_items?: LineItem[];
     raw_text?: string;
   };
   confidence?: number;
@@ -213,7 +227,7 @@ export interface XeroInvoice {
   currency: string;
   issue_date: string;
   due_date: string;
-  line_items: any[];
+  line_items: LineItem[];
   synced_at: string;
 }
 
@@ -229,7 +243,7 @@ export interface XeroQuote {
   currency: string;
   issue_date: string;
   expiry_date: string;
-  line_items: any[];
+  line_items: LineItem[];
   synced_at: string;
 }
 
@@ -279,7 +293,7 @@ export interface PurchaseOrder {
   delivery_date?: string;
   total_amount: number;
   currency: string;
-  line_items: any[];
+  line_items: LineItem[];
   line_items_detail?: PurchaseOrderLineItem[];
   bill_id?: string;
   notes?: string;
@@ -320,7 +334,7 @@ export interface Bill {
   due_date?: string;
   status: 'DRAFT' | 'SUBMITTED' | 'AUTHORISED' | 'PAID' | 'VOIDED';
   paid_date?: string;
-  line_items: any[];
+  line_items: LineItem[];
   created_at: string;
   updated_at: string;
 }

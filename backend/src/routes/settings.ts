@@ -193,7 +193,7 @@ router.put('/storage', authenticate, requireRole('admin'), async (req: AuthReque
         { key: 'storage_s3_bucket', value: s3Bucket },
         { key: 'storage_s3_region', value: s3Region || 'us-east-1' },
         { key: 'storage_s3_access_key_id', value: s3AccessKeyId },
-        { key: 'storage_s3_secret_access_key', value: s3SecretAccessKey }, // TODO: Encrypt this
+        { key: 'storage_s3_secret_access_key', value: encrypt(s3SecretAccessKey) }, // Encrypted for security
         ...(s3Endpoint ? [{ key: 'storage_s3_endpoint', value: s3Endpoint }] : [])
       );
     } else if (driver === 'google-drive') {

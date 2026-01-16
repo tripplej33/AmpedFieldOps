@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
+import { log } from '@/lib/logger';
 import {
   Dialog,
   DialogContent,
@@ -66,7 +67,7 @@ export default function ActivityTypes() {
       setActivityTypes(Array.isArray(data) ? data : []);
       setIsLoading(false);
     } catch (error: any) {
-      console.error('Failed to load activity types:', error);
+      log.apiError('Failed to load activity types', error, { component: 'ActivityTypes' });
       // Only show toast if it's not a network error during development
       if (error?.message !== 'Failed to fetch') {
         toast.error('Failed to load activity types');

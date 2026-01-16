@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { supabase, getCurrentUserProfile } from '@/lib/supabase';
 import type { User } from '@supabase/supabase-js'
+import { log } from '@/lib/logger';
 
 interface AppUser {
   id: string;
@@ -42,7 +43,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
         }
       } catch (error) {
-        console.error('Auth check failed:', error)
+        log.error('Auth check failed', error instanceof Error ? error : undefined, { component: 'AuthContext' });
         setUser(null)
       } finally {
         setIsLoading(false)

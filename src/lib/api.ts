@@ -502,10 +502,23 @@ class ApiClient {
     if (data.image_files && data.image_files.length > 0) {
       const { timesheetImagesStorage } = await import('./supabase-storage');
       const imageUrls: string[] = [];
+      const uploadErrors: string[] = [];
 
-      // Upload each image to Supabase Storage
-      for (const file of data.image_files) {
+      // Upload each image to Supabase Storage with error tracking
+      for (let i = 0; i < data.image_files.length; i++) {
+        const file = data.image_files[i];
         try {
+          // Validate file before upload
+          if (file.size > 10 * 1024 * 1024) { // 10MB limit
+            uploadErrors.push(`Image ${i + 1}: File too large (max 10MB)`);
+            continue;
+          }
+
+          if (!file.type.startsWith('image/')) {
+            uploadErrors.push(`Image ${i + 1}: Invalid file type (must be an image)`);
+            continue;
+          }
+
           const { url } = await timesheetImagesStorage.upload(
             file,
             data.project_id,
@@ -513,18 +526,32 @@ class ApiClient {
           );
           imageUrls.push(url);
         } catch (error: any) {
+          const errorMsg = `Image ${i + 1}: ${error.message || 'Upload failed'}`;
+          uploadErrors.push(errorMsg);
           console.error('Failed to upload timesheet image:', error);
           // Continue with other images even if one fails
         }
       }
 
+      // If all uploads failed, throw error
+      if (imageUrls.length === 0 && data.image_files.length > 0) {
+        throw new Error(`All image uploads failed: ${uploadErrors.join(', ')}`);
+      }
+
       // Create timesheet with image URLs
       const { image_files, ...timesheetData } = data;
       const { timesheetsQueries } = await import('./supabase-queries');
-      return timesheetsQueries.create({
+      const result = await timesheetsQueries.create({
         ...timesheetData,
         image_urls: imageUrls,
       });
+
+      // Log partial failures
+      if (uploadErrors.length > 0) {
+        console.warn('Some images failed to upload:', uploadErrors);
+      }
+
+      return result;
     }
     
     // Create timesheet without images

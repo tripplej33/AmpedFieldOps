@@ -51,7 +51,7 @@ router.get('/status', async (req, res) => {
     });
 
   } catch (error) {
-    console.error('Setup status error:', error);
+    log.error('Setup status error', error instanceof Error ? error : null);
     res.status(500).json({ error: 'Failed to check setup status' });
   }
 });
@@ -65,7 +65,7 @@ router.get('/default-admin-status', async (req, res) => {
     
     res.json({ hasDefaultAdmin: defaultAdmin.rows.length > 0 });
   } catch (error) {
-    console.error('Failed to check default admin status:', error);
+    log.error('Failed to check default admin status', error instanceof Error ? error : null);
     res.status(500).json({ error: 'Failed to check default admin status' });
   }
 });
@@ -100,7 +100,7 @@ router.delete('/default-admin', async (req, res) => {
 
     res.json({ message: 'Default admin deleted successfully' });
   } catch (error) {
-    console.error('Failed to delete default admin:', error);
+    log.error('Failed to delete default admin', error instanceof Error ? error : null);
     res.status(500).json({ error: 'Failed to delete default admin' });
   }
 });
@@ -195,7 +195,7 @@ router.post('/admin',
         completed: true
       });
     } catch (error) {
-      console.error('Admin creation error:', error);
+      log.error('Admin creation error', error instanceof Error ? error : null);
       res.status(500).json({ error: 'Failed to create admin account' });
     }
   }

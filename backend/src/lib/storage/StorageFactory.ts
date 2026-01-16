@@ -4,6 +4,7 @@ import { StorageConfig } from './types';
 import { FlystorageStorageProvider } from './FlystorageStorageProvider';
 import { GoogleDriveStorageProvider } from './GoogleDriveStorageProvider';
 import { log } from '../logger';
+import { decrypt, isEncrypted } from '../encryption';
 
 let storageInstance: IStorageProvider | null = null;
 let configCache: StorageConfig | null = null;
@@ -54,12 +55,22 @@ async function getStorageConfigFromDB(): Promise<StorageConfig> {
 }
 
 /**
- * Decrypt sensitive setting value (if encryption is implemented)
- * For now, returns as-is. Can be enhanced with encryption later.
+ * Decrypt sensitive setting value
+ * Uses encryption utility for secure credential storage
  */
 function decryptSetting(value: string | null): string | null {
   if (!value) return null;
-  // TODO: Implement decryption if secret access keys are encrypted
+  
+  // If value is encrypted, decrypt it; otherwise return as-is for backwards compatibility
+  if (isEncrypted(value)) {
+    try {
+      return decrypt(value);
+    } catch (error) {
+      log.error('Failed to decrypt setting value', error);
+      return value; // Return encrypted value as fallback
+    }
+  }
+  
   return value;
 }
 

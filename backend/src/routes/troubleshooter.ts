@@ -104,7 +104,7 @@ router.post('/run', authenticate, requirePermission('can_manage_users'), async (
 
     res.json(result);
   } catch (error: any) {
-    console.error('Troubleshooter error:', error);
+    log.error('Troubleshooter error', error);
     res.status(500).json({
       success: false,
       error: error.message || 'Failed to run troubleshooter',
@@ -118,7 +118,7 @@ router.get('/routes', authenticate, requirePermission('can_manage_users'), async
     const routes = await scanRoutes();
     res.json(routes);
   } catch (error: any) {
-    console.error('Route scan error:', error);
+    log.error('Route scan error', error);
     res.status(500).json({ error: 'Failed to scan routes' });
   }
 });
@@ -130,7 +130,7 @@ router.get('/suites', authenticate, requirePermission('can_manage_users'), async
     const suites = runner.getTestSuites();
     res.json(suites);
   } catch (error: any) {
-    console.error('Get suites error:', error);
+    log.error('Get suites error', error);
     res.status(500).json({ error: 'Failed to get test suites' });
   }
 });

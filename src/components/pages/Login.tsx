@@ -56,14 +56,14 @@ export default function Login() {
   useEffect(() => {
     const checkSetupStatus = async () => {
       try {
-        // Check if default admin exists
-        const hasDefaultAdmin = await api.checkDefaultAdminExists();
-        if (hasDefaultAdmin) {
+        // Check if setup is not completed (directs to user creation)
+        const setupStatus = await api.getSetupStatus();
+        if (!setupStatus.completed && setupStatus.step === 1) {
           setShowAdminSetup(true);
         }
       } catch (error) {
         // If check fails, allow normal login
-        console.warn('Failed to check for default admin:', error);
+        console.warn('Failed to check setup status:', error);
       } finally {
         setIsCheckingSetup(false);
       }

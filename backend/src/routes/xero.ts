@@ -76,8 +76,8 @@ async function getXeroCredentials() {
   const savedRedirectUri = redirectUriResult.rows[0]?.value;
   let redirectUri = savedRedirectUri || env.XERO_REDIRECT_URI;
   
-  // Log what we found with full details
-  console.log('[Xero] Credential sources:', {
+  // Log credential sources for debugging
+  log.debug('[Xero] Credential sources', {
     clientId: {
       fromDatabase: clientIdFromDb ? `${String(clientIdFromDb).substring(0, 8)}... (${String(clientIdFromDb).length} chars)` : 'NOT SET',
       fromEnv: env.XERO_CLIENT_ID ? `${env.XERO_CLIENT_ID.substring(0, 8)}...` : 'NOT SET',
@@ -105,9 +105,9 @@ async function getXeroCredentials() {
       log.error('[Xero] Client ID should be a 32-character hexadecimal string, not an email!');
       log.error('[Xero] Please update the Client ID in Settings to your actual Xero Client ID from https://developer.xero.com/myapps');
     } else if (clientIdStr.length !== 32) {
-      console.warn('[Xero] Client ID length unusual:', clientIdStr.length, 'Expected 32 characters');
+      log.warn(`[Xero] Client ID length unusual: ${clientIdStr.length}, expected 32 characters`);
     } else if (!/^[0-9A-Fa-f]{32}$/.test(clientIdStr)) {
-      console.warn('[Xero] Client ID should contain only hexadecimal characters (0-9, A-F)');
+      log.warn('[Xero] Client ID should contain only hexadecimal characters (0-9, A-F)');
     }
   }
   
@@ -117,20 +117,22 @@ async function getXeroCredentials() {
     const frontendUrl = env.FRONTEND_URL;
     if (frontendUrl && !frontendUrl.includes('localhost')) {
       redirectUri = `${frontendUrl}/api/xero/callback`;
-      console.log('[Xero] Using redirect URI from FRONTEND_URL');
+      log.debug('[Xero] Using redirect URI from FRONTEND_URL');
     } else {
       // Fallback to BACKEND_URL for direct backend access
       const backendUrl = env.BACKEND_URL || 'http://localhost:3001';
       redirectUri = `${backendUrl}/api/xero/callback`;
-      console.log('[Xero] Using redirect URI from BACKEND_URL (fallback)');
+      log.debug('[Xero] Using redirect URI from BACKEND_URL (fallback)');
     }
   } else {
-    console.log('[Xero] Using redirect URI from database settings');
+    log.debug('[Xero] Using redirect URI from database settings');
   }
   
-  console.log('[Xero] Final redirect URI:', redirectUri);
-  console.log('[Xero] Client ID:', clientId ? `${clientId.substring(0, 8)}...` : 'NOT SET');
-  console.log('[Xero] Client Secret:', clientSecret ? 'SET' : 'NOT SET');
+  log.debug('[Xero] Final configuration', {
+    redirectUri,
+    hasClientId: !!clientId,
+    hasClientSecret: !!clientSecret
+  });
   
   return { clientId, clientSecret, redirectUri };
 }
@@ -141,7 +143,7 @@ router.get('/auth/url', authenticate, requirePermission('can_sync_xero'), async 
     const { clientId, clientSecret, redirectUri } = await getXeroCredentials();
     
     if (!clientId || !clientSecret) {
-      console.error('[Xero] Missing credentials:', { 
+      log.error('[Xero] Missing credentials', null, { 
         hasClientId: !!clientId, 
         hasClientSecret: !!clientSecret 
       });
@@ -158,7 +160,7 @@ router.get('/auth/url', authenticate, requirePermission('can_sync_xero'), async 
     // Validate Client ID is not an email address
     const clientIdStr = String(clientId);
     if (clientIdStr.includes('@')) {
-      console.error('[Xero] Invalid Client ID: Email address detected:', clientIdStr);
+      log.error('[Xero] Invalid Client ID: Email address detected');
       return res.status(400).json({
         error: 'Invalid Client ID: Email addresses cannot be used. Please enter your 32-character Xero Client ID from the Xero Developer Portal.',
         configured: false,
@@ -173,7 +175,7 @@ router.get('/auth/url', authenticate, requirePermission('can_sync_xero'), async 
     
     // Validate Client ID format (Xero Client IDs are typically 32 characters)
     if (clientIdStr.length !== 32) {
-      console.warn('[Xero] Client ID length incorrect:', clientIdStr.length, 'Expected 32');
+      log.warn(`[Xero] Client ID length incorrect: ${clientIdStr.length}, expected 32`);
       return res.status(400).json({
         error: `Invalid Client ID format. Xero Client IDs must be exactly 32 characters (you have ${clientIdStr.length}).`,
         configured: false,
@@ -187,17 +189,17 @@ router.get('/auth/url', authenticate, requirePermission('can_sync_xero'), async 
     
     // Validate it's hexadecimal
     if (!/^[0-9A-Fa-f]{32}$/.test(clientIdStr)) {
-      console.warn('[Xero] Client ID should contain only hexadecimal characters');
+      log.warn('[Xero] Client ID should contain only hexadecimal characters');
     }
 
     // Validate redirect URI format
     try {
       const redirectUrl = new URL(redirectUri);
       if (redirectUrl.protocol !== 'https:' && !redirectUrl.hostname.includes('localhost')) {
-        console.warn('[Xero] Redirect URI should use HTTPS for production:', redirectUri);
+        log.warn('[Xero] Redirect URI should use HTTPS for production', { redirectUri });
       }
     } catch (e) {
-      console.error('[Xero] Invalid redirect URI format:', redirectUri);
+      log.error('[Xero] Invalid redirect URI format', e instanceof Error ? e : null, { redirectUri });
       return res.status(400).json({
         error: 'Invalid redirect URI format',
         details: 'Redirect URI must be a valid URL'
@@ -221,17 +223,14 @@ router.get('/auth/url', authenticate, requirePermission('can_sync_xero'), async 
       `scope=${encodeURIComponent(scopes)}&` +
       `state=${req.user!.id}`;
 
-    console.log('[Xero] Generated auth URL with:', {
-      clientId: `${clientId.substring(0, 8)}...`,
-      clientIdFull: clientId, // Log full ID for debugging (remove in production)
+    log.debug('[Xero] Generated auth URL', {
+      clientIdPrefix: `${clientId.substring(0, 8)}...`,
       redirectUri,
-      redirectUriEncoded: encodeURIComponent(redirectUri),
-      scopes: scopes.split(' ').length + ' scopes',
-      state: req.user!.id,
-      authUrlPreview: authUrl.substring(0, 100) + '...'
+      scopeCount: scopes.split(' ').length,
+      userId: req.user!.id
     });
 
-    // Return detailed info for debugging (including full client ID for verification)
+    // Return detailed info for debugging
     res.json({ 
       url: authUrl, 
       configured: true,
@@ -386,19 +385,19 @@ router.get('/callback', async (req, res) => {
         // If redirect URI is like https://admin.ampedlogix.com/api/xero/callback
         // Extract https://admin.ampedlogix.com
         frontendUrl = redirectUrl.origin;
-        console.log('[Xero] Using frontend URL from redirect URI:', frontendUrl);
+        log.debug('[Xero] Using frontend URL from redirect URI', { frontendUrl });
       } catch (e) {
-        console.warn('[Xero] Could not parse redirect URI for frontend URL:', redirectUri);
+        log.warn('[Xero] Could not parse redirect URI for frontend URL', e instanceof Error ? e : null, { redirectUri });
       }
     }
   } catch (e) {
-    console.warn('[Xero] Could not get credentials for frontend URL, using env:', e);
+    log.warn('[Xero] Could not get credentials for frontend URL, using env', e instanceof Error ? e : null);
   }
   
   // Fallback to env or localhost
   if (!frontendUrl || frontendUrl.includes('localhost')) {
     frontendUrl = env.FRONTEND_URL || 'http://localhost:3000';
-    console.log('[Xero] Using frontend URL from env or fallback:', frontendUrl);
+    log.debug('[Xero] Using frontend URL from env or fallback', { frontendUrl });
   }
 
   try {
@@ -428,7 +427,7 @@ router.get('/callback', async (req, res) => {
         query: req.query
       };
       
-      console.error('[Xero] OAuth error from Xero:', errorDetails);
+      log.error('[Xero] OAuth error from Xero', null, errorDetails);
       
       // Log to database error log if available
       try {
@@ -443,7 +442,7 @@ router.get('/callback', async (req, res) => {
         );
       } catch (logError) {
         // Ignore if error_logs table doesn't exist
-        console.warn('[Xero] Could not log to error_logs table:', logError);
+        log.debug('[Xero] Could not log to error_logs table', logError instanceof Error ? logError : null);
       }
       
       let errorMessage = 'Authentication failed';
