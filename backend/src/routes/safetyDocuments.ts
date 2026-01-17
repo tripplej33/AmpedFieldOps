@@ -12,6 +12,15 @@ import { log } from '../lib/logger';
 
 const router = Router();
 
+// Middleware: Disable safety documents endpoint (not yet migrated)
+router.use((req, res) => {
+  return res.status(501).json({
+    error: 'Safety documents functionality not yet implemented',
+    message: 'Safety documents feature is pending Supabase migration',
+    status: 'not_implemented'
+  });
+});
+
 // Get all safety documents with filters
 router.get('/', authenticate, requirePermission('can_view_financials'), async (req: AuthRequest, res: Response) => {
   try {

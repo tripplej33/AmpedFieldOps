@@ -155,7 +155,9 @@ router.post('/', authenticate, requirePermission('can_manage_clients'),
         return res.status(500).json({ error: 'Failed to create client' });
       }
 
-      // Log activity (using legacy activity_logs table if still available)
+      // Log activity (skipped - activity_logs table not yet migrated)
+      // TODO: Implement activity logging in Supabase
+      /*
       try {
         await query(
           `INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) 
@@ -165,6 +167,7 @@ router.post('/', authenticate, requirePermission('can_manage_clients'),
       } catch (logError) {
         log.warn('Failed to log activity', { error: logError });
       }
+      */
 
       res.status(201).json(client);
     } catch (error: any) {
@@ -209,16 +212,19 @@ router.put('/:id', authenticate, requirePermission('can_manage_clients'),
         throw error;
       }
 
-      // Log activity
+      // Log activity (skipped - activity_logs table not yet migrated)
+      // TODO: Implement activity logging in Supabase
+      /*
       try {
         await query(
           `INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) 
            VALUES ($1, $2, $3, $4, $5)`,
-          [req.user!.id, 'update', 'client', req.params.id, JSON.stringify(fields)]
+          [req.user!.id, 'update', 'client', req.params.id, JSON.stringify(updates)]
         );
       } catch (logError) {
         log.warn('Failed to log activity', { error: logError });
       }
+      */
 
       res.json(client);
     } catch (error: any) {
@@ -267,16 +273,19 @@ router.delete('/:id', authenticate, requirePermission('can_manage_clients'), asy
       throw error;
     }
 
-    // Log activity
+    // Log activity (skipped - activity_logs table not yet migrated)
+    // TODO: Implement activity logging in Supabase
+    /*
     try {
       await query(
         `INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) 
          VALUES ($1, $2, $3, $4, $5)`,
-        [req.user!.id, 'delete', 'client', req.params.id, JSON.stringify({ name: clientToDelete.name })]
+        [req.user!.id, 'delete', 'client', req.params.id, JSON.stringify({ client_id: req.params.id })]
       );
     } catch (logError) {
       log.warn('Failed to log activity', { error: logError });
     }
+    */
 
     res.json({ message: 'Client deleted' });
   } catch (error: any) {

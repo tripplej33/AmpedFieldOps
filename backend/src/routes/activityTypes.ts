@@ -106,7 +106,9 @@ router.post('/', authenticate, requirePermission('can_edit_activity_types'),
         throw error;
       }
 
-      // Log activity
+      // Log activity (skipped - activity_logs table not yet migrated to Supabase)
+      // TODO: Implement activity logging in Supabase
+      /*
       try {
         await query(
           `INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) 
@@ -116,6 +118,7 @@ router.post('/', authenticate, requirePermission('can_edit_activity_types'),
       } catch (logError) {
         log.warn('Failed to log activity', { error: logError });
       }
+      */
 
       res.status(201).json(data);
     } catch (error) {
@@ -157,7 +160,9 @@ router.put('/:id', authenticate, requirePermission('can_edit_activity_types'),
         throw error;
       }
 
-      // Log activity
+      // Log activity (skipped - activity_logs table not yet migrated)
+      // TODO: Implement activity logging in Supabase
+      /*
       try {
         await query(
           `INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) 
@@ -167,6 +172,7 @@ router.put('/:id', authenticate, requirePermission('can_edit_activity_types'),
       } catch (logError) {
         log.warn('Failed to log activity', { error: logError });
       }
+      */
 
       res.json(data);
     } catch (error) {
@@ -206,7 +212,9 @@ router.delete('/:id', authenticate, requirePermission('can_edit_activity_types')
       throw error;
     }
 
-    // Log activity
+    // Log activity (skipped - activity_logs table not yet migrated)
+    // TODO: Implement activity logging in Supabase
+    /*
     try {
       await query(
         `INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) 
@@ -216,6 +224,7 @@ router.delete('/:id', authenticate, requirePermission('can_edit_activity_types')
     } catch (logError) {
       log.warn('Failed to log activity', { error: logError });
     }
+    */
 
     res.json({ message: 'Activity type deleted' });
   } catch (error) {

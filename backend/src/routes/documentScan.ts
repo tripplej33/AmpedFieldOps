@@ -87,6 +87,16 @@ router.post('/upload', authenticate, requirePermission('can_edit_projects'), val
   return (router as any).handle(req, res);
 }));
 
+// Middleware: Disable remaining document-scan endpoints (GET/PUT/DELETE)
+// POST endpoints above for upload/OCR are functional
+router.use((req, res) => {
+  return res.status(501).json({
+    error: 'Document scan history not implemented',
+    message: 'Document OCR upload is available via POST /api/document-scan. Historical scan data and matching features are not yet implemented in Supabase.',
+    status: 'not_implemented'
+  });
+});
+
 /**
  * Get scan status and extracted data
  */
