@@ -22,6 +22,15 @@ dotenv.config({ debug: false, override: false });
 const execAsync = promisify(exec);
 const router = Router();
 
+// Middleware: Disable backups endpoint (legacy functionality)
+router.use((req, res) => {
+  return res.status(503).json({
+    error: 'Backup functionality is not currently available',
+    message: 'Database backups are managed through Supabase cloud infrastructure',
+    status: 'disabled'
+  });
+});
+
 // Get all backups
 router.get('/', authenticate, requirePermission('can_manage_users'), async (req: AuthRequest, res: Response) => {
   try {

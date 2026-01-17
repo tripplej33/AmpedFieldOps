@@ -130,12 +130,19 @@ router.put('/storage', authenticate, requireRole('admin'), async (req: AuthReque
       return res.status(400).json({ error: 'Storage connection test failed', message: testError.message });
     }
 
-    // Persist minimal config in Supabase app_settings as a single JSON value
+    // Persist minimal config in Supabase settings table
     const { error: upsertError } = await supabase
-      .from('app_settings')
-      .upsert({ key: 'storage_config', value: JSON.stringify(testConfig), updated_at: new Date().toISOString() }, { onConflict: 'key' });
+      .from('settings')
+      .upsert({
+        key: 'storage_config',
+        value: JSON.stringify(testConfig),
+        description: 'Storage driver configuration',
+        updated_at: new Date().toISOString()
+      }, {
+        onConflict: 'key'
+      });
     if (upsertError) {
-      log.warn('Failed to persist storage_config to app_settings', upsertError);
+      log.warn('Failed to persist storage_config to settings', upsertError);
     }
 
     StorageFactory.invalidateCache();
@@ -212,26 +219,25 @@ router.post('/storage/test', authenticate, requireRole('admin'), async (req: Aut
 // Get specific setting
 router.get('/:key', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    // Try user-specific first
-    let result = await query(
-      `SELECT value FROM settings WHERE key = $1 AND user_id = $2`,
-      [req.params.key, req.user!.id]
-    );
+    // Get setting from Supabase settings table
+    const { data: setting, error } = await supabase
+      .from('settings')
+      .select('key, value')
+      .eq('key', req.params.key)
+      .single();
 
-    if (result.rows.length === 0) {
-      // Try global
-      result = await query(
-        `SELECT value FROM settings WHERE key = $1 AND user_id IS NULL`,
-        [req.params.key]
-      );
+    if (error && error.code !== 'PGRST116') { // PGRST116 = not found
+      log.error('Failed to fetch setting from Supabase', error);
+      return res.status(500).json({ error: 'Failed to fetch setting' });
     }
 
-    if (result.rows.length === 0) {
+    if (!setting) {
       return res.status(404).json({ error: 'Setting not found' });
     }
 
-    res.json({ key: req.params.key, value: result.rows[0].value });
-  } catch (error) {
+    res.json({ key: setting.key, value: setting.value });
+  } catch (error: any) {
+    log.error('Failed to fetch setting', error);
     res.status(500).json({ error: 'Failed to fetch setting' });
   }
 });
@@ -239,29 +245,39 @@ router.get('/:key', authenticate, async (req: AuthRequest, res: Response) => {
 // Update setting
 router.put('/:key', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const { value, global = false } = req.body;
+    const { value } = req.body;
 
-    // Only admins can update global settings
-    if (global && req.user!.role !== 'admin') {
-      return res.status(403).json({ error: 'Only admins can update global settings' });
+    // Only admins can update settings
+    if (req.user!.role !== 'admin') {
+      return res.status(403).json({ error: 'Only admins can update settings' });
     }
 
-    const userId = global ? null : req.user!.id;
+    // Upsert setting to Supabase
+    const { data: updatedSetting, error } = await supabase
+      .from('settings')
+      .upsert({
+        key: req.params.key,
+        value,
+        updated_at: new Date().toISOString()
+      }, {
+        onConflict: 'key'
+      })
+      .select('key, value')
+      .single();
 
-    await query(
-      `INSERT INTO settings (key, value, user_id)
-       VALUES ($1, $2, $3)
-       ON CONFLICT (key, user_id) DO UPDATE SET value = $2, updated_at = CURRENT_TIMESTAMP`,
-      [req.params.key, value, userId]
-    );
+    if (error) {
+      log.error('Failed to update setting in Supabase', error);
+      return res.status(500).json({ error: 'Failed to update setting' });
+    }
 
     // Clear email settings cache if an email setting was updated
-    if (global && ['smtp_host', 'smtp_port', 'smtp_user', 'smtp_password', 'smtp_from'].includes(req.params.key)) {
+    if (['smtp_host', 'smtp_port', 'smtp_user', 'smtp_password', 'smtp_from'].includes(req.params.key)) {
       clearEmailSettingsCache();
     }
 
-    res.json({ key: req.params.key, value });
-  } catch (error) {
+    res.json({ key: updatedSetting.key, value: updatedSetting.value });
+  } catch (error: any) {
+    log.error('Failed to update setting', error);
     res.status(500).json({ error: 'Failed to update setting' });
   }
 });
@@ -307,21 +323,25 @@ router.put('/', authenticate, async (req: AuthRequest, res: Response) => {
 // Delete setting
 router.delete('/:key', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const { global = false } = req.query;
-
-    if (global === 'true' && req.user!.role !== 'admin') {
-      return res.status(403).json({ error: 'Only admins can delete global settings' });
+    // Only admins can delete settings
+    if (req.user!.role !== 'admin') {
+      return res.status(403).json({ error: 'Only admins can delete settings' });
     }
 
-    const userId = global === 'true' ? null : req.user!.id;
+    // Delete from Supabase
+    const { error } = await supabase
+      .from('settings')
+      .delete()
+      .eq('key', req.params.key);
 
-    await query(
-      `DELETE FROM settings WHERE key = $1 AND user_id ${userId ? '= $2' : 'IS NULL'}`,
-      userId ? [req.params.key, userId] : [req.params.key]
-    );
+    if (error) {
+      log.error('Failed to delete setting from Supabase', error);
+      return res.status(500).json({ error: 'Failed to delete setting' });
+    }
 
     res.json({ message: 'Setting deleted' });
-  } catch (error) {
+  } catch (error: any) {
+    log.error('Failed to delete setting', error);
     res.status(500).json({ error: 'Failed to delete setting' });
   }
 });
@@ -372,16 +392,21 @@ router.post('/logo', authenticate, requireRole('admin'), logoUpload.single('logo
       });
     }
 
-    // Save logo URL to Supabase app_settings
+    // Save logo URL to Supabase settings table
     try {
       const { error: updateError } = await supabase
-        .from('app_settings')
-        .upsert({ key: 'company_logo', value: logoUrl, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+        .from('settings')
+        .upsert({ 
+          key: 'company_logo', 
+          value: logoUrl,
+          description: 'Company logo path',
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'key' });
       if (updateError) {
         throw updateError;
       }
     } catch (dbError: any) {
-      log.error('Failed to save logo URL to app_settings', dbError, { logoUrl, userId: req.user!.id });
+      log.error('Failed to save logo URL to settings', dbError, { logoUrl, userId: req.user!.id });
       // Still return success since file was uploaded, but log the error
     }
 
@@ -448,16 +473,21 @@ router.post('/favicon', authenticate, requireRole('admin'), faviconUpload.single
       });
     }
 
-    // Save favicon URL to Supabase app_settings
+    // Save favicon URL to Supabase settings table
     try {
       const { error: updateError } = await supabase
-        .from('app_settings')
-        .upsert({ key: 'company_favicon', value: faviconUrl, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+        .from('settings')
+        .upsert({ 
+          key: 'company_favicon', 
+          value: faviconUrl,
+          description: 'Company favicon path',
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'key' });
       if (updateError) {
         throw updateError;
       }
     } catch (dbError: any) {
-      log.error('Failed to save favicon URL to app_settings', dbError, { faviconUrl, userId: req.user!.id });
+      log.error('Failed to save favicon URL to settings', dbError, { faviconUrl, userId: req.user!.id });
       // Still return success since file was uploaded, but log the error
     }
 
