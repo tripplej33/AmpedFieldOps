@@ -50,6 +50,21 @@ import {
 
 const router = Router();
 
+// Middleware to disable all Xero endpoints
+router.use((req, res, next) => {
+  // Allow callback endpoint for OAuth flow
+  if (req.path === '/callback') {
+    return next();
+  }
+  
+  // All other Xero endpoints are disabled
+  return res.status(503).json({
+    error: 'Xero integration is not configured',
+    message: 'The Xero sync feature is currently disabled. Please configure Xero settings first.',
+    status: 'disabled'
+  });
+});
+
 // Note: In production, use the xero-node package for actual Xero API integration
 // This is a placeholder implementation showing the structure
 
