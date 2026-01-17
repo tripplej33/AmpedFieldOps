@@ -105,7 +105,7 @@ router.delete('/default-admin', async (req, res) => {
   }
 });
 
-// Step 1: Create admin account
+// Step 1: Create admin account via Supabase Auth
 router.post('/admin',
   body('email').isEmail().normalizeEmail(),
   body('password').isLength({ min: 8 }),
@@ -121,76 +121,114 @@ router.post('/admin',
     const { email, password, name, company_name, timezone } = req.body;
 
     try {
-      // Check if a non-default admin already exists
-      const existingAdmin = await query(
-        `SELECT id FROM users WHERE role = 'admin' AND email != 'admin@ampedfieldops.com' LIMIT 1`
-      );
-      if (existingAdmin.rows.length > 0) {
+      // Import Supabase client
+      const { supabase } = require('../db/supabase');
+      
+      if (!supabase) {
+        return res.status(500).json({ error: 'Supabase client not initialized' });
+      }
+
+      // Check if admin already exists
+      const { data: existingUsers } = await supabase
+        .from('users')
+        .select('id')
+        .eq('role', 'admin')
+        .limit(1);
+
+      if (existingUsers && existingUsers.length > 0) {
         return res.status(400).json({ error: 'Admin account already exists' });
       }
 
-      // Allow creating admin if only default admin exists
+      // Create user in Supabase Auth
+      const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+        email,
+        password,
+        user_metadata: {
+          name,
+          role: 'admin'
+        },
+        email_confirm: true
+      });
 
-      // Create admin user
-      const passwordHash = await bcrypt.hash(password, 12);
-      
-      const userResult = await query(
-        `INSERT INTO users (email, password_hash, name, role)
-         VALUES ($1, $2, $3, 'admin')
-         RETURNING id, email, name, role`,
-        [email, passwordHash, name]
-      );
-
-      const user = userResult.rows[0];
-
-      // Set all permissions for admin
-      const adminPermissions = [
-        'can_view_financials', 'can_edit_projects', 'can_manage_users',
-        'can_sync_xero', 'can_view_all_timesheets', 'can_edit_activity_types',
-        'can_manage_clients', 'can_manage_cost_centers', 'can_view_reports',
-        'can_export_data', 'can_create_timesheets', 'can_view_own_timesheets'
-      ];
-
-      for (const permission of adminPermissions) {
-        await query(
-          'INSERT INTO user_permissions (user_id, permission, granted) VALUES ($1, $2, true)',
-          [user.id, permission]
-        );
+      if (authError || !authData.user) {
+        console.error('Supabase auth error:', authError);
+        return res.status(400).json({ error: authError?.message || 'Failed to create auth user' });
       }
 
-      // Update company settings if provided
+      const userId = authData.user.id;
+
+      // Create user profile in public.users
+      const { error: profileError } = await supabase
+        .from('users')
+        .insert({
+          id: userId,
+          email,
+          password_hash: '', // Empty since Supabase Auth handles password
+          name,
+          role: 'admin',
+          is_active: true
+        });
+
+      if (profileError) {
+        console.error('Profile creation error:', profileError);
+        // Try to delete the auth user if profile creation fails
+        await supabase.auth.admin.deleteUser(userId);
+        return res.status(400).json({ error: 'Failed to create user profile' });
+      }
+
+      // Generate Supabase session token (use admin API to create session)
+      const { data: sessionData } = await supabase.auth.admin.getUserById(userId);
+      
+      // Get the user's session token by signing them in
+      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      });
+
+      if (signInError || !signInData.session) {
+        console.error('Sign in error:', signInError);
+        return res.status(400).json({ error: 'Failed to create session' });
+      }
+
+      const token = signInData.session.access_token;
+
+      // Set company settings if provided
       if (company_name) {
-        await query(
-          `UPDATE settings SET value = $1, updated_at = CURRENT_TIMESTAMP 
-           WHERE key = 'company_name' AND user_id IS NULL`,
-          [company_name]
-        );
+        await supabase
+          .from('app_settings')
+          .upsert({
+            key: 'company_name',
+            value: company_name,
+            updated_at: new Date().toISOString()
+          }, { onConflict: 'key' });
       }
 
       if (timezone) {
-        await query(
-          `UPDATE settings SET value = $1, updated_at = CURRENT_TIMESTAMP 
-           WHERE key = 'timezone' AND user_id IS NULL`,
-          [timezone]
-        );
+        await supabase
+          .from('app_settings')
+          .upsert({
+            key: 'timezone',
+            value: timezone,
+            updated_at: new Date().toISOString()
+          }, { onConflict: 'key' });
       }
 
-      // Generate token
-      const token = jwt.sign(
-        { id: user.id, email: user.email, name: user.name, role: user.role },
-        env.JWT_SECRET,
-        { expiresIn: '7d' }
-      );
-
-      // Auto-complete setup after admin creation
-      await query(
-        `INSERT INTO settings (key, value, user_id)
-         VALUES ('setup_completed', 'true', NULL)
-         ON CONFLICT (key, user_id) DO UPDATE SET value = 'true', updated_at = CURRENT_TIMESTAMP`
-      );
+      // Mark setup as completed
+      await supabase
+        .from('app_settings')
+        .upsert({
+          key: 'setup_completed',
+          value: 'true',
+          updated_at: new Date().toISOString()
+        }, { onConflict: 'key' });
 
       res.status(201).json({
-        user: { ...user, permissions: adminPermissions },
+        user: {
+          id: userId,
+          email,
+          name,
+          role: 'admin'
+        },
         token,
         completed: true
       });
