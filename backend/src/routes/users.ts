@@ -73,7 +73,7 @@ router.get('/:id', authenticate, requireRole('admin', 'manager'), async (req: Au
   try {
     const { data: user, error } = await supabase
       .from('users')
-      .select('id, email, name, role, avatar_url, is_active, created_at, updated_at')
+      .select('id, email, name, role, avatar_url, created_at, updated_at')
       .eq('id', req.params.id)
       .single();
 
@@ -220,7 +220,6 @@ router.post('/', authenticate, requireRole('admin'),
 router.put('/:id', authenticate, requireRole('admin'),
   body('name').optional().trim().notEmpty(),
   body('role').optional().isIn(['admin', 'manager', 'user']),
-  body('is_active').optional().isBoolean(),
   async (req: AuthRequest, res: Response) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -228,7 +227,7 @@ router.put('/:id', authenticate, requireRole('admin'),
     }
 
     const { id } = req.params;
-    const { name, role, is_active } = req.body;
+    const { name, role } = req.body;
 
     try {
       // Check if user exists and get current role
@@ -246,7 +245,6 @@ router.put('/:id', authenticate, requireRole('admin'),
       const updateData: any = {};
       if (name !== undefined) updateData.name = name;
       if (role !== undefined) updateData.role = role;
-      if (is_active !== undefined) updateData.is_active = is_active;
 
       if (Object.keys(updateData).length === 0) {
         return res.status(400).json({ error: 'No updates provided' });
@@ -300,7 +298,7 @@ router.put('/:id', authenticate, requireRole('admin'),
         await query(
           `INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) 
            VALUES ($1, $2, $3, $4, $5)`,
-          [req.user!.id, 'update_user', 'user', id, JSON.stringify({ name, role, is_active })]
+          [req.user!.id, 'update_user', 'user', id, JSON.stringify({ name, role })]
         );
       } catch (logError) {
         log.warn('Failed to log activity', { error: logError });
