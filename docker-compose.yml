@@ -46,6 +46,8 @@ services:
         condition: service_healthy
       ocr-service:
         condition: service_healthy
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       NODE_ENV: production
       DATABASE_URL: postgresql://ampedfieldops:${DB_PASSWORD:-changeme123}@postgres:5432/ampedfieldops
@@ -64,6 +66,8 @@ services:
       SMTP_PASSWORD: ${SMTP_PASSWORD:-}
       SMTP_FROM: ${SMTP_FROM:-}
       OCR_SERVICE_URL: http://ocr-service:8000
+      SUPABASE_URL: http://host.docker.internal:54321
+      SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImV4cCI6MTk4MzgxMjk5Nn0.EGIM96RAZx35lJzdJsyH-qQwv8Hdp7fsn3W0YpN81IU}
     ports:
       - "3001:3001"
     volumes:
@@ -77,8 +81,12 @@ services:
     restart: unless-stopped
     depends_on:
       - backend
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
-      VITE_API_URL: ${API_URL:-http://backend:3001}
+      VITE_API_URL: ${VITE_API_URL:-http://backend:3001}
+      VITE_SUPABASE_URL: http://host.docker.internal:54321
+      VITE_SUPABASE_ANON_KEY: ${VITE_SUPABASE_ANON_KEY:-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0}
     ports:
       - "3000:80"
 
