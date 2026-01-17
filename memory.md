@@ -119,3 +119,28 @@
   - Documentation enables self-service route migration
 - Status: Items #2 & #3 framework complete; routes ready for gradual migration
 - Next: Item #1 (domain tables with RLS) or start migrating routes one by one
+
+### Session: Item #1 - Domain Tables RLS Policies (Part A)
+- User Request: "lets go option a" (select domain tables with RLS)
+- Actions completed:
+  - Audited existing database schema (found 32 tables from legacy Postgres migration)
+  - Identified that clients, projects, timesheets, activity_types, cost_centers already exist
+  - Created enhanced migration file `20260117090000_add_rls_policies_domain_tables.sql`
+    - Drops old RLS policies if they exist
+    - Enables RLS on all 5 domain tables
+    - Creates 24 new RLS policies across domain tables:
+      - Clients: 3 policies (select, insert, update - authenticated)
+      - Projects: 3 policies (select, insert, update - authenticated)
+      - Activity Types: 4 policies (select for authenticated, insert/update/delete for service role)
+      - Cost Centers: 4 policies (select for authenticated, insert/update/delete for service role)
+      - Timesheets: 3 policies (select, insert, update - authenticated)
+      - Project Cost Centers: 3 policies (select, insert, update - authenticated)
+  - Applied migration to local Supabase DB via psql
+  - Verified all 24 RLS policies successfully applied (checked pg_policies table)
+  - Committed changes to feature/supabase-migration branch
+- Outcome:
+  - Domain tables now have proper RLS policies for Supabase Auth integration
+  - Authenticated users can read/write clients, projects, timesheets
+  - Service role can manage reference data (activity_types, cost_centers)
+  - Database is now ready for backend route migration
+- Status: Item #1 RLS foundation complete; Item #6 (storage) or Item #3 (routes) next
