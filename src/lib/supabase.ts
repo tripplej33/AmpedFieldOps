@@ -53,3 +53,32 @@ export async function getCurrentUserProfile() {
     avatar: profile.avatar
   }
 }
+
+// Admin-only: fetch all user profiles (requires RLS admin policy)
+export async function getAllUserProfiles() {
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return []
+
+  // Basic admin guard client-side; RLS enforces server-side
+  const { data: myProfile } = await supabase
+    .from('user_profiles')
+    .select('role')
+    .eq('id', user.id)
+    .single()
+
+  if (myProfile?.role !== 'admin') {
+    return []
+  }
+
+  const { data, error } = await supabase
+    .from('user_profiles')
+    .select('*')
+    .order('created_at', { ascending: false })
+
+  if (error) {
+    console.warn('Failed to fetch user profiles:', error)
+    return []
+  }
+
+  return data || []
+}

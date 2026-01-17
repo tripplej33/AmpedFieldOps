@@ -56,13 +56,18 @@ export default function Login() {
   useEffect(() => {
     const checkSetupStatus = async () => {
       try {
-        // Check if setup is not completed (directs to user creation)
-        const setupStatus = await api.getSetupStatus();
-        if (!setupStatus.completed && setupStatus.step === 1) {
+        // Add a hard timeout to avoid infinite spinner if backend is unreachable
+        const timeout = new Promise((_, reject) => setTimeout(() => reject(new Error('Setup status timeout (5s)')), 5000));
+        const setupStatus = await Promise.race([
+          api.getSetupStatus(),
+          timeout
+        ]) as Awaited<ReturnType<typeof api.getSetupStatus>>;
+
+        if (setupStatus && !setupStatus.completed && setupStatus.step === 1) {
           setShowAdminSetup(true);
         }
       } catch (error) {
-        // If check fails, allow normal login
+        // If check fails or times out, allow normal login
         console.warn('Failed to check setup status:', error);
       } finally {
         setIsCheckingSetup(false);

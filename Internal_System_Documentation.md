@@ -102,6 +102,30 @@ AmpedFieldOps/
 - `.env` contains Supabase keys, Xero credentials, SMTP settings
 - Stored in root directory (not committed)
 
+### Supabase Keys Automation (2026-01-16)
+- Installer (`install.sh`) auto-populates `.env` with `SUPABASE_URL`, `DATABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `VITE_SUPABASE_URL`, and `VITE_SUPABASE_ANON_KEY`.
+- Uses `scripts/fetch_supabase_keys.sh` to parse `supabase status --output json` via `jq` or Node fallback.
+- When Supabase CLI is missing, the installer appends local defaults for `VITE_SUPABASE_URL`/`SUPABASE_URL` and the local anon key to streamline development.
+- Docker Compose maps `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` to the frontend; the backend reads `SUPABASE_URL`, `DATABASE_URL`, and `SUPABASE_SERVICE_ROLE_KEY`.
+
+### Database Connectivity Architecture
+**Local Supabase Setup:**
+- Supabase CLI creates containers in `supabase_network_AmpedFieldOps` network
+- PostgreSQL: `supabase_db_AmpedFieldOps` (internal: port 5432, external: port 54322)
+- API Gateway: `supabase_kong_AmpedFieldOps` (internal: port 8000, external: port 54321)
+- Studio: `supabase_studio_AmpedFieldOps` (external: port 54323)
+
+**Backend Connection:**
+- Backend container joins `supabase_network_AmpedFieldOps` via docker-compose networks
+- DATABASE_URL: `postgresql://postgres:postgres@supabase_db_AmpedFieldOps:5432/postgres`
+- SUPABASE_URL: `http://supabase_kong_AmpedFieldOps:8000` (internal) or `http://127.0.0.1:54321` (from host)
+- Entrypoint script (`backend/docker-entrypoint.sh`) parses DATABASE_URL to check PostgreSQL readiness
+
+**Frontend Connection:**
+- Frontend uses browser-accessible URLs: `VITE_SUPABASE_URL=http://127.0.0.1:54321`
+- Supabase JS client connects via Kong gateway for Auth, Realtime, Storage, etc.
+- API calls to backend: `VITE_API_URL=http://localhost:3001` or configured LXC IP
+
 ---
 
 ## 📝 Key Files to Know
@@ -112,6 +136,20 @@ AmpedFieldOps/
 | [vite.config.ts](vite.config.ts) | Frontend build config |
 | [docker-compose.yml](docker-compose.yml) | Service orchestration |
 | [supabase/config.toml](supabase/config.toml) | Supabase local setup |
+
+### RLS Policies (Login/Users)
+- users: RLS enabled; policies
+	- `users_read_own` SELECT when `id = auth.uid()`
+	- `users_admin_read_all` SELECT when current user role is `admin`
+	- `users_admin_update` UPDATE when current user role is `admin`
+- user_permissions: RLS enabled; policies
+	- `user_permissions_read_own` SELECT when `user_id = auth.uid()`
+	- `user_permissions_admin_read_all` SELECT when current user role is `admin`
+- permissions: RLS enabled; policies
+	- `permissions_read_all` SELECT allowed to `authenticated`
+	- `permissions_admin_write` ALL allowed when current user role is `admin`
+
+Migration file: `supabase/migrations/20260117_login_users_rls.sql`
 
 ---
 

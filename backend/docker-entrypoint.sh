@@ -31,12 +31,19 @@ if [ "$(id -u)" = "0" ]; then
   exec su-exec node "$0" "$@"
 fi
 
-# Wait for PostgreSQL to be ready
-echo "⏳ Waiting for PostgreSQL..."
-until pg_isready -h postgres -U ampedfieldops -d ampedfieldops; do
-  sleep 1
+# Wait for Supabase PostgreSQL to be ready
+echo "⏳ Waiting for Supabase PostgreSQL..."
+# Extract host and port from DATABASE_URL
+DB_HOST=$(echo "$DATABASE_URL" | sed -n 's/.*@\([^:]*\):.*/\1/p')
+DB_PORT=$(echo "$DATABASE_URL" | sed -n 's/.*:\([0-9]*\)\/.*/\1/p')
+DB_USER=$(echo "$DATABASE_URL" | sed -n 's/.*\/\/\([^:]*\):.*/\1/p')
+DB_NAME=$(echo "$DATABASE_URL" | sed -n 's/.*\/\([^?]*\).*/\1/p')
+
+until pg_isready -h "${DB_HOST:-host.docker.internal}" -p "${DB_PORT:-54322}" -U "${DB_USER:-postgres}"; do
+  echo "Waiting for ${DB_HOST:-host.docker.internal}:${DB_PORT:-54322}..."
+  sleep 2
 done
-echo "✅ PostgreSQL is ready"
+echo "✅ Supabase PostgreSQL is ready"
 
 # Run migrations
 echo "🔄 Running database migrations..."

@@ -29,17 +29,17 @@ services:
     environment:
       NODE_ENV: production
       # Supabase configuration - Supabase CLI provides these in local development
-      SUPABASE_URL: ${SUPABASE_URL:-http://127.0.0.1:54321}
+      SUPABASE_URL: ${SUPABASE_URL:-http://supabase_kong_AmpedFieldOps:8000}
       SUPABASE_SERVICE_ROLE_KEY: ${SUPABASE_SERVICE_ROLE_KEY:-}
-      DATABASE_URL: ${DATABASE_URL}
+      DATABASE_URL: postgresql://postgres:postgres@supabase_db_AmpedFieldOps:5432/postgres?sslmode=disable
       PORT: 3001
-      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+      FRONTEND_URL: ${FRONTEND_URL:-https://admin.ampedlogix.com}
       REDIS_HOST: redis
       REDIS_PORT: 6379
       REDIS_PASSWORD: ${REDIS_PASSWORD:-}
       XERO_CLIENT_ID: ${XERO_CLIENT_ID:-}
       XERO_CLIENT_SECRET: ${XERO_CLIENT_SECRET:-}
-      XERO_REDIRECT_URI: ${XERO_REDIRECT_URI:-http://localhost:3001/api/xero/callback}
+      XERO_REDIRECT_URI: ${XERO_REDIRECT_URI:-https://admin.ampedlogix.com/api/xero/callback}
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-}
       SMTP_USER: ${SMTP_USER:-}
@@ -50,6 +50,9 @@ services:
       - "3001:3001"
     volumes:
       - ./backend/uploads:/app/uploads
+    networks:
+      - default
+      - supabase_network_AmpedFieldOps
 
   frontend:
     build:
@@ -63,9 +66,12 @@ services:
     depends_on:
       - backend
     environment:
-      VITE_API_URL: ${API_URL:-http://localhost:3001}
+      VITE_API_URL: ${API_URL:-http://192.168.1.124:3001}
     ports:
       - "3000:80"
+    networks:
+      - default
+      - supabase_network_AmpedFieldOps
 
   ocr-service:
     build:
@@ -87,5 +93,27 @@ services:
       timeout: 10s
       retries: 3
 
+  nginx-ssl:
+    image: nginx:alpine
+    container_name: ampedfieldops-nginx-ssl
+    restart: unless-stopped
+    depends_on:
+      - frontend
+      - backend
+    ports:
+      - "443:443"
+      - "80:80"
+    volumes:
+      - ./nginx-ssl.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./ssl:/etc/nginx/ssl:ro
+    networks:
+      - default
+      - supabase_network_AmpedFieldOps
+
+networks:
+  supabase_network_AmpedFieldOps:
+    external: true
+
 volumes:
   redis_data:
+
