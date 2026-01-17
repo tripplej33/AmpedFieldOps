@@ -349,3 +349,14 @@
   - Verified all 3 users now have matching UUIDs between `auth.users` and `public.users`
 - Status: ✅ Fixed - All users can now read their own profile data via Supabase client
 - Key lesson: Supabase Auth (`auth.users`) and app profiles (`public.users`) must use the same UUID for RLS policies to work. Always sync IDs when migrating from legacy password-based auth to Supabase Auth
+
+### Session: First-Time Setup with Supabase Auth
+- Issue: AdminSetupModal was showing but getting 400 Bad Request on `/api/setup/admin` 
+- Root cause: Setup endpoint was still using legacy PostgreSQL database (`query()`) instead of Supabase Auth
+- Migration: Updated `/api/setup/admin` endpoint to:
+  1. Create user in Supabase Auth using `supabase.auth.admin.createUser()`
+  2. Create corresponding profile in `public.users` with matching UUID
+  3. Sign in user to get session access token
+  4. Store settings in `app_settings` table instead of legacy `settings`
+- Status: ✅ Backend updated and running - ready for first-time setup flow
+- Next: User can now try admin setup again and system will authenticate via Supabase Auth
