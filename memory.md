@@ -285,3 +285,27 @@
   - Priority 1 (core features): auth.ts, files.ts, documentScan.ts, xero.ts, dashboard.ts, settings.ts
   - Priority 2 (admin): backups.ts, troubleshooter.ts, safetyDocuments.ts, setup.ts
 - Performance: All routes commit successfully, backend restarts cleanly, API accessible on port 3001
+
+### Session: Frontend Supabase Configuration Fix
+- User issue: Browser console errors: "VITE_SUPABASE_ANON_KEY is not set" and "Uncaught Error: supabaseKey is required"
+- Root cause: Frontend Supabase client initialization failing - missing environment variables in Docker containers
+- Investigation steps:
+  - Retrieved Supabase local instance details via `supabase status`
+  - Found JWT secret in auth container: `super-secret-jwt-token-with-at-least-32-characters-long`
+  - Identified issue: Docker containers cannot access `localhost:54321` (Supabase runs on host machine)
+- Actions completed:
+  - Added Supabase environment variables to `.env`:
+    - `VITE_SUPABASE_URL=http://127.0.0.1:54321` (for local dev outside Docker)
+    - `VITE_SUPABASE_ANON_KEY` (standard local dev anon JWT)
+    - `SUPABASE_URL=http://127.0.0.1:54321` (backend local access)
+    - `SUPABASE_SERVICE_ROLE_KEY` (backend server-side JWT)
+  - Updated `docker-compose.yml` with critical fixes:
+    - Added `extra_hosts: ["host.docker.internal:host-gateway"]` to both frontend and backend services
+    - Set `VITE_SUPABASE_URL=http://host.docker.internal:54321` in frontend environment (Docker network override)
+    - Set `SUPABASE_URL=http://host.docker.internal:54321` in backend environment
+    - Included default JWT keys as fallback values
+  - Rebuilt frontend Docker image (VITE vars are build-time, not runtime)
+  - Restarted both frontend and backend containers
+  - Updated `mistakes_to_not_repeat.md` with Docker networking lesson
+- Status: ✅ Containers running without errors, Supabase client can initialize
+- Key lesson: Dockerized apps need `host.docker.internal:54321` + `extra_hosts` to reach host-based Supabase; frontend needs rebuild when VITE_* vars change
