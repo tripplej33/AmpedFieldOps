@@ -16,6 +16,7 @@ const Timesheets = lazy(() => import("./components/pages/Timesheets"));
 const Settings = lazy(() => import("./components/pages/Settings"));
 const Login = lazy(() => import("./components/pages/Login"));
 const ForgotPassword = lazy(() => import("./components/pages/ForgotPassword"));
+const FirstTimeSetup = lazy(() => import("./components/pages/FirstTimeSetup"));
 const UserSettings = lazy(() => import("./components/pages/UserSettings"));
 const Financials = lazy(() => import("./components/pages/Financials"));
 const Users = lazy(() => import("./components/pages/Users"));
@@ -28,7 +29,7 @@ const DocumentScan = lazy(() => import("./components/pages/DocumentScan"));
 
 // Protected route wrapper
 function ProtectedRoute({ children, permission }: { children: React.ReactNode; permission?: string }) {
-  const { isAuthenticated, isLoading, hasPermission } = useAuth();
+  const { isAuthenticated, isLoading, hasPermission, user } = useAuth();
   const location = useLocation();
 
   if (isLoading) {
@@ -43,6 +44,11 @@ function ProtectedRoute({ children, permission }: { children: React.ReactNode; p
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
+  // Redirect to setup if this is first-time setup and not already on setup route
+  if (user?.isFirstTimeSetup && location.pathname !== '/setup') {
+    return <Navigate to="/setup" replace />;
+  }
+
   if (permission && !hasPermission(permission)) {
     return <Navigate to="/" replace />;
   }
@@ -51,6 +57,8 @@ function ProtectedRoute({ children, permission }: { children: React.ReactNode; p
 }
 
 function AppRoutes() {
+  const { isAuthenticated, isLoading, user } = useAuth();
+
   return (
     <Suspense fallback={
       <div className="flex items-center justify-center h-screen bg-background">
@@ -61,6 +69,22 @@ function AppRoutes() {
         {/* Public routes */}
         <Route path="/login" element={<Login />} />
         <Route path="/forgot-password" element={<ForgotPassword />} />
+
+        {/* First-time setup route - requires auth */}
+        <Route
+          path="/setup"
+          element={
+            isLoading ? (
+              <div className="flex items-center justify-center h-screen bg-background">
+                <p className="font-mono text-electric">Loading...</p>
+              </div>
+            ) : !isAuthenticated ? (
+              <Navigate to="/login" replace />
+            ) : (
+              <FirstTimeSetup />
+            )
+          }
+        />
 
         {/* Protected routes */}
         <Route path="/" element={

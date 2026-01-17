@@ -73,9 +73,26 @@ async function loadUserProfile(userId: string): Promise<User | null> {
       }
     }
 
+    // Check if this is the first-time setup (first user in system)
+    let isFirstTimeSetup = false;
+    try {
+      const { data: appSettings } = await supabase
+        .from('app_settings')
+        .select('setup_complete')
+        .single();
+
+      // If setup_complete is false, mark this as first-time setup
+      if (appSettings && !appSettings.setup_complete) {
+        isFirstTimeSetup = true;
+      }
+    } catch (e) {
+      console.warn('Failed to check setup status:', e);
+    }
+
     return {
       ...data,
       permissions,
+      isFirstTimeSetup,
     };
   } catch (error) {
     console.error('Error loading user profile:', error);
