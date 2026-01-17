@@ -309,3 +309,17 @@
   - Updated `mistakes_to_not_repeat.md` with Docker networking lesson
 - Status: ✅ Containers running without errors, Supabase client can initialize
 - Key lesson: Dockerized apps need `host.docker.internal:54321` + `extra_hosts` to reach host-based Supabase; frontend needs rebuild when VITE_* vars change
+
+### Session: Mixed Content Errors Fix (HTTPS Production)
+- User issue: Browser console errors: "Mixed Content: The page at 'https://admin.ampedlogix.com/login' was loaded over HTTPS, but requested an insecure resource 'http://backend:3001/api/...'"
+- Root cause: Frontend configured with `VITE_API_URL=http://backend:3001` which causes two problems:
+  1. Browser cannot access Docker network hostname `backend`
+  2. HTTPS page cannot load HTTP resources (mixed content blocked by browser)
+- Analysis: Nginx already proxies `/api/*` requests to backend service (configured in nginx.conf lines 36-46)
+- Solution: Changed `VITE_API_URL` from `http://backend:3001` to `/api` (relative path)
+  - Updated `.env`: `VITE_API_URL=/api`
+  - Updated `docker-compose.yml`: Default value changed to `/api`
+  - Rebuilt frontend Docker image (VITE vars baked at build time)
+  - Restarted frontend container
+- Status: ✅ Fixed - Frontend now uses relative paths, Nginx handles proxying to backend over internal Docker network
+- Key lesson: For HTTPS deployments, never use absolute HTTP URLs for API calls; use relative paths and let reverse proxy handle routing
