@@ -295,27 +295,38 @@ router.put('/', authenticate, async (req: AuthRequest, res: Response) => {
       return res.status(403).json({ error: 'Only admins can update global settings' });
     }
 
-    const userId = global ? null : req.user!.id;
-
-    for (const { key, value } of settings) {
-      await query(
-        `INSERT INTO settings (key, value, user_id)
-         VALUES ($1, $2, $3)
-         ON CONFLICT (key, user_id) DO UPDATE SET value = $2, updated_at = CURRENT_TIMESTAMP`,
-        [key, value, userId]
-      );
+    // Only admins can bulk update
+    if (req.user!.role !== 'admin') {
+      return res.status(403).json({ error: 'Only admins can bulk update settings' });
     }
 
-    // Clear email settings cache if any email settings were updated
-    if (global) {
-      const emailSettings = ['smtp_host', 'smtp_port', 'smtp_user', 'smtp_password', 'smtp_from'];
-      if (settings.some((s: any) => emailSettings.includes(s.key))) {
-        clearEmailSettingsCache();
+    // Bulk upsert using Supabase
+    for (const { key, value } of settings) {
+      const { error } = await supabase
+        .from('settings')
+        .upsert({
+          key,
+          value,
+          updated_at: new Date().toISOString()
+        }, {
+          onConflict: 'key'
+        });
+
+      if (error) {
+        log.error('Failed to upsert setting', error, { key });
+        // Continue with other settings even if one fails
       }
     }
 
+    // Clear email settings cache if any email settings were updated
+    const emailSettings = ['smtp_host', 'smtp_port', 'smtp_user', 'smtp_password', 'smtp_from'];
+    if (settings.some((s: any) => emailSettings.includes(s.key))) {
+      clearEmailSettingsCache();
+    }
+
     res.json({ message: 'Settings updated', count: settings.length });
-  } catch (error) {
+  } catch (error: any) {
+    log.error('Failed to bulk update settings', error);
     res.status(500).json({ error: 'Failed to update settings' });
   }
 });
@@ -531,7 +542,17 @@ router.post('/email/test', authenticate, requireRole('admin'), async (req: AuthR
   }
 });
 
-// Get activity logs (admin only)
+// Get activity logs (admin only) - DISABLED (activity_logs table not migrated)
+router.get('/logs/activity', authenticate, requireRole('admin'), async (req: AuthRequest, res: Response) => {
+  return res.status(501).json({
+    error: 'Activity logs not yet implemented',
+    message: 'Activity logging feature is pending Supabase migration',
+    status: 'not_implemented'
+  });
+});
+
+/*
+// Original activity logs implementation (commented out - uses legacy query())
 router.get('/logs/activity', authenticate, requireRole('admin'), async (req: AuthRequest, res: Response) => {
   try {
     const { user_id, action, entity_type, limit = 50, offset = 0 } = req.query;
@@ -583,6 +604,7 @@ router.get('/logs/activity', authenticate, requireRole('admin'), async (req: Aut
     res.status(500).json({ error: 'Failed to fetch activity logs' });
   }
 });
+*/
 
 // Test S3 connection
 router.post('/test-s3', authenticate, requireRole('admin'), async (req: AuthRequest, res: Response) => {
