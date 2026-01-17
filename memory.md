@@ -323,3 +323,29 @@
   - Restarted frontend container
 - Status: ✅ Fixed - Frontend now uses relative paths, Nginx handles proxying to backend over internal Docker network
 - Key lesson: For HTTPS deployments, never use absolute HTTP URLs for API calls; use relative paths and let reverse proxy handle routing
+
+### Session: Double /api Prefix Fix (404 Errors)
+- User issue: Browser console shows `GET https://admin.ampedlogix.com/api/api/health 404 (Not Found)` - double `/api` prefix
+- Root cause: Frontend code already includes `/api` in all endpoint paths (e.g., `await this.request('/api/health')`). Setting `VITE_API_URL=/api` caused double prefix: `/api` + `/api/health` = `/api/api/health`
+- Analysis: Checked [src/lib/api.ts](src/lib/api.ts#L1-L3) which has comment "Use empty string as API_URL since endpoints already include /api prefix"
+- Solution: Changed `VITE_API_URL` from `/api` to empty string (matches original frontend design)
+  - Updated `.env`: `VITE_API_URL=` (empty)
+  - Updated `docker-compose.yml`: Default value changed to empty `${VITE_API_URL:-}`
+  - Rebuilt frontend Docker image and restarted container
+- Status: ✅ Fixed - API calls now go to `/api/health` instead of `/api/api/health`
+- Key lesson: Always check existing frontend code structure before setting environment variables; don't assume API_URL needs a value
+
+### Session: RLS 403 Forbidden Fix (Supabase Auth/Profile Mismatch)
+- User issue: After successful login, browser shows `GET http://127.0.0.1:54321/rest/v1/users?select=... 403 (Forbidden)` with error "permission denied for schema public"
+- Root cause: User authenticated in `auth.users` but had no matching record (or mismatched UUID) in `public.users`. RLS policy `users_read_own` checks `auth.uid() = id`, but the IDs didn't match.
+- Investigation:
+  - Checked RLS policies: `users_read_own FOR SELECT USING (auth.uid() = id)` requires exact UUID match
+  - Found `auth.users` had 3 users, but `public.users` had only 1 (duncan with wrong UUID)
+  - Auth users: `95e643f2...` vs Public users: `8f8c7ca0...` - different IDs for same email
+- Solution:
+  - Created migration `20260117110000_auto_create_user_profile.sql` with trigger to auto-create `public.users` on `auth.users` insert
+  - Inserted missing auth users into `public.users` (admin@example.com, admin@ampedfieldops.com)
+  - Updated duncan's user ID in `public.users` to match `auth.users` (required dropping/re-adding foreign key constraints)
+  - Verified all 3 users now have matching UUIDs between `auth.users` and `public.users`
+- Status: ✅ Fixed - All users can now read their own profile data via Supabase client
+- Key lesson: Supabase Auth (`auth.users`) and app profiles (`public.users`) must use the same UUID for RLS policies to work. Always sync IDs when migrating from legacy password-based auth to Supabase Auth
