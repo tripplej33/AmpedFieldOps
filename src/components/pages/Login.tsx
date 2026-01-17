@@ -58,7 +58,8 @@ export default function Login() {
       try {
         // Check if default admin exists
         const hasDefaultAdmin = await api.checkDefaultAdminExists();
-        if (hasDefaultAdmin) {
+        // Show setup modal if NO admin exists (first-time setup)
+        if (!hasDefaultAdmin) {
           setShowAdminSetup(true);
         }
       } catch (error) {
