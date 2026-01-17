@@ -1,8 +1,11 @@
 import { Router, Response } from 'express';
 import { query } from '../db';
+import { supabase as supabaseClient } from '../db/supabase';
 import { authenticate, AuthRequest } from '../middleware/auth';
+import { log } from '../lib/logger';
 
 const router = Router();
+const supabase = supabaseClient!;
 
 // Global search
 router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
@@ -20,28 +23,28 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
 
     // Search based on type or search all
     if (!type || type === 'clients') {
-      const clients = await query(
-        `SELECT id, name, contact_name, email, location, status
-         FROM clients
-         WHERE name ILIKE $1 OR contact_name ILIKE $1 OR address ILIKE $1 OR email ILIKE $1
-         ORDER BY name ASC
-         LIMIT $2`,
-        [searchTerm, searchLimit]
-      );
-      results.clients = clients.rows;
+      const { data: clients } = await supabase
+        .from('clients')
+        .select('id, name, contact_name, email, location, status')
+        .or(`name.ilike.${searchTerm},contact_name.ilike.${searchTerm},address.ilike.${searchTerm},email.ilike.${searchTerm}`)
+        .order('name', { ascending: true })
+        .limit(searchLimit);
+      
+      results.clients = clients || [];
     }
 
     if (!type || type === 'projects') {
-      const projects = await query(
-        `SELECT p.id, p.code, p.name, p.status, c.name as client_name
-         FROM projects p
-         LEFT JOIN clients c ON p.client_id = c.id
-         WHERE p.name ILIKE $1 OR p.code ILIKE $1 OR p.description ILIKE $1 OR c.name ILIKE $1
-         ORDER BY p.created_at DESC
-         LIMIT $2`,
-        [searchTerm, searchLimit]
-      );
-      results.projects = projects.rows;
+      const { data: projects } = await supabase
+        .from('projects')
+        .select('id, code, name, status, clients(name)')
+        .or(`name.ilike.${searchTerm},code.ilike.${searchTerm},description.ilike.${searchTerm}`)
+        .order('created_at', { ascending: false })
+        .limit(searchLimit);
+      
+      results.projects = (projects || []).map((p: any) => ({
+        ...p,
+        client_name: Array.isArray(p.clients) ? p.clients[0]?.name : p.clients?.name
+      }));
     }
 
     if (!type || type === 'timesheets') {
@@ -49,35 +52,30 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
                          req.user!.role === 'manager' || 
                          req.user!.permissions.includes('can_view_all_timesheets');
 
-      let timesheetSql = `
-        SELECT t.id, t.date, t.hours, t.notes,
-          p.name as project_name,
-          c.name as client_name,
-          u.name as user_name
-        FROM timesheets t
-        LEFT JOIN projects p ON t.project_id = p.id
-        LEFT JOIN clients c ON t.client_id = c.id
-        LEFT JOIN users u ON t.user_id = u.id
-        WHERE t.notes ILIKE $1 OR p.name ILIKE $1 OR c.name ILIKE $1
-      `;
-
-      const params: any[] = [searchTerm];
+      let query_builder = supabase
+        .from('timesheets')
+        .select('id, date, hours, notes, projects(name), clients(name), users(name)')
+        .or(`notes.ilike.${searchTerm}`);
 
       if (!canViewAll) {
-        timesheetSql += ' AND t.user_id = $3';
-        params.push(req.user!.id);
+        query_builder = query_builder.eq('user_id', req.user!.id);
       }
 
-      timesheetSql += ` ORDER BY t.date DESC LIMIT $2`;
-      params.splice(1, 0, searchLimit);
+      const { data: timesheets } = await query_builder
+        .order('date', { ascending: false })
+        .limit(searchLimit);
 
-      const timesheets = await query(timesheetSql, params);
-      results.timesheets = timesheets.rows;
+      results.timesheets = (timesheets || []).map((t: any) => ({
+        ...t,
+        project_name: Array.isArray(t.projects) ? t.projects[0]?.name : t.projects?.name,
+        client_name: Array.isArray(t.clients) ? t.clients[0]?.name : t.clients?.name,
+        user_name: Array.isArray(t.users) ? t.users[0]?.name : t.users?.name
+      }));
     }
 
     res.json(results);
   } catch (error) {
-    console.error('Search error:', error);
+    log.error('Search error', error, { userId: req.user?.id });
     res.status(500).json({ error: 'Search failed' });
   }
 });
@@ -88,27 +86,32 @@ router.post('/recent', authenticate, async (req: AuthRequest, res: Response) => 
     const { query: searchQuery, type } = req.body;
     
     // Store in settings as JSON
-    const existing = await query(
-      `SELECT value FROM settings WHERE key = 'recent_searches' AND user_id = $1`,
-      [req.user!.id]
-    );
+    const { data: existing } = await supabase
+      .from('settings')
+      .select('value')
+      .eq('key', 'recent_searches')
+      .eq('user_id', req.user!.id)
+      .single();
 
     let searches = [];
-    if (existing.rows.length > 0 && existing.rows[0].value) {
-      searches = JSON.parse(existing.rows[0].value);
+    if (existing && existing.value) {
+      searches = JSON.parse(existing.value);
     }
 
     // Add new search to front, limit to 10
     searches = [{ query: searchQuery, type, timestamp: new Date() }, ...searches].slice(0, 10);
 
-    await query(
-      `INSERT INTO settings (key, value, user_id) VALUES ('recent_searches', $1, $2)
-       ON CONFLICT (key, user_id) DO UPDATE SET value = $1, updated_at = CURRENT_TIMESTAMP`,
-      [JSON.stringify(searches), req.user!.id]
-    );
+    await supabase
+      .from('settings')
+      .upsert({ 
+        key: 'recent_searches', 
+        value: JSON.stringify(searches), 
+        user_id: req.user!.id 
+      }, { onConflict: 'key,user_id' });
 
     res.json({ message: 'Search saved' });
   } catch (error) {
+    log.error('Save recent search error', error, { userId: req.user?.id });
     res.status(500).json({ error: 'Failed to save search' });
   }
 });
@@ -116,17 +119,20 @@ router.post('/recent', authenticate, async (req: AuthRequest, res: Response) => 
 // Get recent searches
 router.get('/recent', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const result = await query(
-      `SELECT value FROM settings WHERE key = 'recent_searches' AND user_id = $1`,
-      [req.user!.id]
-    );
+    const { data: result } = await supabase
+      .from('settings')
+      .select('value')
+      .eq('key', 'recent_searches')
+      .eq('user_id', req.user!.id)
+      .single();
 
-    if (result.rows.length === 0 || !result.rows[0].value) {
+    if (!result || !result.value) {
       return res.json([]);
     }
 
-    res.json(JSON.parse(result.rows[0].value));
+    res.json(JSON.parse(result.value));
   } catch (error) {
+    log.error('Get recent searches error', error, { userId: req.user?.id });
     res.status(500).json({ error: 'Failed to fetch recent searches' });
   }
 });
@@ -134,13 +140,15 @@ router.get('/recent', authenticate, async (req: AuthRequest, res: Response) => {
 // Clear recent searches
 router.delete('/recent', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    await query(
-      `DELETE FROM settings WHERE key = 'recent_searches' AND user_id = $1`,
-      [req.user!.id]
-    );
+    await supabase
+      .from('settings')
+      .delete()
+      .eq('key', 'recent_searches')
+      .eq('user_id', req.user!.id);
 
     res.json({ message: 'Recent searches cleared' });
   } catch (error) {
+    log.error('Clear recent searches error', error, { userId: req.user?.id });
     res.status(500).json({ error: 'Failed to clear recent searches' });
   }
 });
