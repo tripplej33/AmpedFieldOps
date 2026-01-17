@@ -262,3 +262,26 @@
 - Status: TypeScript compilation issues resolved; Docker build ready for completion
   - Note: Docker build process taking extended time; used background build approach
   - 4 routes (clients, projects, users, timesheets) now fully migrated with null safety fixes
+
+### Session: Continued Route Migration (Batch 2)
+- User request continuation: Resume migration of remaining 16+ routes
+- Routes migrated (5 new routes, 50% complete, 10/20 total):
+  - ✅ activityTypes.ts (5 endpoints): GET all/single, POST create, PUT update, DELETE (with usage count aggregation)
+  - ✅ costCenters.ts (5 endpoints): GET all/single with project count + hours aggregation, POST create (duplicate code check), PUT update, DELETE (in-use check)
+  - ✅ permissions.ts (4 endpoints): GET all/single, POST create (system vs custom), PUT update (system restrictions), DELETE (assignment check)
+  - ✅ role-permissions.ts (2 endpoints): GET role defaults with permission matrix, PUT bulk role permission updates
+  - ✅ health.ts (1 endpoint): Database + Xero connection health check
+  - ✅ search.ts (4 endpoints): GET global search with type filter, POST/GET/DELETE recent searches
+- All routes follow established Supabase pattern:
+  - Import Supabase client with non-null assertion at top
+  - Use .select(), .insert(), .update(), .delete() methods
+  - Handle Supabase error codes (PGRST116 = not found)
+  - Log activities to PostgreSQL activity_logs table via raw SQL (fallback compatible)
+  - Type casting as `any` for complex responses (relationships, arrays)
+  - Use `.or()` for ILIKE text searches across multiple columns
+  - Use `.upsert()` for settings records with conflict handling
+- Progress: 10/20 routes migrated (50% complete); Docker running, containers healthy
+- Remaining routes (10 total):
+  - Priority 1 (core features): auth.ts, files.ts, documentScan.ts, xero.ts, dashboard.ts, settings.ts
+  - Priority 2 (admin): backups.ts, troubleshooter.ts, safetyDocuments.ts, setup.ts
+- Performance: All routes commit successfully, backend restarts cleanly, API accessible on port 3001
