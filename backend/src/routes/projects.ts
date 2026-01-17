@@ -326,7 +326,9 @@ router.put('/:id', authenticate, requirePermission('can_edit_projects'),
 
       const projectData = project as any;
 
-      // Log activity
+      // Log activity (skipped - activity_logs table not yet migrated)
+      // TODO: Implement activity logging in Supabase
+      /*
       try {
         await query(
           `INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) 
@@ -336,6 +338,7 @@ router.put('/:id', authenticate, requirePermission('can_edit_projects'),
       } catch (logError) {
         log.warn('Failed to log activity', { error: logError });
       }
+      */
 
       res.json({
         ...projectData,
@@ -443,7 +446,9 @@ router.delete('/:id', authenticate, requirePermission('can_edit_projects'), asyn
       log.error('Error during project cleanup', err, { projectId });
     });
 
-    // Log activity
+    // Log activity (skipped - activity_logs table not yet migrated)
+    // TODO: Implement activity logging in Supabase
+    /*
     try {
       await query(
         `INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) 
@@ -453,6 +458,7 @@ router.delete('/:id', authenticate, requirePermission('can_edit_projects'), asyn
     } catch (logError) {
       log.warn('Failed to log activity', { error: logError });
     }
+    */
 
     res.json({ message: 'Project deleted' });
   } catch (error: any) {

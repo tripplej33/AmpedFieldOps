@@ -199,7 +199,9 @@ router.put('/', authenticate, requireRole('admin'), async (req: AuthRequest, res
       }
     }
 
-    // Log activity
+    // Log activity (skipped - activity_logs table not yet migrated)
+    // TODO: Implement activity logging in Supabase
+    /*
     try {
       await query(
         `INSERT INTO activity_logs (user_id, action, entity_type, details) 
@@ -209,6 +211,7 @@ router.put('/', authenticate, requireRole('admin'), async (req: AuthRequest, res
     } catch (logError) {
       log.warn('Failed to log activity', { error: logError });
     }
+    */
 
     res.json({ message: 'Role permissions updated successfully' });
   } catch (error) {

@@ -85,7 +85,9 @@ router.post('/', authenticate, requireRole('admin'),
         throw error;
       }
 
-      // Log activity
+      // Log activity (skipped - activity_logs table not yet migrated)
+      // TODO: Implement activity logging in Supabase
+      /*
       try {
         await query(
           `INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) 
@@ -95,6 +97,7 @@ router.post('/', authenticate, requireRole('admin'),
       } catch (logError) {
         log.warn('Failed to log activity', { error: logError });
       }
+      */
 
       res.status(201).json(data);
     } catch (error) {
@@ -156,7 +159,9 @@ router.put('/:id', authenticate, requireRole('admin'),
           throw error;
         }
 
-        // Log activity
+        // Log activity (skipped - activity_logs table not yet migrated)
+        // TODO: Implement activity logging in Supabase
+        /*
         try {
           await query(
             `INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) 
@@ -166,6 +171,7 @@ router.put('/:id', authenticate, requireRole('admin'),
         } catch (logError) {
           log.warn('Failed to log activity', { error: logError });
         }
+        */
 
         return res.json(data);
       }
@@ -192,7 +198,9 @@ router.put('/:id', authenticate, requireRole('admin'),
         throw error;
       }
 
-      // Log activity
+      // Log activity (skipped - activity_logs table not yet migrated)
+      // TODO: Implement activity logging in Supabase
+      /*
       try {
         await query(
           `INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) 
@@ -202,6 +210,7 @@ router.put('/:id', authenticate, requireRole('admin'),
       } catch (logError) {
         log.warn('Failed to log activity', { error: logError });
       }
+      */
 
       res.json(data);
     } catch (error) {
@@ -255,7 +264,9 @@ router.delete('/:id', authenticate, requireRole('admin'), async (req: AuthReques
       throw deleteError;
     }
 
-    // Log activity
+    // Log activity (skipped - activity_logs table not yet migrated)
+    // TODO: Implement activity logging in Supabase
+    /*
     try {
       await query(
         `INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) 
@@ -265,6 +276,7 @@ router.delete('/:id', authenticate, requireRole('admin'), async (req: AuthReques
     } catch (logError) {
       log.warn('Failed to log activity', { error: logError });
     }
+    */
 
     res.json({ message: 'Permission deleted' });
   } catch (error) {

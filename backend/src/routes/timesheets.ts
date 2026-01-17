@@ -388,7 +388,9 @@ router.post('/', authenticate, uploadLimiter,
           .eq('id', project_id);
       }
 
-      // Log activity
+      // Log activity (skipped - activity_logs table not yet migrated)
+      // TODO: Implement activity logging in Supabase
+      /*
       try {
         await query(
           `INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) 
@@ -398,6 +400,7 @@ router.post('/', authenticate, uploadLimiter,
       } catch (logError) {
         log.warn('Failed to log activity', { error: logError });
       }
+      */
 
       res.status(201).json(newTimesheet);
     } catch (error: any) {
@@ -605,11 +608,28 @@ router.put('/:id', authenticate,
             const newCost = hours * parseFloat(newActivity.hourly_rate);
             const costDiff = newCost - oldCost;
             
-            // Use raw query to update actual_cost with arithmetic
-            await query(
-              'UPDATE projects SET actual_cost = actual_cost + $1 WHERE id = $2',
-              [costDiff, project_id || existing.project_id]
-            );
+            // Update project actual_cost using Supabase RPC or SQL
+            const { error: costError } = await supabase.rpc('increment_project_cost', {
+              project_id: project_id || existing.project_id,
+              amount: costDiff
+            });
+            
+            if (costError) {
+              log.warn('Failed to update project costs via RPC, trying direct SQL', { error: costError });
+              // Fallback: direct update with select first
+              const { data: project } = await supabase
+                .from('projects')
+                .select('actual_cost')
+                .eq('id', project_id || existing.project_id)
+                .single();
+              
+              if (project) {
+                await supabase
+                  .from('projects')
+                  .update({ actual_cost: (parseFloat(project.actual_cost) || 0) + costDiff })
+                  .eq('id', project_id || existing.project_id);
+              }
+            }
           }
         } catch (costError) {
           log.warn('Failed to update project costs', { error: costError });
@@ -700,17 +720,36 @@ router.delete('/:id', authenticate, async (req: AuthRequest, res: Response) => {
         const hourlyRate = (existing.activity_types as any).hourly_rate;
         const cost = existing.hours * parseFloat(hourlyRate);
         
-        // Use raw query to update actual_cost with arithmetic
-        await query(
-          'UPDATE projects SET actual_cost = actual_cost - $1 WHERE id = $2',
-          [cost, existing.project_id]
-        );
+        // Update project actual_cost using Supabase RPC or direct update
+        const { error: costError } = await supabase.rpc('increment_project_cost', {
+          project_id: existing.project_id,
+          amount: -cost
+        });
+        
+        if (costError) {
+          log.warn('Failed to update project costs via RPC, trying direct SQL', { error: costError });
+          // Fallback: direct update with select first
+          const { data: project } = await supabase
+            .from('projects')
+            .select('actual_cost')
+            .eq('id', existing.project_id)
+            .single();
+          
+          if (project) {
+            await supabase
+              .from('projects')
+              .update({ actual_cost: Math.max(0, (parseFloat(project.actual_cost) || 0) - cost) })
+              .eq('id', existing.project_id);
+          }
+        }
       }
     } catch (costError) {
       log.warn('Failed to update project costs', { error: costError });
     }
 
-    // Log activity
+    // Log activity (skipped - activity_logs table not yet migrated)
+    // TODO: Implement activity logging in Supabase
+    /*
     try {
       await query(
         `INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) 
@@ -720,6 +759,7 @@ router.delete('/:id', authenticate, async (req: AuthRequest, res: Response) => {
     } catch (logError) {
       log.warn('Failed to log activity', { error: logError });
     }
+    */
 
     res.json({ message: 'Timesheet deleted' });
   } catch (error: any) {
