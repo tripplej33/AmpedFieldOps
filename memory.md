@@ -1,5 +1,96 @@
 # Memory Log
 
+## 2026-01-18 00:15 - 📋 Xero Integration Re-activation Plan Created
+**Prompt:** "the next GOAL: is to get xero integration working again so i need you to make a plan please review xeros documentaion for integration"
+
+**Deliverable:** Comprehensive XERO_INTEGRATION_PLAN.md created with:
+
+**Phase-Based Implementation Strategy:**
+1. **Phase 1 (Week 1): Foundation** - OAuth flow + Supabase token storage
+   - Create xero_auth table in Supabase
+   - Implement OAuth callback endpoint
+   - Migrate token storage from legacy query() to Supabase
+   - Enable only /callback endpoint initially
+
+2. **Phase 2 (Week 1-2): Core Sync** - Read-only sync of contacts/invoices
+   - Implement webhook receiver
+   - Sync Xero contacts → clients table
+   - Sync Xero invoices → xero_invoices table
+   - Add manual & auto sync controls
+
+3. **Phase 3 (Week 2): Write Operations** - Create invoices & payments
+   - Create Xero invoices from timesheets
+   - Sync new clients to Xero
+   - Record payments from Xero
+   - Auto-generate invoice numbers
+
+4. **Phase 4 (Week 3): Advanced** - Bills, reports, 2-way sync
+   - Bill management from POs
+   - Financial reports (P&L, Balance Sheet, Cash Flow)
+   - Full bidirectional sync with conflict resolution
+
+**Xero API Architecture (2026):**
+- OAuth 2.0: Authorization Code Grant with refresh tokens
+- Rate Limit: 60 req/min per app, 120 req/min per tenant
+- Base URL: https://api.xero.com/api.xro/2.0/
+- Key Endpoints: /Invoices, /Contacts, /Items, /BankAccounts, /Payments
+- Webhook Support: Receive CREATED, UPDATED, DELETED events
+
+**Database Schema Defined:**
+```sql
+xero_auth       - OAuth tokens (user_id, org_id, tokens, expiry)
+xero_invoices   - Synced invoices (xero_id, status, amounts, line_items)
+xero_bills      - Similar structure
+xero_payments   - Payment tracking
+xero_items      - Inventory items
+```
+
+**Token Management Pattern:**
+- Store refresh_token in Supabase xero_auth
+- Auto-refresh access_token when expires in < 5 minutes
+- Automatic retry on 401 Unauthorized
+
+**Current Blockers to Fix:**
+1. xero.ts currently has middleware that returns 503 for all endpoints except /callback
+2. 170+ legacy query() calls throughout xero.ts (reference to non-existent tables)
+3. Need to remove middleware blocker once Supabase tables exist
+4. Token storage currently uses legacy settings table query()
+
+**Implementation Order:**
+1. Create migrations for xero_auth table
+2. Create migrations for xero_invoices, xero_bills, etc.
+3. Update getXeroCredentials() to use Supabase
+4. Implement OAuth callback with Supabase token storage
+5. Enable /callback endpoint (keep others disabled until Phase 2)
+6. Implement contact sync endpoint
+7. Remove middleware blocker once core features work
+
+**Testing Strategy:**
+- Use Xero Demo Company (free tier) for testing
+- Unit tests for token refresh, data transformation
+- Integration tests with live Xero API
+- Manual testing checklist provided
+
+**Risk Mitigations:**
+- Token expiry: Auto-refresh before operations
+- Rate limiting: Queue with exponential backoff
+- Xero outage: Graceful degradation + cache
+- Duplicates: Idempotency keys + check before create
+- Disconnection: Detect and show reconnect prompt
+
+**Success Criteria:**
+- Phase 1: OAuth flow works, tokens secure in Supabase
+- Phase 2: Pull contacts, sync invoices
+- Phase 3: Create invoices from timesheets, record payments
+- Phase 4: Full sync with reports and 2-way updates
+
+**Next Steps:**
+1. Verify Xero credentials still valid (Client ID/Secret)
+2. Run migrations to create xero_auth table
+3. Update token storage functions
+4. Test OAuth callback flow
+5. Enable core sync endpoints
+
 ## 2026-01-17 23:45 - 🎯 Legacy query() Audit Summary - Major Routes Migrated
 **Prompt:** "can we do an audit for all legacy query() and replace with supabase alternative"
 
