@@ -470,27 +470,38 @@ router.delete('/logos/:filename', authenticate, requirePermission('can_manage_se
   fs.unlinkSync(filePath);
 
   // Check if this logo is set as company_logo in settings and remove it
-  await query(
-    `UPDATE settings 
-     SET value = NULL, updated_at = CURRENT_TIMESTAMP
-     WHERE key = 'company_logo' AND value = $1`,
-    [`/uploads/logos/${safeFilename}`]
-  );
+  try {
+    await supabase
+      .from('settings')
+      .update({ value: null, updated_at: new Date().toISOString() })
+      .eq('key', 'company_logo')
+      .eq('value', `/uploads/logos/${safeFilename}`);
+  } catch (settingsError) {
+    log.warn('Failed to update company_logo setting', { error: settingsError });
+  }
 
-  // Log activity
+  // Log activity (skipped - activity_logs table not yet migrated)
+  // TODO: Implement activity logging in Supabase
+  /*
   await query(
     `INSERT INTO activity_logs (user_id, action, entity_type, details) 
      VALUES ($1, $2, $3, $4)`,
     [req.user!.id, 'delete', 'logo', JSON.stringify({ filename: safeFilename })]
   );
-
+  */
   res.json({ message: 'Logo deleted successfully' });
 }));
 
 /**
  * Process document OCR in background
+ * @deprecated This function is disabled - requires document_scans and document_matches tables
+ * which have not been migrated to Supabase yet
  */
 async function processDocumentOCR(scanId: string, filePath: string) {
+  log.warn('processDocumentOCR called but disabled - document_scans table not migrated', { scanId });
+  throw new Error('Document OCR processing is not available - tables not migrated');
+  
+  /* DISABLED - document_scans and document_matches tables not migrated
   try {
     // Update status to processing
     await query(
@@ -572,6 +583,7 @@ async function processDocumentOCR(scanId: string, filePath: string) {
       [error.message || 'Processing failed', scanId]
     );
   }
+  */
 }
 
 export default router;
