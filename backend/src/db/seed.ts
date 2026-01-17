@@ -126,26 +126,9 @@ async function seed() {
     }
     console.log('  ✓ Default permissions seeded');
     
-    // Create default admin user only if no admin exists
-    const existingAdmin = await client.query(`SELECT id FROM users WHERE role = 'admin' LIMIT 1`);
-    
-    if (existingAdmin.rows.length === 0) {
-    const hashedPassword = await bcrypt.hash('admin123', 10);
-    
-    try {
-      await client.query(
-        `INSERT INTO users (email, password_hash, name, role, is_active) 
-         VALUES ($1, $2, $3, $4, $5)
-         ON CONFLICT (email) DO NOTHING`,
-        ['admin@ampedfieldops.com', hashedPassword, 'Admin User', 'admin', true]
-      );
-      console.log('  ✓ Default admin user created (email: admin@ampedfieldops.com, password: admin123)');
-    } catch (error) {
-        console.log('  ⚠️  Failed to create default admin user:', error);
-      }
-    } else {
-      console.log('  ✓ Admin user already exists, skipping default admin creation');
-    }
+    // Admin user creation is now handled via /api/setup/admin endpoint with Supabase Auth
+    // This ensures users go through the proper first-time setup flow (AdminSetupModal)
+    // and admin is created in both auth.users and public.users with matching UUIDs
     
     await client.query('COMMIT');
     console.log('✅ Database seeded successfully!');
