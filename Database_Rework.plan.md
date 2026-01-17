@@ -463,8 +463,32 @@ If migration fails or issues arise:
 
 ---
 
-## Questions for User
-1. Keep Express backend for business logic (Xero, OCR), or migrate some routes to Supabase Edge Functions?
-2. Use Supabase Auth exclusively, or hybrid (Supabase for users + custom JWT for service accounts)?
-3. Timeline: All at once, or phased rollout (auth first, then data)?
-4. Production plan: Self-host Supabase or use Supabase Cloud?
+## Architecture Decisions (Approved)
+
+### ✅ Database Strategy
+- **All data migrates to Supabase** - Single source of truth
+- **Remove old postgres and adminer** - Clean slate, no dual systems
+- **Fresh start** - No data migration from current database
+
+### ✅ Backend Architecture
+- **Keep Express backend** - Critical for:
+  - Xero OAuth and API integration
+  - OCR service orchestration
+  - Complex business logic
+  - Redis-backed job queues
+- **Use Supabase client** - Replace `pg` Pool with `@supabase/supabase-js`
+- **No Edge Functions** - Not needed for our use cases
+
+### ✅ Authentication
+- **Supabase Auth exclusively** - Frontend → GoTrue for all user auth
+- **Backend verifies Supabase JWTs** - Via service role key
+- **Single auth system** - No hybrid or custom JWT
+
+### ✅ Migration Approach
+- **Phased rollout** - 6 phases (setup → schema → backend → frontend → docker → testing)
+- **Minimize risk** - Test each phase before moving forward
+- **Keep rollback option** - Can revert if issues arise
+
+### ✅ Production Plan
+- **Start with self-hosted** - Local Supabase Docker stack
+- **Production decision deferred** - Can switch to Supabase Cloud later if needed
