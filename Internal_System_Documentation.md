@@ -64,6 +64,82 @@ This document reflects the approved architecture decision: remove legacy Postgre
 
 ## Current Session Progress (2026-01-17)
 
+### Latest Update (23:45) - Legacy query() Audit Complete ✅
+**Context:** Comprehensive audit of all backend routes to eliminate legacy PostgreSQL `query()` calls and migrate to Supabase client.
+
+**Routes Fully Migrated** (11 files):
+1. **timesheets.ts** - 4 query() calls fixed
+   - Activity logging: Commented out (activity_logs table not migrated)
+   - Project cost updates: Migrated to Supabase RPC `increment_project_cost` with SELECT+UPDATE fallback
+   
+2. **permissions.ts** - 4 query() calls fixed (all activity logging)
+
+3. **role-permissions.ts** - 1 query() call fixed (activity logging)
+
+4. **costCenters.ts** - 1 query() call fixed (activity logging)
+
+5. **files.ts** - 2 active query() calls fixed
+   - Company logo setting update: Migrated to Supabase
+   - Activity logging: Commented out
+   - processDocumentOCR function: Disabled entirely (document_scans table doesn't exist)
+
+6. **projects.ts** - 2 query() calls fixed (activity logging) [Previous session]
+
+7. **activityTypes.ts** - 3 query() calls fixed (activity logging) [Previous session]
+
+8. **users.ts** - 4 query() calls fixed (activity logging) [Previous session]
+
+9. **clients.ts** - 3 query() calls fixed (activity logging) [Previous session]
+
+10. **settings.ts** - Fully migrated + activity logs disabled [Previous session]
+
+11. **health.ts** - 1 query() call (SELECT 1 health check) - KEPT intentionally
+
+**Routes Disabled** (queries unreachable):
+- **xero.ts** - 170+ query() calls (middleware returns 503)
+- **safetyDocuments.ts** - ~20 query() calls (middleware returns 501)
+- **documentScan.ts** - ~15 query() calls in GET/PUT/DELETE (disabled via middleware)
+- **backups.ts** - ~25 query() calls (middleware returns 503)
+
+**Remaining Work:**
+- **auth.ts** - 15 query() calls (HIGH PRIORITY)
+  - Active endpoints: PUT /profile, PUT /change-password (used by UserSettings page)
+  - Unused endpoints: POST /register, POST /login, GET /me (frontend uses Supabase Auth directly)
+  - Strategy: Migrate profile/password endpoints to use Supabase user metadata + public.users table
+
+**Migration Patterns Applied:**
+```typescript
+// Activity Logging (commented out pattern)
+// TODO: Implement activity logging in Supabase
+/* await query('INSERT INTO activity_logs ...', [params]); */
+
+// Project Cost Update (Supabase RPC with fallback)
+const { error } = await supabase.rpc('increment_project_cost', { 
+  project_id, 
+  amount 
+});
+if (error) {
+  // Fallback: SELECT + UPDATE
+  const { data: project } = await supabase.from('projects')
+    .select('actual_cost').eq('id', project_id).single();
+  await supabase.from('projects')
+    .update({ actual_cost: current + amount })
+    .eq('id', project_id);
+}
+
+// Settings Update (Supabase client)
+await supabase.from('settings')
+  .update({ value, updated_at: new Date().toISOString() })
+  .eq('key', 'setting_key');
+```
+
+**Git Status:** 8 commits pushed to feature/supabase-migration
+- 6e49ed2: fix: remove legacy query() from timesheets, permissions, role-permissions
+- a24b749: fix: migrate files.ts and costCenters.ts legacy query() calls
+- da0dc12: docs: update memory with comprehensive audit summary
+
+**Testing Status:** Backend rebuilding with all fixes applied
+
 ### Completed Milestones
 1. **Frontend Auth Integration**: AuthContext fully refactored to use Supabase Auth SDK; signup/login working with profile + permissions loading.
 2. **First-Time Admin Setup**: Wizard component implemented (4-step flow); auto-redirects unauthenticated users on first login.

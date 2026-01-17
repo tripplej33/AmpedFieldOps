@@ -69,3 +69,36 @@
   - Issue: Frontend initially pointed to http://127.0.0.1:54321, inaccessible from browser on remote network.
   - Fix: Updated to https://supabase.ampedlogix.com (via Nginx Proxy Manager) so browser can reach Supabase Auth.
   - Lesson: Test VITE_SUPABASE_URL from actual client browser, not just from inside Docker.
+
+## Supabase Migration Patterns (2026-01-17)
+
+### Legacy query() Audit Learnings
+- **Activity Logging Pattern**: All activity_logs table INSERT queries can be safely commented out during migration. The activity_logs table was never migrated to Supabase, and activity logging is a non-critical feature. Pattern used:
+  ```typescript
+  // TODO: Implement activity logging in Supabase
+  /* await query('INSERT INTO activity_logs ...', [params]); */
+  ```
+
+- **Project Cost Updates Need Arithmetic**: Simple Supabase `.update()` cannot do `actual_cost = actual_cost + amount`. Must use either:
+  1. **Supabase RPC function** (preferred): Create `increment_project_cost(project_id uuid, amount numeric)` in migration
+  2. **SELECT + UPDATE fallback**: Fetch current value, calculate new value, then update
+  
+- **Document Processing Dead Code**: `processDocumentOCR` function and all related document_scans/document_matches queries were dead code (tables never migrated). Should be disabled early with clear error messages rather than let them fail silently.
+
+- **Settings Table Migration**: Legacy `settings` table with key-value pairs migrated successfully to Supabase. Use `.upsert()` for idempotent updates and handle `updated_at` explicitly since Supabase doesn't auto-update timestamps.
+
+- **Disabled Routes Are Safe**: Routes disabled via early middleware return (503/501) don't need query() migration. Their query() calls are unreachable. Verified for: xero.ts (170+ calls), safetyDocuments.ts (~20 calls), backups.ts (~25 calls).
+
+- **Auth Route Complexity**: Backend auth.ts has 15+ query() calls but only PUT /profile and PUT /change-password are actively used. POST /register and POST /login are unused (frontend uses Supabase Auth directly). Selective migration needed.
+
+- **Health Check Queries Are Acceptable**: Simple `SELECT 1` health checks can remain as legacy query() calls - they don't depend on specific tables and provide useful diagnostics.
+
+### Multi-Replace Conflicts
+- When using `multi_replace_string_in_file` on the same file, edits can conflict if they overlap or change line numbers. Solution: Do one replacement at a time or ensure no overlap between target strings.
+
+### Query() Call Categories
+1. **Activity Logging** - Comment out (table doesn't exist)
+2. **Business Logic** - Migrate to Supabase client (.select(), .insert(), .update(), .delete())
+3. **Arithmetic Operations** - Use RPC or SELECT+UPDATE
+4. **Dead Code** - Disable function entirely with early error throw
+5. **Health Checks** - Safe to keep
