@@ -1,6 +1,5 @@
-// Use empty string as API_URL since endpoints already include /api prefix
-// Nginx will proxy /api requests to backend
-const API_URL = '';
+// Use VITE_API_URL from environment, fall back to empty string for relative URLs
+const API_URL = import.meta.env.VITE_API_URL || '';
 
 import type { DocumentScan, DocumentMatch } from '@/types';
 
