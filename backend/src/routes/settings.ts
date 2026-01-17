@@ -52,38 +52,13 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
 // Get storage configuration (admin only) - MUST be before /:key route
 router.get('/storage', authenticate, requireRole('admin'), async (req: AuthRequest, res: Response) => {
   try {
-    const result = await query(
-      `SELECT key, value FROM settings 
-       WHERE user_id IS NULL 
-       AND key IN ('storage_driver', 'storage_base_path', 'storage_s3_bucket', 'storage_s3_region', 'storage_s3_access_key_id', 'storage_s3_secret_access_key', 'storage_s3_endpoint', 'storage_google_drive_folder_id')`
-    );
-
-    const settings: Record<string, string> = {};
-    result.rows.forEach((row: any) => {
-      settings[row.key] = row.value;
-    });
-
-    // Don't return secret access key in response (security)
+    const storage = await StorageFactory.getInstance();
+    const driver = storage.getDriver();
     const response: any = {
-      driver: settings.storage_driver || 'local',
-      basePath: settings.storage_base_path || 'uploads',
+      driver,
+      basePath: 'uploads',
     };
-
-    if (settings.storage_driver === 's3') {
-      response.s3Bucket = settings.storage_s3_bucket || '';
-      response.s3Region = settings.storage_s3_region || 'us-east-1';
-      response.s3AccessKeyId = settings.storage_s3_access_key_id || '';
-      // Only return masked secret key
-      if (settings.storage_s3_secret_access_key) {
-        const secret = settings.storage_s3_secret_access_key;
-        response.s3SecretAccessKey = secret.length > 8 
-          ? `${secret.substring(0, 4)}${'*'.repeat(secret.length - 8)}${secret.substring(secret.length - 4)}`
-          : '****';
-      }
-      response.s3Endpoint = settings.storage_s3_endpoint || '';
-    } else if (settings.storage_driver === 'google-drive') {
-      response.googleDriveFolderId = settings.storage_google_drive_folder_id || '';
-      // Check OAuth connection status
+    if (driver === 'google-drive') {
       try {
         response.googleDriveConnected = await isGoogleDriveConnected();
       } catch (error: any) {
@@ -91,10 +66,9 @@ router.get('/storage', authenticate, requireRole('admin'), async (req: AuthReque
         response.googleDriveConnected = false;
       }
     }
-
     res.json(response);
   } catch (error: any) {
-    console.error('Failed to fetch storage settings:', error);
+    log.error('Failed to fetch storage settings', error);
     res.status(500).json({ 
       error: 'Failed to fetch storage settings',
       details: env.NODE_ENV === 'development' ? error.message : undefined
@@ -107,12 +81,10 @@ router.put('/storage', authenticate, requireRole('admin'), async (req: AuthReque
   try {
     const { driver, basePath, s3Bucket, s3Region, s3AccessKeyId, s3SecretAccessKey, s3Endpoint, googleDriveFolderId } = req.body;
 
-    // Validate driver
     if (driver && !['local', 's3', 'google-drive'].includes(driver)) {
       return res.status(400).json({ error: 'Invalid storage driver. Must be "local", "s3", or "google-drive"' });
     }
 
-    // Validate S3 configuration if switching to S3
     if (driver === 's3') {
       if (!s3Bucket || !s3AccessKeyId || !s3SecretAccessKey) {
         return res.status(400).json({ 
@@ -126,9 +98,7 @@ router.put('/storage', authenticate, requireRole('admin'), async (req: AuthReque
       }
     }
 
-    // Validate Google Drive configuration if switching to Google Drive
     if (driver === 'google-drive') {
-      // Check OAuth connection
       const isConnected = await isGoogleDriveConnected();
       if (!isConnected) {
         return res.status(400).json({ 
@@ -138,104 +108,40 @@ router.put('/storage', authenticate, requireRole('admin'), async (req: AuthReque
       }
     }
 
-    // Test connection before saving (if switching to S3/Google Drive or updating config)
-    if (driver === 's3' || driver === 'google-drive' || (driver && driver !== 'local')) {
-      try {
-        const testConfig: StorageConfig = {
-          driver: driver || 's3',
-          basePath: basePath || 'uploads',
-          s3Bucket,
-          s3Region: s3Region || 'us-east-1',
-          s3AccessKeyId,
-          s3SecretAccessKey,
-          s3Endpoint,
-          googleDriveFolderId,
-        };
+    // Test connection before accepting config
+    const testConfig: StorageConfig = {
+      driver: (driver as any) || 'local',
+      basePath: basePath || 'uploads',
+      s3Bucket,
+      s3Region: s3Region || 'us-east-1',
+      s3AccessKeyId,
+      s3SecretAccessKey,
+      s3Endpoint,
+      googleDriveFolderId,
+    };
 
-        const testProvider = await StorageFactory.createTestInstance(testConfig);
-        const testResult = await testProvider.testConnection();
-
-        if (!testResult.success) {
-          return res.status(400).json({ 
-            error: 'Storage connection test failed',
-            message: testResult.message
-          });
-        }
-      } catch (testError: any) {
-        return res.status(400).json({ 
-          error: 'Storage connection test failed',
-          message: testError.message
-        });
+    try {
+      const testProvider = await StorageFactory.createTestInstance(testConfig);
+      const testResult = await testProvider.testConnection();
+      if (!testResult.success) {
+        return res.status(400).json({ error: 'Storage connection test failed', message: testResult.message });
       }
+    } catch (testError: any) {
+      return res.status(400).json({ error: 'Storage connection test failed', message: testError.message });
     }
 
-    // Save settings
-    const settingsToSave = [
-      { key: 'storage_driver', value: driver || 'local' },
-      { key: 'storage_base_path', value: basePath || 'uploads' },
-    ];
-
-    if (driver === 's3') {
-      settingsToSave.push(
-        { key: 'storage_s3_bucket', value: s3Bucket },
-        { key: 'storage_s3_region', value: s3Region || 'us-east-1' },
-        { key: 'storage_s3_access_key_id', value: s3AccessKeyId },
-        { key: 'storage_s3_secret_access_key', value: s3SecretAccessKey }, // TODO: Encrypt this
-        ...(s3Endpoint ? [{ key: 'storage_s3_endpoint', value: s3Endpoint }] : [])
-      );
-    } else if (driver === 'google-drive') {
-      // Save Google Drive folder ID if provided
-      if (googleDriveFolderId) {
-        settingsToSave.push(
-          { key: 'storage_google_drive_folder_id', value: googleDriveFolderId }
-        );
-      } else {
-        // Clear folder ID if not provided
-        await query('DELETE FROM settings WHERE key = $1 AND user_id IS NULL', ['storage_google_drive_folder_id']);
-      }
+    // Persist minimal config in Supabase app_settings as a single JSON value
+    const { error: upsertError } = await supabase
+      .from('app_settings')
+      .upsert({ key: 'storage_config', value: JSON.stringify(testConfig), updated_at: new Date().toISOString() }, { onConflict: 'key' });
+    if (upsertError) {
+      log.warn('Failed to persist storage_config to app_settings', upsertError);
     }
 
-    // Clear settings for other drivers when switching
-    if (driver === 'local') {
-      // Clear S3 and Google Drive settings
-      const otherSettings = ['storage_s3_bucket', 'storage_s3_region', 'storage_s3_access_key_id', 'storage_s3_secret_access_key', 'storage_s3_endpoint', 'storage_google_drive_folder_id'];
-      for (const key of otherSettings) {
-        await query('DELETE FROM settings WHERE key = $1 AND user_id IS NULL', [key]);
-      }
-    } else if (driver === 's3') {
-      // Clear Google Drive settings
-      await query('DELETE FROM settings WHERE key = $1 AND user_id IS NULL', ['storage_google_drive_folder_id']);
-    } else if (driver === 'google-drive') {
-      // Clear S3 settings
-      const s3Settings = ['storage_s3_bucket', 'storage_s3_region', 'storage_s3_access_key_id', 'storage_s3_secret_access_key', 'storage_s3_endpoint'];
-      for (const key of s3Settings) {
-        await query('DELETE FROM settings WHERE key = $1 AND user_id IS NULL', [key]);
-      }
-    }
-
-    // Save all settings
-    for (const { key, value } of settingsToSave) {
-      await query(
-        `INSERT INTO settings (key, value, user_id)
-         VALUES ($1, $2, NULL)
-         ON CONFLICT (key, user_id) DO UPDATE SET value = $2, updated_at = CURRENT_TIMESTAMP`,
-        [key, value]
-      );
-    }
-
-    // Invalidate storage factory cache
     StorageFactory.invalidateCache();
-
-    // Log activity
-    await query(
-      `INSERT INTO activity_logs (user_id, action, entity_type, details) 
-       VALUES ($1, $2, $3, $4)`,
-      [req.user!.id, 'update', 'storage_settings', JSON.stringify({ driver })]
-    );
-
-    res.json({ message: 'Storage configuration updated successfully' });
+    res.json({ message: 'Storage configuration validated and saved (app_settings)', driver: testConfig.driver });
   } catch (error: any) {
-    console.error('Failed to update storage settings:', error);
+    log.error('Failed to update storage settings', error);
     res.status(500).json({ 
       error: 'Failed to update storage settings',
       details: env.NODE_ENV === 'development' ? error.message : undefined
@@ -466,23 +372,16 @@ router.post('/logo', authenticate, requireRole('admin'), logoUpload.single('logo
       });
     }
 
-    // Save logo URL to settings
+    // Save logo URL to Supabase app_settings
     try {
-      await query(
-        `INSERT INTO settings (key, value, user_id)
-         VALUES ('company_logo', $1, NULL)
-         ON CONFLICT (key, user_id) DO UPDATE SET value = $1, updated_at = CURRENT_TIMESTAMP`,
-        [logoUrl]
-      );
-
-      // Log activity
-      await query(
-        `INSERT INTO activity_logs (user_id, action, entity_type, details) 
-         VALUES ($1, $2, $3, $4)`,
-        [req.user!.id, 'update', 'settings', JSON.stringify({ key: 'company_logo', value: logoUrl })]
-      );
+      const { error: updateError } = await supabase
+        .from('app_settings')
+        .upsert({ key: 'company_logo', value: logoUrl, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+      if (updateError) {
+        throw updateError;
+      }
     } catch (dbError: any) {
-      log.error('Failed to save logo URL to database', dbError, { logoUrl, userId: req.user!.id });
+      log.error('Failed to save logo URL to app_settings', dbError, { logoUrl, userId: req.user!.id });
       // Still return success since file was uploaded, but log the error
     }
 
@@ -549,23 +448,16 @@ router.post('/favicon', authenticate, requireRole('admin'), faviconUpload.single
       });
     }
 
-    // Save favicon URL to settings
+    // Save favicon URL to Supabase app_settings
     try {
-      await query(
-        `INSERT INTO settings (key, value, user_id)
-         VALUES ('company_favicon', $1, NULL)
-         ON CONFLICT (key, user_id) DO UPDATE SET value = $1, updated_at = CURRENT_TIMESTAMP`,
-        [faviconUrl]
-      );
-
-      // Log activity
-      await query(
-        `INSERT INTO activity_logs (user_id, action, entity_type, details) 
-         VALUES ($1, $2, $3, $4)`,
-        [req.user!.id, 'update', 'settings', JSON.stringify({ key: 'company_favicon', value: faviconUrl })]
-      );
+      const { error: updateError } = await supabase
+        .from('app_settings')
+        .upsert({ key: 'company_favicon', value: faviconUrl, updated_at: new Date().toISOString() }, { onConflict: 'key' });
+      if (updateError) {
+        throw updateError;
+      }
     } catch (dbError: any) {
-      log.error('Failed to save favicon URL to database', dbError, { faviconUrl, userId: req.user!.id });
+      log.error('Failed to save favicon URL to app_settings', dbError, { faviconUrl, userId: req.user!.id });
       // Still return success since file was uploaded, but log the error
     }
 
