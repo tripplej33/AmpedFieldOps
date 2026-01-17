@@ -1,8 +1,11 @@
 import { Router, Response } from 'express';
 import { query } from '../db';
+import { supabase as supabaseClient } from '../db/supabase';
 import { authenticate, requireRole, AuthRequest } from '../middleware/auth';
+import { log } from '../lib/logger';
 
 const router = Router();
+const supabase = supabaseClient!;
 
 // Define all available permissions with descriptions
 const ALL_PERMISSIONS = [
@@ -30,12 +33,15 @@ const ALL_PERMISSIONS = [
 router.get('/', authenticate, requireRole('admin'), async (req: AuthRequest, res: Response) => {
   try {
     // Get all permissions from database
-    const permResult = await query('SELECT key, label, description FROM permissions WHERE is_active = true ORDER BY key');
-    const dbPermissions = permResult.rows;
+    const { data: dbPermissions } = await supabase
+      .from('permissions')
+      .select('key, label, description')
+      .eq('is_active', true)
+      .order('key', { ascending: true });
     
     // Merge with predefined permissions (database takes precedence)
     const permissions = ALL_PERMISSIONS.map(perm => {
-      const dbPerm = dbPermissions.find(p => p.key === perm.key);
+      const dbPerm = (dbPermissions || []).find(p => p.key === perm.key);
       return dbPerm || perm;
     });
 
@@ -45,22 +51,23 @@ router.get('/', authenticate, requireRole('admin'), async (req: AuthRequest, res
 
     for (const role of roles) {
       // Get all users with this role
-      const usersResult = await query(
-        'SELECT id FROM users WHERE role = $1 LIMIT 1',
-        [role]
-      );
+      const { data: users } = await supabase
+        .from('users')
+        .select('id')
+        .eq('role', role)
+        .limit(1);
 
-      if (usersResult.rows.length > 0) {
+      if ((users || []).length > 0) {
         // Get permissions for a user with this role (as a sample)
-        const userId = usersResult.rows[0].id;
-        const userPermsResult = await query(
-          'SELECT permission, granted FROM user_permissions WHERE user_id = $1',
-          [userId]
-        );
+        const userId = users![0].id;
+        const { data: userPerms } = await supabase
+          .from('user_permissions')
+          .select('permission, granted')
+          .eq('user_id', userId);
 
         // Build permission map
         const permMap: Record<string, boolean> = {};
-        userPermsResult.rows.forEach((row: any) => {
+        (userPerms || []).forEach((row: any) => {
           permMap[row.permission] = row.granted;
         });
 
@@ -138,7 +145,7 @@ router.get('/', authenticate, requireRole('admin'), async (req: AuthRequest, res
       rolePermissions
     });
   } catch (error) {
-    console.error('Failed to fetch role permissions:', error);
+    log.error('Get role permissions error', error, { userId: req.user?.id });
     res.status(500).json({ error: 'Failed to fetch role permissions' });
   }
 });
@@ -159,35 +166,53 @@ router.put('/', authenticate, requireRole('admin'), async (req: AuthRequest, res
       }
 
       // Get all users with this role
-      const usersResult = await query('SELECT id FROM users WHERE role = $1', [role]);
+      const { data: users } = await supabase
+        .from('users')
+        .select('id')
+        .eq('role', role);
 
-      for (const user of usersResult.rows) {
+      for (const user of (users || [])) {
         // Delete existing permissions
-        await query('DELETE FROM user_permissions WHERE user_id = $1', [user.id]);
+        await supabase
+          .from('user_permissions')
+          .delete()
+          .eq('user_id', user.id);
 
         // Insert new permissions
         const permMap = permissions as Record<string, boolean>;
+        const toInsert = [];
         for (const [permission, granted] of Object.entries(permMap)) {
           if (granted) {
-            await query(
-              'INSERT INTO user_permissions (user_id, permission, granted) VALUES ($1, $2, true)',
-              [user.id, permission]
-            );
+            toInsert.push({
+              user_id: user.id,
+              permission,
+              granted: true
+            });
           }
+        }
+
+        if (toInsert.length > 0) {
+          await supabase
+            .from('user_permissions')
+            .insert(toInsert);
         }
       }
     }
 
     // Log activity
-    await query(
-      `INSERT INTO activity_logs (user_id, action, entity_type, details) 
-       VALUES ($1, $2, $3, $4)`,
-      [req.user!.id, 'update_role_permissions', 'role', JSON.stringify({ rolePermissions })]
-    );
+    try {
+      await query(
+        `INSERT INTO activity_logs (user_id, action, entity_type, details) 
+         VALUES ($1, $2, $3, $4)`,
+        [req.user!.id, 'update_role_permissions', 'role', JSON.stringify({ rolePermissions })]
+      );
+    } catch (logError) {
+      log.warn('Failed to log activity', { error: logError });
+    }
 
     res.json({ message: 'Role permissions updated successfully' });
   } catch (error) {
-    console.error('Failed to update role permissions:', error);
+    log.error('Update role permissions error', error, { userId: req.user?.id });
     res.status(500).json({ error: 'Failed to update role permissions' });
   }
 });
