@@ -12,6 +12,7 @@ import { log } from '../lib/logger';
 import { StorageFactory } from '../lib/storage/StorageFactory';
 import { generatePartitionedPath, resolveStoragePath } from '../lib/storage/pathUtils';
 import { bufferToStream } from '../middleware/upload';
+import { supabase } from '../lib/supabase';
 
 const router = Router();
 
@@ -25,7 +26,7 @@ const uploadLimiter = rateLimit({
 // Get all timesheets
 router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const { user_id, project_id, client_id, date_from, date_to, cost_center_id } = req.query;
+    const { user_id, project_id, client_id, date_from, date_to, cost_center_id, billing_status } = req.query;
     
     // Parse pagination parameters
     const { page, limit, offset } = parsePaginationParams(req.query);
@@ -34,103 +35,82 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
     const canViewAll = req.user!.role === 'admin' || 
                        req.user!.role === 'manager' || 
                        (req.user!.permissions && req.user!.permissions.includes('can_view_all_timesheets'));
-    
-    // Build WHERE clause for both count and data queries
-    let whereClause = 'WHERE 1=1';
-    const params: any[] = [];
-    let paramCount = 1;
 
-    // If user can't view all, only show their own
+    // Build Supabase query
+    let query_builder = supabase
+      .from('timesheets')
+      .select(`
+        *,
+        users(id, name),
+        projects(id, name, code),
+        clients(id, name),
+        activity_types(id, name, icon, color, hourly_rate),
+        cost_centers(id, code, name)
+      `, { count: 'exact' });
+
+    // Apply user filter
     if (!canViewAll) {
-      whereClause += ` AND t.user_id = $${paramCount++}`;
-      params.push(req.user!.id);
+      query_builder = query_builder.eq('user_id', req.user!.id);
     } else if (user_id) {
-      whereClause += ` AND t.user_id = $${paramCount++}`;
-      params.push(user_id);
+      query_builder = query_builder.eq('user_id', user_id);
     }
 
+    // Apply additional filters
     if (project_id) {
-      whereClause += ` AND t.project_id = $${paramCount++}`;
-      params.push(project_id);
+      query_builder = query_builder.eq('project_id', project_id);
     }
-
     if (client_id) {
-      whereClause += ` AND t.client_id = $${paramCount++}`;
-      params.push(client_id);
+      query_builder = query_builder.eq('client_id', client_id);
     }
-
     if (cost_center_id) {
-      whereClause += ` AND t.cost_center_id = $${paramCount++}`;
-      params.push(cost_center_id);
+      query_builder = query_builder.eq('cost_center_id', cost_center_id);
     }
-
     if (date_from) {
-      whereClause += ` AND t.date >= $${paramCount++}`;
-      params.push(date_from);
+      query_builder = query_builder.gte('date', date_from);
     }
-
     if (date_to) {
-      whereClause += ` AND t.date <= $${paramCount++}`;
-      params.push(date_to);
+      query_builder = query_builder.lte('date', date_to);
     }
-
-    // Filter by billing status if provided
-    const billing_status = req.query.billing_status;
     if (billing_status) {
-      whereClause += ` AND COALESCE(t.billing_status, 'unbilled') = $${paramCount++}`;
-      params.push(billing_status);
+      query_builder = query_builder.eq('billing_status', billing_status);
     }
 
-    // Get total count
-    const countSql = `
-      SELECT COUNT(*) as total 
-      FROM timesheets t
-      LEFT JOIN projects p ON t.project_id = p.id
-      LEFT JOIN clients c ON t.client_id = c.id
-      ${whereClause}
-    `;
-    const countResult = await query(countSql, params);
-    const total = parseInt(countResult.rows[0].total);
+    // Apply ordering and pagination
+    query_builder = query_builder
+      .order('date', { ascending: false })
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
 
-    // Build data query
-    let sql = `
-      SELECT t.*, 
-        u.name as user_name,
-        p.name as project_name,
-        p.code as project_code,
-        c.name as client_name,
-        at.name as activity_type_name,
-        at.icon as activity_type_icon,
-        at.color as activity_type_color,
-        cc.code as cost_center_code,
-        cc.name as cost_center_name,
-        COALESCE(t.billing_status, 'unbilled') as billing_status,
-        t.invoice_id
-      FROM timesheets t
-      LEFT JOIN users u ON t.user_id = u.id
-      LEFT JOIN projects p ON t.project_id = p.id
-      LEFT JOIN clients c ON t.client_id = c.id
-      LEFT JOIN activity_types at ON t.activity_type_id = at.id
-      LEFT JOIN cost_centers cc ON t.cost_center_id = cc.id
-      ${whereClause}
-      ORDER BY t.date DESC, t.created_at DESC
-    `;
-    
-    // Add pagination
-    sql += ` LIMIT $${paramCount++} OFFSET $${paramCount++}`;
-    params.push(limit, offset);
+    const { data, error, count } = await query_builder;
 
-    const result = await query(sql, params);
-    
+    if (error) {
+      log.error('Supabase query error', error, { userId: req.user?.id });
+      return res.status(500).json({ error: 'Failed to fetch timesheets' });
+    }
+
+    // Transform Supabase response to match expected format
+    const timesheets = data!.map((ts: any) => ({
+      ...ts,
+      user_name: ts.users?.name,
+      project_name: ts.projects?.name,
+      project_code: ts.projects?.code,
+      client_name: ts.clients?.name,
+      activity_type_name: ts.activity_types?.name,
+      activity_type_icon: ts.activity_types?.icon,
+      activity_type_color: ts.activity_types?.color,
+      cost_center_code: ts.cost_centers?.code,
+      cost_center_name: ts.cost_centers?.name,
+      billing_status: ts.billing_status || 'unbilled'
+    }));
+
     // Return paginated response
-    const paginatedResponse = createPaginatedResponse(result.rows, total, page, limit);
+    const paginatedResponse = createPaginatedResponse(timesheets, count || 0, page, limit);
     res.json(paginatedResponse);
   } catch (error: any) {
     log.error('Get timesheets error', error, { 
       userId: req.user?.id, 
       query: req.query,
-      errorMessage: error?.message,
-      errorStack: error?.stack 
+      errorMessage: error?.message
     });
     res.status(500).json({ 
       error: 'Failed to fetch timesheets',
@@ -142,27 +122,25 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
 // Get single timesheet
 router.get('/:id', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const result = await query(
-      `      SELECT t.*, 
-        u.name as user_name,
-        p.name as project_name,
-        c.name as client_name,
-        at.name as activity_type_name,
-        cc.code as cost_center_code,
-        COALESCE(t.billing_status, 'unbilled') as billing_status,
-        t.invoice_id
-       FROM timesheets t
-       LEFT JOIN users u ON t.user_id = u.id
-       LEFT JOIN projects p ON t.project_id = p.id AND p.deleted_at IS NULL
-       LEFT JOIN clients c ON t.client_id = c.id AND c.deleted_at IS NULL
-       LEFT JOIN activity_types at ON t.activity_type_id = at.id
-       LEFT JOIN cost_centers cc ON t.cost_center_id = cc.id
-       WHERE t.id = $1`,
-      [req.params.id]
-    );
+    const { data: timesheet, error } = await supabase
+      .from('timesheets')
+      .select(`
+        *,
+        users(id, name),
+        projects(id, name),
+        clients(id, name),
+        activity_types(id, name),
+        cost_centers(id, code)
+      `)
+      .eq('id', req.params.id)
+      .single();
 
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Timesheet not found' });
+    if (error) {
+      if (error.code === 'PGRST116') { // Not found
+        return res.status(404).json({ error: 'Timesheet not found' });
+      }
+      log.error('Supabase query error', error, { timesheetId: req.params.id });
+      return res.status(500).json({ error: 'Failed to fetch timesheet' });
     }
 
     // Check permission
@@ -170,12 +148,24 @@ router.get('/:id', authenticate, async (req: AuthRequest, res: Response) => {
                        req.user!.role === 'manager' || 
                        (req.user!.permissions && req.user!.permissions.includes('can_view_all_timesheets'));
     
-    if (!canViewAll && result.rows[0].user_id !== req.user!.id) {
+    if (!canViewAll && timesheet.user_id !== req.user!.id) {
       return res.status(403).json({ error: 'Not authorized to view this timesheet' });
     }
 
-    res.json(result.rows[0]);
-  } catch (error) {
+    // Transform response
+    const response = {
+      ...timesheet,
+      user_name: timesheet.users?.name,
+      project_name: timesheet.projects?.name,
+      client_name: timesheet.clients?.name,
+      activity_type_name: timesheet.activity_types?.name,
+      cost_center_code: timesheet.cost_centers?.code,
+      billing_status: timesheet.billing_status || 'unbilled'
+    };
+
+    res.json(response);
+  } catch (error: any) {
+    log.error('Get timesheet error', error, { userId: req.user?.id, timesheetId: req.params.id });
     res.status(500).json({ error: 'Failed to fetch timesheet' });
   }
 });
@@ -330,9 +320,13 @@ router.post('/', authenticate, uploadLimiter,
       // Get client_id from project if not provided
       let finalClientId = client_id;
       if (!finalClientId) {
-        const project = await query('SELECT client_id FROM projects WHERE id = $1', [project_id]);
-        if (project.rows.length > 0) {
-          finalClientId = project.rows[0].client_id;
+        const { data: project } = await supabase
+          .from('projects')
+          .select('client_id')
+          .eq('id', project_id)
+          .single();
+        if (project) {
+          finalClientId = project.client_id;
         }
       }
 
@@ -350,65 +344,70 @@ router.post('/', authenticate, uploadLimiter,
         }
       }
 
-      const result = await query(
-        `INSERT INTO timesheets (user_id, project_id, client_id, date, hours, activity_type_id, cost_center_id, notes, image_urls, location, billing_status)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'unbilled')
-         RETURNING *`,
-        [userId, project_id, finalClientId, timesheetDate, timesheetHours, timesheetActivityTypeId, timesheetCostCenterId, notes, imageUrls, location]
-      );
+      // Create timesheet in Supabase
+      const { data: newTimesheet, error: insertError } = await supabase
+        .from('timesheets')
+        .insert([{
+          user_id: userId,
+          project_id,
+          client_id: finalClientId,
+          date: timesheetDate,
+          hours: timesheetHours,
+          activity_type_id: timesheetActivityTypeId,
+          cost_center_id: timesheetCostCenterId,
+          notes,
+          image_urls: imageUrls,
+          location,
+          billing_status: 'unbilled'
+        }])
+        .select()
+        .single();
+
+      if (insertError) {
+        log.error('Failed to create timesheet', insertError, { userId: req.user!.id, project_id });
+        
+        if (insertError.code === '23503') { // Foreign key violation
+          return res.status(400).json({ error: 'Invalid project, activity type, or cost center' });
+        }
+        return res.status(500).json({ error: 'Failed to create timesheet' });
+      }
 
       // Update project actual_cost based on activity hourly rate
-      const activityType = await query('SELECT hourly_rate FROM activity_types WHERE id = $1', [timesheetActivityTypeId]);
-      if (activityType.rows.length > 0) {
-        const cost = timesheetHours * parseFloat(activityType.rows[0].hourly_rate);
-        await query(
-          'UPDATE projects SET actual_cost = actual_cost + $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
-          [cost, project_id]
-        );
+      const { data: activityType } = await supabase
+        .from('activity_types')
+        .select('hourly_rate')
+        .eq('id', timesheetActivityTypeId)
+        .single();
+
+      if (activityType && activityType.hourly_rate) {
+        const cost = timesheetHours * parseFloat(activityType.hourly_rate);
+        await supabase
+          .from('projects')
+          .update({ actual_cost: supabase.rpc('update_with_math', { id: project_id, amount: cost }) })
+          .eq('id', project_id);
       }
 
       // Log activity
-      await query(
-        `INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) 
-         VALUES ($1, $2, $3, $4, $5)`,
-        [req.user!.id, 'create', 'timesheet', result.rows[0].id, JSON.stringify({ project_id, hours: timesheetHours, date: timesheetDate })]
-      );
+      try {
+        await query(
+          `INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) 
+           VALUES ($1, $2, $3, $4, $5)`,
+          [req.user!.id, 'create', 'timesheet', newTimesheet.id, JSON.stringify({ project_id, hours: timesheetHours, date: timesheetDate })]
+        );
+      } catch (logError) {
+        log.warn('Failed to log activity', { error: logError });
+      }
 
-      res.status(201).json(result.rows[0]);
+      res.status(201).json(newTimesheet);
     } catch (error: any) {
       log.error('Create timesheet error', error, { 
         userId: req.user!.id, 
         project_id,
-        errorMessage: error?.message,
-        errorStack: error?.stack,
-        errorCode: error?.code,
-        body: req.body
+        errorMessage: error?.message
       });
-      
-      // Provide more specific error messages
-      let errorMessage = 'Failed to create timesheet';
-      let statusCode = 500;
-      
-      if (error?.code === '23503') { // Foreign key violation
-        errorMessage = 'Invalid project, activity type, or cost center';
-        statusCode = 400;
-      } else if (error?.code === '23505') { // Unique violation
-        errorMessage = 'Timesheet already exists';
-        statusCode = 409;
-      } else if (error?.code === '23502') { // Not null violation
-        errorMessage = 'Missing required field';
-        statusCode = 400;
-      } else if (error?.message) {
-        errorMessage = error.message;
-      }
-      
-      res.status(statusCode).json({ 
-        error: errorMessage,
-        details: process.env.NODE_ENV === 'development' ? {
-          message: error?.message,
-          code: error?.code,
-          stack: error?.stack
-        } : undefined
+      res.status(500).json({ 
+        error: 'Failed to create timesheet',
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
       });
     }
   }
@@ -485,27 +484,19 @@ router.put('/:id', authenticate,
       for (const file of files) {
         let storagePath: string | undefined;
         try {
-          // Generate partitioned path
           storagePath = generatePartitionedPath(file.originalname, basePath);
-          
-          // Stream file from memory buffer to storage provider
           const fileStream = bufferToStream(file.buffer);
           await storage.put(storagePath, fileStream, {
             contentType: file.mimetype,
           });
-          
-          // Get URL from storage provider
           const fileUrl = await storage.url(storagePath);
           imageUrls.push(fileUrl);
         } catch (uploadError: any) {
           log.error(`Failed to upload ${file.originalname} to storage`, uploadError, { 
             filename: file.originalname, 
             project_id,
-            storagePath: storagePath || 'unknown',
-            errorMessage: uploadError.message,
-            errorStack: uploadError.stack
+            timesheetId: req.params.id
           });
-          // Don't add to imageUrls if upload failed
         }
       }
       
@@ -526,22 +517,27 @@ router.put('/:id', authenticate,
     }
 
     try {
-      // Check ownership or permission
-      const existing = await query('SELECT user_id, hours, project_id, activity_type_id, COALESCE(billing_status, \'unbilled\') as billing_status FROM timesheets WHERE id = $1', [req.params.id]);
-      if (existing.rows.length === 0) {
+      // Check ownership or permission - fetch existing timesheet via Supabase
+      const { data: existing, error: fetchError } = await supabase
+        .from('timesheets')
+        .select('user_id, hours, project_id, activity_type_id, billing_status, activity_types(hourly_rate)')
+        .eq('id', req.params.id)
+        .single();
+
+      if (fetchError || !existing) {
         return res.status(404).json({ error: 'Timesheet not found' });
       }
 
       const canEdit = req.user!.role === 'admin' || 
                       req.user!.role === 'manager' ||
-                      existing.rows[0].user_id === req.user!.id;
+                      existing.user_id === req.user!.id;
 
       if (!canEdit) {
         return res.status(403).json({ error: 'Not authorized to edit this timesheet' });
       }
 
       // Check if timesheet is billed or paid - cannot edit
-      const billingStatus = existing.rows[0].billing_status || 'unbilled';
+      const billingStatus = existing.billing_status || 'unbilled';
       if (billingStatus === 'billed' || billingStatus === 'paid') {
         return res.status(400).json({ 
           error: 'Cannot edit timesheet that has been billed or paid',
@@ -549,70 +545,79 @@ router.put('/:id', authenticate,
         });
       }
 
-      const updates: string[] = [];
-      const values: any[] = [];
-      let paramCount = 1;
-
-      const fields: Record<string, any> = { 
-        project_id, 
-        date, 
-        hours, 
-        activity_type_id, 
-        cost_center_id, 
-        notes, 
-        image_urls: imageUrls.length > 0 ? imageUrls : undefined,
-        location, 
-        synced 
-      };
+      // Build update object
+      const updateData: any = {};
+      if (project_id !== undefined) updateData.project_id = project_id;
+      if (date !== undefined) updateData.date = date;
+      if (hours !== undefined) updateData.hours = hours;
+      if (activity_type_id !== undefined) updateData.activity_type_id = activity_type_id;
+      if (cost_center_id !== undefined) updateData.cost_center_id = cost_center_id;
+      if (notes !== undefined) updateData.notes = notes;
+      if (imageUrls.length > 0) updateData.image_urls = imageUrls;
+      if (location !== undefined) updateData.location = location;
+      if (synced !== undefined) updateData.synced = synced;
       
       // Add user_id if provided (for admin/manager updating timesheet for other users)
-      if (user_id && user_id !== existing.rows[0].user_id) {
+      if (user_id && user_id !== existing.user_id) {
         const canManageOthers = req.user!.role === 'admin' || 
                                 req.user!.role === 'manager' ||
                                 (req.user!.permissions && req.user!.permissions.includes('can_view_all_timesheets'));
         if (canManageOthers) {
-          fields.user_id = user_id;
-        }
-      }
-      
-      for (const [key, value] of Object.entries(fields)) {
-        if (value !== undefined) {
-          updates.push(`${key} = $${paramCount++}`);
-          values.push(value);
+          updateData.user_id = user_id;
         }
       }
 
-      if (updates.length === 0) {
+      if (Object.keys(updateData).length === 0) {
         return res.status(400).json({ error: 'No updates provided' });
       }
 
-      updates.push('updated_at = CURRENT_TIMESTAMP');
-      values.push(req.params.id);
+      // Update timesheet
+      const { data: updatedTimesheet, error: updateError } = await supabase
+        .from('timesheets')
+        .update(updateData)
+        .eq('id', req.params.id)
+        .select()
+        .single();
 
-      const result = await query(
-        `UPDATE timesheets SET ${updates.join(', ')} WHERE id = $${paramCount} RETURNING *`,
-        values
-      );
+      if (updateError) {
+        log.error('Failed to update timesheet', updateError, { timesheetId: req.params.id });
+        return res.status(500).json({ error: 'Failed to update timesheet' });
+      }
 
       // Update project costs if hours changed
-      if (hours !== undefined && hours !== existing.rows[0].hours) {
-        const oldActivity = await query('SELECT hourly_rate FROM activity_types WHERE id = $1', [existing.rows[0].activity_type_id]);
-        const newActivity = await query('SELECT hourly_rate FROM activity_types WHERE id = $1', [activity_type_id || existing.rows[0].activity_type_id]);
-        
-        if (oldActivity.rows.length > 0 && newActivity.rows.length > 0) {
-          const oldCost = existing.rows[0].hours * parseFloat(oldActivity.rows[0].hourly_rate);
-          const newCost = hours * parseFloat(newActivity.rows[0].hourly_rate);
-          const costDiff = newCost - oldCost;
+      if (hours !== undefined && hours !== existing.hours) {
+        try {
+          const { data: oldActivity } = await supabase
+            .from('activity_types')
+            .select('hourly_rate')
+            .eq('id', existing.activity_type_id)
+            .single();
+
+          const { data: newActivity } = await supabase
+            .from('activity_types')
+            .select('hourly_rate')
+            .eq('id', activity_type_id || existing.activity_type_id)
+            .single();
           
-          await query(
-            'UPDATE projects SET actual_cost = actual_cost + $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
-            [costDiff, project_id || existing.rows[0].project_id]
-          );
+          if (oldActivity && newActivity) {
+            const oldCost = existing.hours * parseFloat(oldActivity.hourly_rate);
+            const newCost = hours * parseFloat(newActivity.hourly_rate);
+            const costDiff = newCost - oldCost;
+            
+            // Use raw query to update actual_cost with arithmetic
+            await query(
+              'UPDATE projects SET actual_cost = actual_cost + $1 WHERE id = $2',
+              [costDiff, project_id || existing.project_id]
+            );
+          }
+        } catch (costError) {
+          log.warn('Failed to update project costs', { error: costError });
         }
       }
 
-      res.json(result.rows[0]);
-    } catch (error) {
+      res.json(updatedTimesheet);
+    } catch (error: any) {
+      log.error('Update timesheet error', error, { userId: req.user?.id, timesheetId: req.params.id });
       res.status(500).json({ error: 'Failed to update timesheet' });
     }
   }
@@ -621,25 +626,27 @@ router.put('/:id', authenticate,
 // Delete timesheet
 router.delete('/:id', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const existing = await query(
-      'SELECT user_id, hours, project_id, activity_type_id, COALESCE(billing_status, \'unbilled\') as billing_status FROM timesheets WHERE id = $1', 
-      [req.params.id]
-    );
+    // Get existing timesheet
+    const { data: existing, error: fetchError } = await supabase
+      .from('timesheets')
+      .select('user_id, hours, project_id, activity_type_id, billing_status, image_urls, activity_types(hourly_rate)')
+      .eq('id', req.params.id)
+      .single();
     
-    if (existing.rows.length === 0) {
+    if (fetchError || !existing) {
       return res.status(404).json({ error: 'Timesheet not found' });
     }
 
     const canDelete = req.user!.role === 'admin' || 
                       req.user!.role === 'manager' ||
-                      existing.rows[0].user_id === req.user!.id;
+                      existing.user_id === req.user!.id;
 
     if (!canDelete) {
       return res.status(403).json({ error: 'Not authorized to delete this timesheet' });
     }
 
     // Check if timesheet is billed or paid - cannot delete
-    const billingStatus = existing.rows[0].billing_status || 'unbilled';
+    const billingStatus = existing.billing_status || 'unbilled';
     if (billingStatus === 'billed' || billingStatus === 'paid') {
       return res.status(400).json({ 
         error: 'Cannot delete timesheet that has been billed or paid',
@@ -647,19 +654,20 @@ router.delete('/:id', authenticate, async (req: AuthRequest, res: Response) => {
       });
     }
 
-    // Get timesheet info for cleanup (including image_urls)
-    const timesheetWithImages = await query(
-      'SELECT image_urls, project_id FROM timesheets WHERE id = $1',
-      [req.params.id]
-    );
-    
-    const timesheetInfo = existing.rows[0];
-    const imageUrls = timesheetWithImages.rows[0]?.image_urls || [];
+    const imageUrls = existing.image_urls || [];
     
     // Delete from database
-    await query('DELETE FROM timesheets WHERE id = $1', [req.params.id]);
+    const { error: deleteError } = await supabase
+      .from('timesheets')
+      .delete()
+      .eq('id', req.params.id);
 
-    // Delete associated image files using storage provider
+    if (deleteError) {
+      log.error('Failed to delete timesheet', deleteError, { timesheetId: req.params.id });
+      return res.status(500).json({ error: 'Failed to delete timesheet' });
+    }
+
+    // Delete associated image files using storage provider (background task)
     if (imageUrls.length > 0) {
       const storage = await StorageFactory.getInstance();
       const cleanupPromises: Promise<void>[] = [];
@@ -680,32 +688,41 @@ router.delete('/:id', authenticate, async (req: AuthRequest, res: Response) => {
       }
 
       // Run cleanup in background (don't block response)
-      Promise.all(cleanupPromises).then(() => {
-        log.info('Timesheet images cleanup completed', { timesheetId: req.params.id, imagesDeleted: cleanupPromises.length });
-      }).catch((err) => {
+      Promise.all(cleanupPromises).catch((err) => {
         log.error('Error during timesheet cleanup', err, { timesheetId: req.params.id });
       });
     }
 
     // Update project costs
-    const activity = await query('SELECT hourly_rate FROM activity_types WHERE id = $1', [existing.rows[0].activity_type_id]);
-    if (activity.rows.length > 0 && existing.rows[0].project_id) {
-      const cost = existing.rows[0].hours * parseFloat(activity.rows[0].hourly_rate);
-      await query(
-        'UPDATE projects SET actual_cost = actual_cost - $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
-        [cost, existing.rows[0].project_id]
-      );
+    try {
+      if (existing.activity_types && existing.project_id) {
+        const hourlyRate = existing.activity_types.hourly_rate;
+        const cost = existing.hours * parseFloat(hourlyRate);
+        
+        // Use raw query to update actual_cost with arithmetic
+        await query(
+          'UPDATE projects SET actual_cost = actual_cost - $1 WHERE id = $2',
+          [cost, existing.project_id]
+        );
+      }
+    } catch (costError) {
+      log.warn('Failed to update project costs', { error: costError });
     }
 
     // Log activity
-    await query(
-      `INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) 
-       VALUES ($1, $2, $3, $4, $5)`,
-      [req.user!.id, 'delete', 'timesheet', req.params.id, JSON.stringify({ hours: existing.rows[0].hours })]
-    );
+    try {
+      await query(
+        `INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) 
+         VALUES ($1, $2, $3, $4, $5)`,
+        [req.user!.id, 'delete', 'timesheet', req.params.id, JSON.stringify({ hours: existing.hours })]
+      );
+    } catch (logError) {
+      log.warn('Failed to log activity', { error: logError });
+    }
 
     res.json({ message: 'Timesheet deleted' });
-  } catch (error) {
+  } catch (error: any) {
+    log.error('Delete timesheet error', error, { userId: req.user?.id, timesheetId: req.params.id });
     res.status(500).json({ error: 'Failed to delete timesheet' });
   }
 });
@@ -714,13 +731,18 @@ router.delete('/:id', authenticate, async (req: AuthRequest, res: Response) => {
 router.post('/:id/images', authenticate,
   async (req: AuthRequest, res: Response, next) => {
     try {
-      // Fetch project_id from timesheet BEFORE multer processes files
-      const timesheet = await query('SELECT project_id FROM timesheets WHERE id = $1', [req.params.id]);
-      if (timesheet.rows.length === 0) {
+      // Fetch timesheet via Supabase
+      const { data: timesheet, error } = await supabase
+        .from('timesheets')
+        .select('project_id')
+        .eq('id', req.params.id)
+        .single();
+
+      if (error || !timesheet) {
         return res.status(404).json({ error: 'Timesheet not found' });
       }
 
-      const project_id = timesheet.rows[0].project_id;
+      const project_id = timesheet.project_id;
       if (!project_id) {
         return res.status(400).json({ error: 'Timesheet does not have an associated project' });
       }
@@ -791,30 +813,40 @@ router.post('/:id/images', authenticate,
       } catch (uploadError: any) {
         log.error(`Failed to upload ${file.originalname} to storage`, uploadError, { 
           filename: file.originalname, 
-          timesheetId: req.params.id,
-          storagePath: storagePath || 'unknown',
-          errorMessage: uploadError.message,
-          errorStack: uploadError.stack
+          timesheetId: req.params.id
         });
-        // Don't add to imageUrls if upload failed
       }
     }
 
-    // Update image URLs
-    const result = await query(
-      `UPDATE timesheets 
-       SET image_urls = array_cat(COALESCE(image_urls, '{}'), $1), 
-           updated_at = CURRENT_TIMESTAMP
-       WHERE id = $2
-       RETURNING image_urls`,
-      [imageUrls, req.params.id]
-    );
+    // Update image URLs via Supabase
+    const { data: updatedTimesheet, error: updateError } = await supabase
+      .from('timesheets')
+      .select('image_urls')
+      .eq('id', req.params.id)
+      .single();
+
+    if (updateError || !updatedTimesheet) {
+      return res.status(404).json({ error: 'Timesheet not found' });
+    }
+
+    const existingUrls = updatedTimesheet.image_urls || [];
+    const allUrls = [...existingUrls, ...imageUrls];
+
+    const { error: updateError2 } = await supabase
+      .from('timesheets')
+      .update({ image_urls: allUrls })
+      .eq('id', req.params.id);
+
+    if (updateError2) {
+      log.error('Failed to update timesheet images', updateError2, { timesheetId: req.params.id });
+      return res.status(500).json({ error: 'Failed to update images' });
+    }
 
     res.json({ 
-      image_urls: result.rows[0].image_urls
+      image_urls: allUrls
     });
-  } catch (error) {
-    log.error('Upload images error', error, { timesheetId: req.params.id, userId: req.user!.id });
+  } catch (error: any) {
+    log.error('Upload images error', error, { timesheetId: req.params.id, userId: req.user?.id });
     res.status(500).json({ error: 'Failed to upload images' });
   }
 });
@@ -829,60 +861,58 @@ router.delete('/:id/images/:index', authenticate, async (req: AuthRequest, res: 
       return res.status(400).json({ error: 'Invalid image index' });
     }
 
-    // Get timesheet with images
-    const timesheet = await query('SELECT image_urls, project_id FROM timesheets WHERE id = $1', [timesheetId]);
-    if (timesheet.rows.length === 0) {
+    // Get timesheet with images via Supabase
+    const { data: timesheet, error: fetchError } = await supabase
+      .from('timesheets')
+      .select('image_urls')
+      .eq('id', timesheetId)
+      .single();
+
+    if (fetchError || !timesheet) {
       return res.status(404).json({ error: 'Timesheet not found' });
     }
 
-    const imageUrls = timesheet.rows[0].image_urls || [];
+    const imageUrls = timesheet.image_urls || [];
     if (imageIndex >= imageUrls.length) {
       return res.status(404).json({ error: 'Image not found' });
     }
 
     // Get image URL to delete file
     const imageUrl = imageUrls[imageIndex];
-    const projectId = timesheet.rows[0].project_id;
 
     // Remove image from array
     const updatedUrls = [...imageUrls];
     updatedUrls.splice(imageIndex, 1);
 
-    // Update database
-    await query(
-      `UPDATE timesheets 
-       SET image_urls = $1, updated_at = CURRENT_TIMESTAMP
-       WHERE id = $2`,
-      [updatedUrls, timesheetId]
-    );
+    // Update database via Supabase
+    const { error: updateError } = await supabase
+      .from('timesheets')
+      .update({ image_urls: updatedUrls })
+      .eq('id', timesheetId);
+
+    if (updateError) {
+      log.error('Failed to update timesheet images', updateError, { timesheetId });
+      return res.status(500).json({ error: 'Failed to delete image' });
+    }
 
     // Delete physical file
     try {
-      // Delete file from storage
       const storage = await StorageFactory.getInstance();
-      try {
-        // Extract storage path from URL
-        let storagePath: string;
-        if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
-          // S3 signed URL - can't delete directly, would need S3 key
-          log.warn('Cannot delete S3 file from signed URL', { imageUrl, timesheetId });
-        } else {
-          // Local path - extract relative path
-          storagePath = resolveStoragePath(imageUrl);
-          await storage.delete(storagePath);
-        }
-      } catch (deleteError: any) {
-        log.error('Failed to delete image from storage', deleteError, { imageUrl, timesheetId });
-        // Continue - file is already removed from array
+      if (!imageUrl.startsWith('http://') && !imageUrl.startsWith('https://')) {
+        // Local path - extract relative path and delete
+        const storagePath = resolveStoragePath(imageUrl);
+        await storage.delete(storagePath).catch((err) => {
+          log.error('Failed to delete image from storage', err, { imageUrl, timesheetId });
+        });
       }
     } catch (fileError) {
-      log.error('Failed to delete image file', fileError, { timesheetId: req.params.id, imageUrl });
+      log.error('Failed to delete image file', fileError, { timesheetId });
       // Continue even if file deletion fails
     }
 
     res.json({ image_urls: updatedUrls, message: 'Image deleted' });
-  } catch (error) {
-    log.error('Delete image error', error, { timesheetId: req.params.id, userId: req.user!.id });
+  } catch (error: any) {
+    log.error('Delete image error', error, { timesheetId: req.params.id, userId: req.user?.id });
     res.status(500).json({ error: 'Failed to delete image' });
   }
 });
