@@ -2,12 +2,13 @@ import { Router, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import { body, validationResult } from 'express-validator';
 import { query } from '../db';
-import { supabase } from '../db/supabase';
+import { supabase as supabaseClient } from '../db/supabase';
 import { authenticate, requireRole, AuthRequest } from '../middleware/auth';
 import { getDefaultPermissions } from '../lib/permissions';
 import { log } from '../lib/logger';
 
 const router = Router();
+const supabase = supabaseClient!;
 
 // Get all users (admin only)
 router.get('/', authenticate, requireRole('admin'), async (req: AuthRequest, res: Response) => {
@@ -38,7 +39,7 @@ router.get('/', authenticate, requireRole('admin'), async (req: AuthRequest, res
         }
 
         // Map permission IDs to names
-        let permissions = [];
+        let permissions: any[] = [];
         if (userPerms && userPerms.length > 0) {
           const { data: permNames } = await supabase
             .from('permissions')
@@ -93,7 +94,7 @@ router.get('/:id', authenticate, requireRole('admin', 'manager'), async (req: Au
     }
 
     // Map permission IDs to names
-    let permissions = [];
+    let permissions: any[] = [];
     if (userPerms && userPerms.length > 0) {
       const { data: permNames } = await supabase
         .from('permissions')

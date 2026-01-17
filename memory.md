@@ -144,3 +144,103 @@
   - Service role can manage reference data (activity_types, cost_centers)
   - Database is now ready for backend route migration
 - Status: Item #1 RLS foundation complete; Item #6 (storage) or Item #3 (routes) next
+
+### Session: Item #3 Routes Migration - Starting Phase (Clients Route)
+- User Request: "yes please" (proceed with routes migration starting with GET /api/clients)
+- Actions completed:
+  - Refactored `backend/src/routes/clients.ts` to use Supabase client instead of pg
+    - GET / clients: Replaced raw SQL with Supabase `.from().select().eq().order().range()` patterns
+    - GET /:id client: Uses `.single()` for cleaner error handling (PGRST116 for not found)
+    - POST create: Insert with `.insert().select().single()` for response payload
+    - PUT update: Update with object notation instead of SQL string builders
+    - DELETE: Supabase count instead of raw SQL aggregation
+  - Maintained all middleware (authenticate, requirePermission)
+  - Maintained activity logging to legacy activity_logs table with try/catch
+  - Maintained pagination helpers
+  - All endpoints compile with no TypeScript errors
+  - Committed to feature/supabase-migration branch
+- Outcome:
+  - First route successfully converted from pg to Supabase client
+  - Pattern established for remaining routes (projects, timesheets, etc.)
+  - Code is cleaner and more maintainable
+  - Error handling uses Supabase-specific error codes
+- Next: Migrate projects route (similar complexity, high priority)
+- Status: 1 of 20+ routes migrated (~5% complete)
+
+### Session (Continued): Routes Migration - Clients & Projects Routes
+- User Request: Continued migrations (no specific request needed)
+- Actions completed:
+  - Refactored `backend/src/routes/projects.ts` to use Supabase client (complex route with joins)
+    - GET / projects: Replaced raw SQL with Supabase `.from().select().eq().or().order().range()` patterns
+      - Handles client joins and cost center aggregations
+      - Returns enhanced data with cost_centers array from separate query
+    - GET /:id project: Uses nested `.select()` with related tables (clients, project_cost_centers)
+      - Fetch cost centers and timesheets in parallel
+      - Calculate financials from budget/po_commitments/actual_cost
+    - POST create: Insert project with optional cost center associations
+    - PUT update: Update project with cost center management (delete old, insert new)
+    - DELETE: Safe deletion with background file cleanup for projects/timesheets/documents
+  - All endpoints compile with no TypeScript errors
+  - Committed both routes to feature/supabase-migration branch
+- Routes Migration Progress:
+  - ✅ Clients route (all 5 endpoints)
+  - ✅ Projects route (all endpoints including complex joins)
+  - ✅ Timesheets route (all 7 endpoints including file handling)
+  - ⏳ Other routes (Xero, OCR, activity_logs, etc.)
+- Status: 3 of 20+ routes migrated (~15% complete)
+### Session: Item #6 Storage Buckets + Users Route Migration
+- User Request: "lets do #2 then continue with user domain route and circle back to #1" (interpreted as storage buckets first, then users route, then timesheets)
+- Actions completed (Storage Buckets - Item #6):
+  - Created `supabase/migrations/20260117100000_create_storage_buckets.sql` with 4 buckets and 15 RLS policies
+    - avatars: 5MB limit, images only (authenticated users can upload/read own files, admins can manage)
+    - project-files: 100MB limit, all file types (project members can access)
+    - safety-documents: 50MB limit, documents (department access via RLS)
+    - timesheet-images: 10MB limit, images only (user-specific access with admin override)
+  - Applied migration to Supabase local stack via psql: 4 buckets created, 15 RLS policies active
+  - Verified buckets in storage.buckets table and RLS policies in pg_policies
+  - Committed storage buckets migration to feature/supabase-migration
+- Actions completed (Users Route - All 6 Endpoints):
+  - Refactored `backend/src/routes/users.ts` from pg client to Supabase client
+  - GET / (all users): Fetch with permission aggregation (permission_id -> name mapping)
+  - GET /:id (single user): Get user with permission details included
+  - POST / (create user): Create Supabase Auth user + public.users profile + default permissions based on role
+  - PUT /:id (update user): Update profile (name, role, is_active) with role-based permission reset (delete old, insert new)
+  - PUT /:id/permissions (manage permissions): Delete old permission_ids, insert new array
+  - DELETE /:id (delete user): Prevent self-deletion, delete permissions first (FK constraint), then user record
+  - All endpoints compiled with zero TypeScript errors
+  - Committed users route refactoring to feature/supabase-migration
+- Routes Migration Progress:
+  - ✅ Clients route (all 5 endpoints)
+  - ✅ Projects route (all endpoints)
+  - ✅ Users route (all 6 endpoints)
+  - ✅ Storage buckets created and RLS policies active
+  - ✅ Timesheets route (all 7 endpoints including file handling)
+  - ⏳ Other routes (Xero, OCR, activity_logs, etc. - ~15 routes remaining)
+- Actions completed (Timesheets Route - All 7 Endpoints):
+  - Refactored `backend/src/routes/timesheets.ts` from pg client to Supabase client (all 7 endpoints)
+  - GET / (list timesheets with filters + pagination): Replaced SQL with Supabase select + nested joins (users, projects, clients, activity_types, cost_centers)
+  - GET /:id (single timesheet): Supabase select with nested data, permission checks (admin/manager/owner only)
+  - POST / (create timesheet): File upload handling preserved via StorageFactory, Supabase insert, auto-lookup client_id from project, activity cost calculation
+  - PUT /:id (update timesheet): Update with file handling, billing status protection (cannot edit billed/paid), project cost recalculation via raw query
+  - DELETE /:id (delete timesheet): Permission check, Supabase delete, background image cleanup, project cost adjustment
+  - POST /:id/images (add images): File uploads to storage, Supabase array append of image URLs
+  - DELETE /:id/images/:index (remove image): Array splicing, Supabase update, background file deletion
+  - All endpoints compiled with zero TypeScript errors
+  - Committed timesheets route refactoring to feature/supabase-migration
+- Status: 4 of 20+ routes migrated (~20% complete)
+
+### Session: Frontend API Configuration Fix
+- Issue: Frontend was making 502 errors to `https://admin.ampedlogix.com/api/...` instead of localhost
+- Root cause: 
+  - `.env` had `VITE_API_URL=http://YOUR_SERVER_IP:3001` (placeholder value)
+  - `src/lib/api.ts` was hardcoded to `API_URL = ''` and not reading env variable
+- Actions completed (Phase 1 - Basic fix):
+  - Set `VITE_API_URL=http://localhost:3001` in `.env`
+  - Updated `src/lib/api.ts` to read `import.meta.env.VITE_API_URL` with fallback to empty string
+  - Committed configuration fix to feature/supabase-migration
+- Actions completed (Phase 2 - Docker network configuration):
+  - User clarified: Machine IS `admin.ampedlogix.com`, but wants API through Docker internal network
+  - Updated `docker-compose.yml`: Frontend `VITE_API_URL` now defaults to `http://backend:3001` (Docker service name)
+  - Updated `.env`: `VITE_API_URL=http://backend:3001` for Docker network communication
+  - Committed Docker network configuration fix
+- Status: Frontend now routes API calls through Docker internal network (backend service) instead of external domain

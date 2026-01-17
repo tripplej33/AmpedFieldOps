@@ -12,9 +12,10 @@ import { log } from '../lib/logger';
 import { StorageFactory } from '../lib/storage/StorageFactory';
 import { generatePartitionedPath, resolveStoragePath } from '../lib/storage/pathUtils';
 import { bufferToStream } from '../middleware/upload';
-import { supabase } from '../lib/supabase';
+import { supabase as supabaseClient } from '../db/supabase';
 
 const router = Router();
+const supabase = supabaseClient!;
 
 // Rate limiting for uploads
 const uploadLimiter = rateLimit({
@@ -696,7 +697,7 @@ router.delete('/:id', authenticate, async (req: AuthRequest, res: Response) => {
     // Update project costs
     try {
       if (existing.activity_types && existing.project_id) {
-        const hourlyRate = existing.activity_types.hourly_rate;
+        const hourlyRate = (existing.activity_types as any).hourly_rate;
         const cost = existing.hours * parseFloat(hourlyRate);
         
         // Use raw query to update actual_cost with arithmetic

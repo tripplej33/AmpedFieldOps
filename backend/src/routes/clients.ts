@@ -1,13 +1,14 @@
 import { Router, Response } from 'express';
 import { body, validationResult } from 'express-validator';
 import { query } from '../db';
-import { supabase } from '../db/supabase';
+import { supabase as supabaseClient } from '../db/supabase';
 import { authenticate, requirePermission, AuthRequest } from '../middleware/auth';
 import { env } from '../config/env';
 import { parsePaginationParams, createPaginatedResponse } from '../lib/pagination';
 import { log } from '../lib/logger';
 
 const router = Router();
+const supabase = supabaseClient!;
 
 // Get all clients
 router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
@@ -48,8 +49,10 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
 
     // Apply sorting
     const validSorts = ['name', 'created_at'];
-    const sortColumn = validSorts.includes(sort as string) ? sort : 'name';
-    const sortOrder = order === 'desc' ? false : true;
+    const sortStr = typeof sort === 'string' ? sort : 'name';
+    const sortColumn = validSorts.includes(sortStr) ? sortStr : 'name';
+    const orderStr = typeof order === 'string' ? order : 'asc';
+    const sortOrder = orderStr === 'desc' ? false : true;
     query_builder = query_builder.order(sortColumn, { ascending: sortOrder });
 
     // Apply pagination

@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import { body, validationResult } from 'express-validator';
 import { query, getClient } from '../db';
-import { supabase } from '../db/supabase';
+import { supabase as supabaseClient } from '../db/supabase';
 import { authenticate, requirePermission, AuthRequest } from '../middleware/auth';
 import { parsePaginationParams, createPaginatedResponse } from '../lib/pagination';
 import { log } from '../lib/logger';
@@ -10,6 +10,7 @@ import { StorageFactory } from '../lib/storage/StorageFactory';
 import { resolveStoragePath } from '../lib/storage/pathUtils';
 
 const router = Router();
+const supabase = supabaseClient!;
 
 // Generate project code
 const generateProjectCode = async (): Promise<string> => {
@@ -57,8 +58,10 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
 
     // Apply sorting
     const validSorts = ['name', 'created_at', 'budget', 'status'];
-    const sortColumn = validSorts.includes(sort as string) ? sort : 'created_at';
-    const sortOrder = order === 'asc' ? true : false;
+    const sortStr = typeof sort === 'string' ? sort : 'created_at';
+    const sortColumn = validSorts.includes(sortStr) ? sortStr : 'created_at';
+    const orderStr = typeof order === 'string' ? order : 'desc';
+    const sortOrder = orderStr === 'asc' ? true : false;
     query_builder = query_builder.order(sortColumn, { ascending: sortOrder });
 
     // Apply pagination
@@ -72,7 +75,7 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
 
     // Enhance with cost center info (separate query)
     const enhancedProjects = await Promise.all(
-      (projects || []).map(async (project) => {
+      (projects || []).map(async (project: any) => {
         const { data: costCenters } = await supabase
           .from('project_cost_centers')
           .select('cost_centers(id, name)')
@@ -120,6 +123,8 @@ router.get('/:id', authenticate, async (req: AuthRequest, res: Response) => {
       throw error;
     }
 
+    const projectData = project as any;
+
     // Get cost centers
     const { data: costCenterData } = await supabase
       .from('project_cost_centers')
@@ -142,15 +147,15 @@ router.get('/:id', authenticate, async (req: AuthRequest, res: Response) => {
 
     // Calculate financials
     const financials = {
-      budget: project.budget || 0,
-      po_commitments: project.po_commitments || 0,
-      actual_cost: project.actual_cost || 0,
-      available_budget: (project.budget || 0) - (project.po_commitments || 0) - (project.actual_cost || 0)
+      budget: projectData.budget || 0,
+      po_commitments: projectData.po_commitments || 0,
+      actual_cost: projectData.actual_cost || 0,
+      available_budget: (projectData.budget || 0) - (projectData.po_commitments || 0) - (projectData.actual_cost || 0)
     };
 
     res.json({
-      ...project,
-      client_name: project.clients?.name || null,
+      ...projectData,
+      client_name: projectData.clients?.name || null,
       cost_centers: costCenters,
       timesheets: timesheets || [],
       financials
@@ -372,6 +377,8 @@ router.put('/:id', authenticate, requirePermission('can_edit_projects'),
         .eq('id', req.params.id)
         .single();
 
+      const projectData = project as any;
+
       // Log activity
       try {
         await query(
@@ -384,8 +391,8 @@ router.put('/:id', authenticate, requirePermission('can_edit_projects'),
       }
 
       res.json({
-        ...project,
-        client_name: project?.clients?.name || null
+        ...projectData,
+        client_name: projectData?.clients?.name || null
       });
     } catch (error: any) {
       log.error('Update project error', error, { userId: req.user?.id, projectId: req.params.id });
