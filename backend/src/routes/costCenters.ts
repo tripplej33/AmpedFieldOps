@@ -1,36 +1,64 @@
 import { Router, Response } from 'express';
 import { body, validationResult } from 'express-validator';
 import { query } from '../db';
+import { supabase as supabaseClient } from '../db/supabase';
 import { authenticate, requirePermission, AuthRequest } from '../middleware/auth';
+import { log } from '../lib/logger';
 
 const router = Router();
+const supabase = supabaseClient!;
 
 // Get all cost centers
 router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
   try {
     const { active_only } = req.query;
     
-    let sql = `
-      SELECT cc.*,
-        (SELECT COUNT(*) FROM project_cost_centers pcc WHERE pcc.cost_center_id = cc.id) as project_count,
-        (SELECT COALESCE(SUM(t.hours), 0) FROM timesheets t WHERE t.cost_center_id = cc.id) as total_hours,
-        (SELECT COALESCE(SUM(t.hours * at.hourly_rate), 0) 
-         FROM timesheets t 
-         JOIN activity_types at ON t.activity_type_id = at.id 
-         WHERE t.cost_center_id = cc.id) as total_cost
-      FROM cost_centers cc
-      WHERE 1=1
-    `;
+    let query_builder = supabase
+      .from('cost_centers')
+      .select('*');
 
     if (active_only === 'true') {
-      sql += ' AND cc.is_active = true';
+      query_builder = query_builder.eq('is_active', true);
     }
 
-    sql += ' ORDER BY cc.code ASC';
+    const { data, error } = await query_builder.order('code', { ascending: true });
 
-    const result = await query(sql);
-    res.json(result.rows);
+    if (error) {
+      log.error('Get cost centers error', error, { userId: req.user?.id });
+      return res.status(500).json({ error: 'Failed to fetch cost centers' });
+    }
+
+    // Add aggregations for each cost center
+    const costCentersWithAgg = await Promise.all(
+      (data || []).map(async (cc) => {
+        const { count: projectCount } = await supabase
+          .from('project_cost_centers')
+          .select('*', { count: 'exact', head: true })
+          .eq('cost_center_id', cc.id);
+
+        const { data: timesheetData } = await supabase
+          .from('timesheets')
+          .select('hours, activity_types(hourly_rate)')
+          .eq('cost_center_id', cc.id);
+
+        const totalHours = (timesheetData || []).reduce((sum: number, t: any) => sum + (t.hours || 0), 0);
+        const totalCost = (timesheetData || []).reduce((sum: number, t: any) => {
+          const rate = Array.isArray(t.activity_types) ? (t.activity_types[0]?.hourly_rate || 0) : (t.activity_types?.hourly_rate || 0);
+          return sum + ((t.hours || 0) * rate);
+        }, 0);
+
+        return {
+          ...cc,
+          project_count: projectCount || 0,
+          total_hours: totalHours,
+          total_cost: totalCost
+        };
+      })
+    );
+
+    res.json(costCentersWithAgg);
   } catch (error) {
+    log.error('Get cost centers error', error, { userId: req.user?.id });
     res.status(500).json({ error: 'Failed to fetch cost centers' });
   }
 });
@@ -38,33 +66,45 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
 // Get single cost center
 router.get('/:id', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const result = await query(
-      `SELECT cc.*,
-        (SELECT COUNT(*) FROM project_cost_centers pcc WHERE pcc.cost_center_id = cc.id) as project_count,
-        (SELECT COALESCE(SUM(t.hours), 0) FROM timesheets t WHERE t.cost_center_id = cc.id) as total_hours
-       FROM cost_centers cc
-       WHERE cc.id = $1`,
-      [req.params.id]
-    );
+    const { data, error } = await supabase
+      .from('cost_centers')
+      .select('*')
+      .eq('id', req.params.id)
+      .single();
 
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Cost center not found' });
+    if (error) {
+      if (error.code === 'PGRST116') {  // not found
+        return res.status(404).json({ error: 'Cost center not found' });
+      }
+      throw error;
     }
 
     // Get related projects
-    const projects = await query(
-      `SELECT p.id, p.code, p.name, p.status 
-       FROM projects p
-       JOIN project_cost_centers pcc ON p.id = pcc.project_id
-       WHERE pcc.cost_center_id = $1`,
-      [req.params.id]
-    );
+    const { data: projectData } = await supabase
+      .from('project_cost_centers')
+      .select('projects(id, code, name, status)')
+      .eq('cost_center_id', req.params.id);
+
+    const { count: projectCount } = await supabase
+      .from('project_cost_centers')
+      .select('*', { count: 'exact', head: true })
+      .eq('cost_center_id', req.params.id);
+
+    const { data: timesheetData } = await supabase
+      .from('timesheets')
+      .select('hours')
+      .eq('cost_center_id', req.params.id);
+
+    const totalHours = (timesheetData || []).reduce((sum: number, t) => sum + (t.hours || 0), 0);
 
     res.json({
-      ...result.rows[0],
-      projects: projects.rows
+      ...(data as any),
+      project_count: projectCount || 0,
+      projects: (projectData || []).map((p: any) => Array.isArray(p.projects) ? p.projects[0] : p.projects).filter(Boolean),
+      total_hours: totalHours
     });
   } catch (error) {
+    log.error('Get cost center error', error, { userId: req.user?.id });
     res.status(500).json({ error: 'Failed to fetch cost center' });
   }
 });
@@ -83,27 +123,46 @@ router.post('/', authenticate, requirePermission('can_manage_cost_centers'),
 
     try {
       // Check for duplicate code
-      const existing = await query('SELECT id FROM cost_centers WHERE code = $1', [code]);
-      if (existing.rows.length > 0) {
+      const { count } = await supabase
+        .from('cost_centers')
+        .select('*', { count: 'exact', head: true })
+        .eq('code', code);
+
+      if ((count || 0) > 0) {
         return res.status(400).json({ error: 'Cost center code already exists' });
       }
 
-      const result = await query(
-        `INSERT INTO cost_centers (code, name, description, budget, xero_tracking_category_id, client_po_number)
-         VALUES ($1, $2, $3, $4, $5, $6)
-         RETURNING *`,
-        [code, name, description, budget, xero_tracking_category_id, client_po_number || null]
-      );
+      const { data, error } = await supabase
+        .from('cost_centers')
+        .insert({ 
+          code, 
+          name, 
+          description, 
+          budget, 
+          xero_tracking_category_id, 
+          client_po_number: client_po_number || null 
+        })
+        .select()
+        .single();
+
+      if (error) {
+        throw error;
+      }
 
       // Log activity
-      await query(
-        `INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) 
-         VALUES ($1, $2, $3, $4, $5)`,
-        [req.user!.id, 'create', 'cost_center', result.rows[0].id, JSON.stringify({ code, name })]
-      );
+      try {
+        await query(
+          `INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) 
+           VALUES ($1, $2, $3, $4, $5)`,
+          [req.user!.id, 'create', 'cost_center', data.id, JSON.stringify({ code, name })]
+        );
+      } catch (logError) {
+        log.warn('Failed to log activity', { error: logError });
+      }
 
-      res.status(201).json(result.rows[0]);
+      res.status(201).json(data);
     } catch (error) {
+      log.error('Create cost center error', error, { userId: req.user?.id });
       res.status(500).json({ error: 'Failed to create cost center' });
     }
   }
@@ -115,48 +174,50 @@ router.put('/:id', authenticate, requirePermission('can_manage_cost_centers'),
     const { code, name, description, budget, is_active, xero_tracking_category_id, client_po_number } = req.body;
 
     try {
-      const updates: string[] = [];
-      const values: any[] = [];
-      let paramCount = 1;
-
-      const fields = { code, name, description, budget, is_active, xero_tracking_category_id, client_po_number };
+      const updates: any = {};
       
-      for (const [key, value] of Object.entries(fields)) {
-        if (value !== undefined) {
-          updates.push(`${key} = $${paramCount++}`);
-          values.push(value === '' ? null : value);
-        }
-      }
+      if (code !== undefined) updates.code = code;
+      if (name !== undefined) updates.name = name;
+      if (description !== undefined) updates.description = description;
+      if (budget !== undefined) updates.budget = budget;
+      if (is_active !== undefined) updates.is_active = is_active;
+      if (xero_tracking_category_id !== undefined) updates.xero_tracking_category_id = xero_tracking_category_id;
+      if (client_po_number !== undefined) updates.client_po_number = client_po_number || null;
 
-      if (updates.length === 0) {
+      if (Object.keys(updates).length === 0) {
         return res.status(400).json({ error: 'No updates provided' });
       }
 
       // Check for duplicate code if updating code
       if (code) {
-        const existing = await query(
-          'SELECT id FROM cost_centers WHERE code = $1 AND id != $2',
-          [code, req.params.id]
-        );
-        if (existing.rows.length > 0) {
+        const { count } = await supabase
+          .from('cost_centers')
+          .select('*', { count: 'exact', head: true })
+          .eq('code', code)
+          .neq('id', req.params.id);
+
+        if ((count || 0) > 0) {
           return res.status(400).json({ error: 'Cost center code already exists' });
         }
       }
 
-      updates.push('updated_at = CURRENT_TIMESTAMP');
-      values.push(req.params.id);
+      const { data, error } = await supabase
+        .from('cost_centers')
+        .update(updates)
+        .eq('id', req.params.id)
+        .select()
+        .single();
 
-      const result = await query(
-        `UPDATE cost_centers SET ${updates.join(', ')} WHERE id = $${paramCount} RETURNING *`,
-        values
-      );
-
-      if (result.rows.length === 0) {
-        return res.status(404).json({ error: 'Cost center not found' });
+      if (error) {
+        if (error.code === 'PGRST116') {  // not found
+          return res.status(404).json({ error: 'Cost center not found' });
+        }
+        throw error;
       }
 
-      res.json(result.rows[0]);
+      res.json(data);
     } catch (error) {
+      log.error('Update cost center error', error, { userId: req.user?.id });
       res.status(500).json({ error: 'Failed to update cost center' });
     }
   }
@@ -166,28 +227,34 @@ router.put('/:id', authenticate, requirePermission('can_manage_cost_centers'),
 router.delete('/:id', authenticate, requirePermission('can_manage_cost_centers'), async (req: AuthRequest, res: Response) => {
   try {
     // Check if cost center is in use
-    const timesheets = await query(
-      'SELECT COUNT(*) FROM timesheets WHERE cost_center_id = $1',
-      [req.params.id]
-    );
+    const { count } = await supabase
+      .from('timesheets')
+      .select('*', { count: 'exact', head: true })
+      .eq('cost_center_id', req.params.id);
 
-    if (parseInt(timesheets.rows[0].count) > 0) {
+    if ((count || 0) > 0) {
       return res.status(400).json({ 
         error: 'Cannot delete cost center with existing timesheets. Deactivate instead.' 
       });
     }
 
-    const result = await query(
-      'DELETE FROM cost_centers WHERE id = $1 RETURNING id, code, name',
-      [req.params.id]
-    );
+    const { data, error } = await supabase
+      .from('cost_centers')
+      .delete()
+      .eq('id', req.params.id)
+      .select('id, code, name')
+      .single();
 
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Cost center not found' });
+    if (error) {
+      if (error.code === 'PGRST116') {  // not found
+        return res.status(404).json({ error: 'Cost center not found' });
+      }
+      throw error;
     }
 
     res.json({ message: 'Cost center deleted' });
   } catch (error) {
+    log.error('Delete cost center error', error, { userId: req.user?.id });
     res.status(500).json({ error: 'Failed to delete cost center' });
   }
 });

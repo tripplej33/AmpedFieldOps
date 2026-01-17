@@ -1,21 +1,29 @@
 import { Router, Response } from 'express';
 import { body, validationResult } from 'express-validator';
 import { query } from '../db';
+import { supabase as supabaseClient } from '../db/supabase';
 import { authenticate, requireRole, AuthRequest } from '../middleware/auth';
+import { log } from '../lib/logger';
 
 const router = Router();
+const supabase = supabaseClient!;
 
 // Get all permissions (admin only)
 router.get('/', authenticate, requireRole('admin'), async (req: AuthRequest, res: Response) => {
   try {
-    const result = await query(
-      `SELECT id, key, label, description, is_system, is_custom, is_active, created_at, updated_at
-       FROM permissions
-       ORDER BY is_system DESC, label ASC`
-    );
-    res.json(result.rows);
+    const { data, error } = await supabase
+      .from('permissions')
+      .select('*')
+      .order('is_system', { ascending: false })
+      .order('label', { ascending: true });
+
+    if (error) {
+      throw error;
+    }
+
+    res.json(data);
   } catch (error) {
-    console.error('Failed to fetch permissions:', error);
+    log.error('Get permissions error', error, { userId: req.user?.id });
     res.status(500).json({ error: 'Failed to fetch permissions' });
   }
 });
@@ -23,19 +31,22 @@ router.get('/', authenticate, requireRole('admin'), async (req: AuthRequest, res
 // Get single permission (admin only)
 router.get('/:id', authenticate, requireRole('admin'), async (req: AuthRequest, res: Response) => {
   try {
-    const result = await query(
-      `SELECT id, key, label, description, is_system, is_custom, is_active, created_at, updated_at
-       FROM permissions
-       WHERE id = $1`,
-      [req.params.id]
-    );
+    const { data, error } = await supabase
+      .from('permissions')
+      .select('*')
+      .eq('id', req.params.id)
+      .single();
 
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Permission not found' });
+    if (error) {
+      if (error.code === 'PGRST116') {  // not found
+        return res.status(404).json({ error: 'Permission not found' });
+      }
+      throw error;
     }
 
-    res.json(result.rows[0]);
+    res.json(data);
   } catch (error) {
+    log.error('Get permission error', error, { userId: req.user?.id });
     res.status(500).json({ error: 'Failed to fetch permission' });
   }
 });
@@ -55,28 +66,39 @@ router.post('/', authenticate, requireRole('admin'),
 
     try {
       // Check if permission key already exists
-      const existing = await query('SELECT id FROM permissions WHERE key = $1', [key]);
-      if (existing.rows.length > 0) {
+      const { count } = await supabase
+        .from('permissions')
+        .select('*', { count: 'exact', head: true })
+        .eq('key', key);
+
+      if ((count || 0) > 0) {
         return res.status(400).json({ error: 'Permission key already exists' });
       }
 
-      const result = await query(
-        `INSERT INTO permissions (key, label, description, is_system, is_custom, is_active)
-         VALUES ($1, $2, $3, false, true, true)
-         RETURNING id, key, label, description, is_system, is_custom, is_active, created_at, updated_at`,
-        [key, label, description || '']
-      );
+      const { data, error } = await supabase
+        .from('permissions')
+        .insert({ key, label, description: description || '', is_system: false, is_custom: true, is_active: true })
+        .select()
+        .single();
+
+      if (error) {
+        throw error;
+      }
 
       // Log activity
-      await query(
-        `INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) 
-         VALUES ($1, $2, $3, $4, $5)`,
-        [req.user!.id, 'create', 'permission', result.rows[0].id, JSON.stringify({ key, label })]
-      );
+      try {
+        await query(
+          `INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) 
+           VALUES ($1, $2, $3, $4, $5)`,
+          [req.user!.id, 'create', 'permission', data.id, JSON.stringify({ key, label })]
+        );
+      } catch (logError) {
+        log.warn('Failed to log activity', { error: logError });
+      }
 
-      res.status(201).json(result.rows[0]);
+      res.status(201).json(data);
     } catch (error) {
-      console.error('Failed to create permission:', error);
+      log.error('Create permission error', error, { userId: req.user?.id });
       res.status(500).json({ error: 'Failed to create permission' });
     }
   }
@@ -97,90 +119,93 @@ router.put('/:id', authenticate, requireRole('admin'),
 
     try {
       // Check if permission exists
-      const existing = await query('SELECT id, is_system FROM permissions WHERE id = $1', [req.params.id]);
-      if (existing.rows.length === 0) {
-        return res.status(404).json({ error: 'Permission not found' });
+      const { data: existing, error: getError } = await supabase
+        .from('permissions')
+        .select('id, is_system')
+        .eq('id', req.params.id)
+        .single();
+
+      if (getError) {
+        if (getError.code === 'PGRST116') {
+          return res.status(404).json({ error: 'Permission not found' });
+        }
+        throw getError;
       }
 
-      const permission = existing.rows[0];
+      const permission = existing as any;
 
-      // System permissions can only have label/description updated, not key or is_active
+      // System permissions can only have label/description updated
       if (permission.is_system) {
-        const updates: string[] = [];
-        const params: any[] = [];
-        let paramCount = 1;
+        const updates: any = {};
+        
+        if (label !== undefined) updates.label = label;
+        if (description !== undefined) updates.description = description;
 
-        if (label !== undefined) {
-          updates.push(`label = $${paramCount++}`);
-          params.push(label);
-        }
-        if (description !== undefined) {
-          updates.push(`description = $${paramCount++}`);
-          params.push(description);
-        }
-
-        if (updates.length === 0) {
+        if (Object.keys(updates).length === 0) {
           return res.status(400).json({ error: 'No valid fields to update for system permission' });
         }
 
-        updates.push(`updated_at = CURRENT_TIMESTAMP`);
-        params.push(req.params.id);
+        const { data, error } = await supabase
+          .from('permissions')
+          .update(updates)
+          .eq('id', req.params.id)
+          .select()
+          .single();
 
-        const result = await query(
-          `UPDATE permissions SET ${updates.join(', ')} WHERE id = $${paramCount} RETURNING *`,
-          params
-        );
+        if (error) {
+          throw error;
+        }
 
         // Log activity
-        await query(
-          `INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) 
-           VALUES ($1, $2, $3, $4, $5)`,
-          [req.user!.id, 'update', 'permission', req.params.id, JSON.stringify({ label, description })]
-        );
+        try {
+          await query(
+            `INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) 
+             VALUES ($1, $2, $3, $4, $5)`,
+            [req.user!.id, 'update', 'permission', req.params.id, JSON.stringify({ label, description })]
+          );
+        } catch (logError) {
+          log.warn('Failed to log activity', { error: logError });
+        }
 
-        return res.json(result.rows[0]);
+        return res.json(data);
       }
 
       // Custom permissions can be fully updated
-      const updates: string[] = [];
-      const params: any[] = [];
-      let paramCount = 1;
+      const updates: any = {};
+      
+      if (label !== undefined) updates.label = label;
+      if (description !== undefined) updates.description = description;
+      if (is_active !== undefined) updates.is_active = is_active;
 
-      if (label !== undefined) {
-        updates.push(`label = $${paramCount++}`);
-        params.push(label);
-      }
-      if (description !== undefined) {
-        updates.push(`description = $${paramCount++}`);
-        params.push(description);
-      }
-      if (is_active !== undefined) {
-        updates.push(`is_active = $${paramCount++}`);
-        params.push(is_active);
-      }
-
-      if (updates.length === 0) {
+      if (Object.keys(updates).length === 0) {
         return res.status(400).json({ error: 'No fields to update' });
       }
 
-      updates.push(`updated_at = CURRENT_TIMESTAMP`);
-      params.push(req.params.id);
+      const { data, error } = await supabase
+        .from('permissions')
+        .update(updates)
+        .eq('id', req.params.id)
+        .select()
+        .single();
 
-      const result = await query(
-        `UPDATE permissions SET ${updates.join(', ')} WHERE id = $${paramCount} RETURNING *`,
-        params
-      );
+      if (error) {
+        throw error;
+      }
 
       // Log activity
-      await query(
-        `INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) 
-         VALUES ($1, $2, $3, $4, $5)`,
-        [req.user!.id, 'update', 'permission', req.params.id, JSON.stringify({ label, description, is_active })]
-      );
+      try {
+        await query(
+          `INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) 
+           VALUES ($1, $2, $3, $4, $5)`,
+          [req.user!.id, 'update', 'permission', req.params.id, JSON.stringify({ label, description, is_active })]
+        );
+      } catch (logError) {
+        log.warn('Failed to log activity', { error: logError });
+      }
 
-      res.json(result.rows[0]);
+      res.json(data);
     } catch (error) {
-      console.error('Failed to update permission:', error);
+      log.error('Update permission error', error, { userId: req.user?.id });
       res.status(500).json({ error: 'Failed to update permission' });
     }
   }
@@ -190,39 +215,60 @@ router.put('/:id', authenticate, requireRole('admin'),
 router.delete('/:id', authenticate, requireRole('admin'), async (req: AuthRequest, res: Response) => {
   try {
     // Check if permission exists and is custom
-    const existing = await query('SELECT id, is_system, key FROM permissions WHERE id = $1', [req.params.id]);
-    if (existing.rows.length === 0) {
-      return res.status(404).json({ error: 'Permission not found' });
+    const { data: existing, error: getError } = await supabase
+      .from('permissions')
+      .select('id, is_system, key')
+      .eq('id', req.params.id)
+      .single();
+
+    if (getError) {
+      if (getError.code === 'PGRST116') {
+        return res.status(404).json({ error: 'Permission not found' });
+      }
+      throw getError;
     }
 
-    if (existing.rows[0].is_system) {
+    const permission = existing as any;
+
+    if (permission.is_system) {
       return res.status(400).json({ error: 'Cannot delete system permissions' });
     }
 
     // Check if permission is assigned to any users
-    const assigned = await query(
-      'SELECT COUNT(*) as count FROM user_permissions WHERE permission = $1',
-      [existing.rows[0].key]
-    );
+    const { count } = await supabase
+      .from('user_permissions')
+      .select('*', { count: 'exact', head: true })
+      .eq('permission', permission.key);
 
-    if (parseInt(assigned.rows[0].count) > 0) {
+    if ((count || 0) > 0) {
       return res.status(400).json({ 
         error: 'Cannot delete permission that is assigned to users. Remove assignments first.' 
       });
     }
 
-    await query('DELETE FROM permissions WHERE id = $1', [req.params.id]);
+    const { error: deleteError } = await supabase
+      .from('permissions')
+      .delete()
+      .eq('id', req.params.id);
+
+    if (deleteError) {
+      throw deleteError;
+    }
 
     // Log activity
-    await query(
-      `INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) 
-       VALUES ($1, $2, $3, $4, $5)`,
-      [req.user!.id, 'delete', 'permission', req.params.id, JSON.stringify({ key: existing.rows[0].key })]
-    );
+    try {
+      await query(
+        `INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) 
+         VALUES ($1, $2, $3, $4, $5)`,
+        [req.user!.id, 'delete', 'permission', req.params.id, JSON.stringify({ key: permission.key })]
+      );
+    } catch (logError) {
+      log.warn('Failed to log activity', { error: logError });
+    }
 
     res.json({ message: 'Permission deleted' });
   } catch (error) {
-    console.error('Failed to delete permission:', error);
+    log.error('Delete permission error', error, { userId: req.user?.id });
     res.status(500).json({ error: 'Failed to delete permission' });
   }
 });

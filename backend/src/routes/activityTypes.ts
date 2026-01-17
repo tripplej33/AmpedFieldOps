@@ -1,31 +1,51 @@
 import { Router, Response } from 'express';
 import { body, validationResult } from 'express-validator';
 import { query } from '../db';
+import { supabase as supabaseClient } from '../db/supabase';
 import { authenticate, requirePermission, AuthRequest } from '../middleware/auth';
+import { log } from '../lib/logger';
 
 const router = Router();
+const supabase = supabaseClient!;
 
 // Get all activity types
 router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
   try {
     const { active_only } = req.query;
     
-    let sql = `
-      SELECT at.*,
-        (SELECT COUNT(*) FROM timesheets t WHERE t.activity_type_id = at.id) as usage_count
-      FROM activity_types at
-      WHERE 1=1
-    `;
+    let query_builder = supabase
+      .from('activity_types')
+      .select('*');
 
     if (active_only === 'true') {
-      sql += ' AND at.is_active = true';
+      query_builder = query_builder.eq('is_active', true);
     }
 
-    sql += ' ORDER BY at.name ASC';
+    const { data, error } = await query_builder.order('name', { ascending: true });
 
-    const result = await query(sql);
-    res.json(result.rows);
+    if (error) {
+      log.error('Get activity types error', error, { userId: req.user?.id });
+      return res.status(500).json({ error: 'Failed to fetch activity types' });
+    }
+
+    // Add usage count for each activity type
+    const activityTypesWithUsage = await Promise.all(
+      (data || []).map(async (at) => {
+        const { count } = await supabase
+          .from('timesheets')
+          .select('*', { count: 'exact', head: true })
+          .eq('activity_type_id', at.id);
+        
+        return {
+          ...at,
+          usage_count: count || 0
+        };
+      })
+    );
+
+    res.json(activityTypesWithUsage);
   } catch (error) {
+    log.error('Get activity types error', error, { userId: req.user?.id });
     res.status(500).json({ error: 'Failed to fetch activity types' });
   }
 });
@@ -33,20 +53,30 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
 // Get single activity type
 router.get('/:id', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const result = await query(
-      `SELECT at.*,
-        (SELECT COUNT(*) FROM timesheets t WHERE t.activity_type_id = at.id) as usage_count
-       FROM activity_types at
-       WHERE at.id = $1`,
-      [req.params.id]
-    );
+    const { data, error } = await supabase
+      .from('activity_types')
+      .select('*')
+      .eq('id', req.params.id)
+      .single();
 
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Activity type not found' });
+    if (error) {
+      if (error.code === 'PGRST116') {  // not found
+        return res.status(404).json({ error: 'Activity type not found' });
+      }
+      throw error;
     }
 
-    res.json(result.rows[0]);
+    const { count } = await supabase
+      .from('timesheets')
+      .select('*', { count: 'exact', head: true })
+      .eq('activity_type_id', req.params.id);
+
+    res.json({
+      ...(data as any),
+      usage_count: count || 0
+    });
   } catch (error) {
+    log.error('Get activity type error', error, { userId: req.user?.id });
     res.status(500).json({ error: 'Failed to fetch activity type' });
   }
 });
@@ -66,22 +96,30 @@ router.post('/', authenticate, requirePermission('can_edit_activity_types'),
     const { name, icon, color, hourly_rate = 0 } = req.body;
 
     try {
-      const result = await query(
-        `INSERT INTO activity_types (name, icon, color, hourly_rate)
-         VALUES ($1, $2, $3, $4)
-         RETURNING *`,
-        [name, icon, color, hourly_rate]
-      );
+      const { data, error } = await supabase
+        .from('activity_types')
+        .insert({ name, icon, color, hourly_rate })
+        .select()
+        .single();
+
+      if (error) {
+        throw error;
+      }
 
       // Log activity
-      await query(
-        `INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) 
-         VALUES ($1, $2, $3, $4, $5)`,
-        [req.user!.id, 'create', 'activity_type', result.rows[0].id, JSON.stringify({ name })]
-      );
+      try {
+        await query(
+          `INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) 
+           VALUES ($1, $2, $3, $4, $5)`,
+          [req.user!.id, 'create', 'activity_type', data.id, JSON.stringify({ name })]
+        );
+      } catch (logError) {
+        log.warn('Failed to log activity', { error: logError });
+      }
 
-      res.status(201).json(result.rows[0]);
+      res.status(201).json(data);
     } catch (error) {
+      log.error('Create activity type error', error, { userId: req.user?.id });
       res.status(500).json({ error: 'Failed to create activity type' });
     }
   }
@@ -93,44 +131,46 @@ router.put('/:id', authenticate, requirePermission('can_edit_activity_types'),
     const { name, icon, color, hourly_rate, is_active } = req.body;
 
     try {
-      const updates: string[] = [];
-      const values: any[] = [];
-      let paramCount = 1;
-
-      const fields = { name, icon, color, hourly_rate, is_active };
+      const updates: any = {};
       
-      for (const [key, value] of Object.entries(fields)) {
-        if (value !== undefined) {
-          updates.push(`${key} = $${paramCount++}`);
-          values.push(value);
-        }
-      }
+      if (name !== undefined) updates.name = name;
+      if (icon !== undefined) updates.icon = icon;
+      if (color !== undefined) updates.color = color;
+      if (hourly_rate !== undefined) updates.hourly_rate = hourly_rate;
+      if (is_active !== undefined) updates.is_active = is_active;
 
-      if (updates.length === 0) {
+      if (Object.keys(updates).length === 0) {
         return res.status(400).json({ error: 'No updates provided' });
       }
 
-      updates.push('updated_at = CURRENT_TIMESTAMP');
-      values.push(req.params.id);
+      const { data, error } = await supabase
+        .from('activity_types')
+        .update(updates)
+        .eq('id', req.params.id)
+        .select()
+        .single();
 
-      const result = await query(
-        `UPDATE activity_types SET ${updates.join(', ')} WHERE id = $${paramCount} RETURNING *`,
-        values
-      );
-
-      if (result.rows.length === 0) {
-        return res.status(404).json({ error: 'Activity type not found' });
+      if (error) {
+        if (error.code === 'PGRST116') {  // not found
+          return res.status(404).json({ error: 'Activity type not found' });
+        }
+        throw error;
       }
 
       // Log activity
-      await query(
-        `INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) 
-         VALUES ($1, $2, $3, $4, $5)`,
-        [req.user!.id, 'update', 'activity_type', req.params.id, JSON.stringify(fields)]
-      );
+      try {
+        await query(
+          `INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) 
+           VALUES ($1, $2, $3, $4, $5)`,
+          [req.user!.id, 'update', 'activity_type', req.params.id, JSON.stringify(updates)]
+        );
+      } catch (logError) {
+        log.warn('Failed to log activity', { error: logError });
+      }
 
-      res.json(result.rows[0]);
+      res.json(data);
     } catch (error) {
+      log.error('Update activity type error', error, { userId: req.user?.id });
       res.status(500).json({ error: 'Failed to update activity type' });
     }
   }
@@ -140,36 +180,46 @@ router.put('/:id', authenticate, requirePermission('can_edit_activity_types'),
 router.delete('/:id', authenticate, requirePermission('can_edit_activity_types'), async (req: AuthRequest, res: Response) => {
   try {
     // Check if activity type is in use
-    const timesheets = await query(
-      'SELECT COUNT(*) FROM timesheets WHERE activity_type_id = $1',
-      [req.params.id]
-    );
+    const { count } = await supabase
+      .from('timesheets')
+      .select('*', { count: 'exact', head: true })
+      .eq('activity_type_id', req.params.id);
 
-    if (parseInt(timesheets.rows[0].count) > 0) {
+    if ((count || 0) > 0) {
       return res.status(400).json({ 
         error: 'Cannot delete activity type with existing timesheets. Deactivate instead.',
-        usage_count: parseInt(timesheets.rows[0].count)
+        usage_count: count || 0
       });
     }
 
-    const result = await query(
-      'DELETE FROM activity_types WHERE id = $1 RETURNING id, name',
-      [req.params.id]
-    );
+    const { data, error } = await supabase
+      .from('activity_types')
+      .delete()
+      .eq('id', req.params.id)
+      .select('id, name')
+      .single();
 
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Activity type not found' });
+    if (error) {
+      if (error.code === 'PGRST116') {  // not found
+        return res.status(404).json({ error: 'Activity type not found' });
+      }
+      throw error;
     }
 
     // Log activity
-    await query(
-      `INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) 
-       VALUES ($1, $2, $3, $4, $5)`,
-      [req.user!.id, 'delete', 'activity_type', req.params.id, JSON.stringify({ name: result.rows[0].name })]
-    );
+    try {
+      await query(
+        `INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) 
+         VALUES ($1, $2, $3, $4, $5)`,
+        [req.user!.id, 'delete', 'activity_type', req.params.id, JSON.stringify({ name: data.name })]
+      );
+    } catch (logError) {
+      log.warn('Failed to log activity', { error: logError });
+    }
 
     res.json({ message: 'Activity type deleted' });
   } catch (error) {
+    log.error('Delete activity type error', error, { userId: req.user?.id });
     res.status(500).json({ error: 'Failed to delete activity type' });
   }
 });
