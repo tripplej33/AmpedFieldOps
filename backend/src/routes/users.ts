@@ -15,7 +15,7 @@ router.get('/', authenticate, requireRole('admin'), async (req: AuthRequest, res
   try {
     const { data: users, error } = await supabase
       .from('users')
-      .select('id, email, name, role, avatar, is_active, created_at, updated_at')
+      .select('id, email, name, role, avatar_url, created_at, updated_at')
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -73,7 +73,7 @@ router.get('/:id', authenticate, requireRole('admin', 'manager'), async (req: Au
   try {
     const { data: user, error } = await supabase
       .from('users')
-      .select('id, email, name, role, avatar, is_active, created_at, updated_at')
+      .select('id, email, name, role, avatar_url, is_active, created_at, updated_at')
       .eq('id', req.params.id)
       .single();
 

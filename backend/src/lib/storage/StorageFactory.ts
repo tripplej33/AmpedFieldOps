@@ -12,6 +12,7 @@ const CACHE_TTL = 60000; // 1 minute cache
 
 /**
  * Get storage configuration from database settings
+ * Falls back to local storage if DB is unavailable (Supabase migration)
  */
 async function getStorageConfigFromDB(): Promise<StorageConfig> {
   try {
@@ -43,8 +44,13 @@ async function getStorageConfigFromDB(): Promise<StorageConfig> {
     }
 
     return config;
-  } catch (error) {
-    log.error('Failed to load storage config from database', error);
+  } catch (error: any) {
+    // Gracefully handle missing legacy DB during Supabase migration
+    if (error.message?.includes('Legacy PostgreSQL pool not configured')) {
+      log.info('Legacy database unavailable, using default local storage');
+    } else {
+      log.error('Failed to load storage config from database', error);
+    }
     // Fallback to local storage
     return {
       driver: 'local',

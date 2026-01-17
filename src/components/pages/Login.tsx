@@ -142,6 +142,7 @@ export default function Login() {
       <AdminSetupModal 
         open={showAdminSetup} 
         onSuccess={handleAdminSetupSuccess}
+        onClose={() => setShowAdminSetup(false)}
       />
       <Card className="w-full max-w-md p-8 bg-card border-border">
         {/* Logo */}

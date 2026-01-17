@@ -9,52 +9,39 @@ import { generatePartitionedPath } from '../lib/storage/pathUtils';
 import { bufferToStream } from '../middleware/upload';
 import { log } from '../lib/logger';
 import { isGoogleDriveConnected } from '../lib/googleDrive';
+import { supabase as supabaseClient } from '../db/supabase';
 import fs from 'fs';
 import path from 'path';
 import { env } from '../config/env';
 
 const router = Router();
+const supabase = supabaseClient!;
 
 // Get all settings (admin gets global, users get their own)
 router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
   try {
     const isAdmin = req.user!.role === 'admin';
     
-    // Get user-specific settings
-    const userSettings = await query(
-      `SELECT key, value FROM settings WHERE user_id = $1`,
-      [req.user!.id]
-    );
+    // Get app settings
+    const { data: appSettings, error } = await supabase
+      .from('app_settings')
+      .select('*')
+      .limit(1)
+      .single();
 
-    // Get global settings if admin
-    let globalSettings: any[] = [];
-    if (isAdmin) {
-      const global = await query(
-        `SELECT key, value FROM settings WHERE user_id IS NULL`
-      );
-      globalSettings = global.rows;
-    } else {
-      // Non-admins only get public global settings
-      const publicGlobal = await query(
-        `SELECT key, value FROM settings 
-         WHERE user_id IS NULL AND key IN ('company_name', 'company_logo', 'timezone')`
-      );
-      globalSettings = publicGlobal.rows;
+    if (error && error.code !== 'PGRST116') { // PGRST116 = not found
+      log.warn('Failed to fetch app_settings', { error: error.message });
     }
 
-    const result: Record<string, any> = {};
+    const result: Record<string, any> = {
+      setup_complete: appSettings?.setup_complete || false,
+      // Add other defaults as needed
+    };
     
-    globalSettings.forEach(row => {
-      result[row.key] = row.value;
-    });
-    
-    userSettings.rows.forEach(row => {
-      result[`user_${row.key}`] = row.value;
-    });
 
     res.json(result);
   } catch (error: any) {
-    console.error('Failed to fetch settings:', error);
+    log.error('Failed to fetch settings', error, { userId: req.user?.id });
     res.status(500).json({ 
       error: 'Failed to fetch settings',
       details: env.NODE_ENV === 'development' ? error.message : undefined

@@ -1,4 +1,5 @@
 import { Router, Response } from 'express';
+import { supabase as supabaseClient } from '../db/supabase';
 import { query } from '../db';
 import { authenticate, requirePermission, AuthRequest } from '../middleware/auth';
 import { fileUpload } from '../middleware/upload';
@@ -18,48 +19,70 @@ import { bufferToStream } from '../middleware/upload';
 import { Readable } from 'stream';
 
 const router = Router();
+const supabase = supabaseClient!;
+
+// Helpers to encode/decode storage paths as opaque IDs for API compatibility
+function encodeId(storagePath: string): string {
+  const b64 = Buffer.from(storagePath).toString('base64');
+  return b64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function decodeId(id: string): string {
+  const pad = id.length % 4 === 0 ? '' : '='.repeat(4 - (id.length % 4));
+  const b64 = id.replace(/-/g, '+').replace(/_/g, '/') + pad;
+  return Buffer.from(b64, 'base64').toString('utf-8');
+}
+
+function parseProjectPath(storagePath: string): { project_id?: string; cost_center_id?: string } {
+  const m = storagePath.match(/^projects\/([^/]+)\/files(?:\/([^/]+))?\//);
+  if (!m) return {};
+  return { project_id: m[1], cost_center_id: m[2] };
+}
 
 // Get all files with filters
 router.get('/', authenticate, requirePermission('can_view_financials'), asyncHandler(async (req: AuthRequest, res: Response) => {
-  const { project_id, cost_center_id, file_type } = req.query;
-  
-  let sql = `
-    SELECT f.*,
-      u.name as uploaded_by_name,
-      p.code as project_code,
-      p.name as project_name,
-      c.name as client_name,
-      cc.code as cost_center_code,
-      cc.name as cost_center_name
-    FROM project_files f
-    LEFT JOIN users u ON f.uploaded_by = u.id
-    LEFT JOIN projects p ON f.project_id = p.id
-    LEFT JOIN clients c ON p.client_id = c.id
-    LEFT JOIN cost_centers cc ON f.cost_center_id = cc.id
-    WHERE 1=1
-  `;
-  const params: any[] = [];
-  let paramCount = 1;
+  const { project_id, cost_center_id } = req.query as Record<string, string>;
 
-  if (project_id) {
-    sql += ` AND f.project_id = $${paramCount++}`;
-    params.push(project_id);
+  try {
+    const storage = await StorageFactory.getInstance();
+
+    // If a project_id is provided, list files under that project's folder
+    if (project_id) {
+      const basePath = `projects/${project_id}/files${cost_center_id ? `/${cost_center_id}` : ''}`;
+      const entries = await storage.list(basePath);
+
+      const files = await Promise.all(
+        entries
+          .filter((e) => !e.isDirectory)
+          .map(async (e) => ({
+            id: encodeId(e.path),
+            file_name: e.name,
+            file_path: e.path,
+            file_type: 'document',
+            file_size: e.size || 0,
+            mime_type: e.mimeType || 'application/octet-stream',
+            uploaded_by_name: null,
+            project_id,
+            cost_center_id: cost_center_id || null,
+            project_name: null,
+            client_name: null,
+            cost_center_code: null,
+            cost_center_name: null,
+            url: await storage.url(e.path),
+            created_at: (e.lastModified || new Date()).toISOString(),
+            updated_at: (e.lastModified || new Date()).toISOString(),
+          }))
+      );
+
+      return res.json(files);
+    }
+
+    // Without project_id, return empty list (no DB table for global file index)
+    return res.json([]);
+  } catch (error: any) {
+    log.error('Failed to list files', error);
+    return res.json([]);
   }
-
-  if (cost_center_id) {
-    sql += ` AND f.cost_center_id = $${paramCount++}`;
-    params.push(cost_center_id);
-  }
-
-  if (file_type) {
-    sql += ` AND f.file_type = $${paramCount++}`;
-    params.push(file_type);
-  }
-
-  sql += ' ORDER BY f.created_at DESC';
-
-  const result = await query(sql, params);
-  res.json(result.rows);
 }));
 
 // Get all logo files (must be before /:id route)
@@ -107,39 +130,27 @@ router.get('/timesheet-images', authenticate, asyncHandler(async (req: AuthReque
                      req.user!.role === 'manager' || 
                      (req.user!.permissions && req.user!.permissions.includes('can_view_all_timesheets'));
 
-  let sql = `
-    SELECT 
-      t.project_id,
-      p.code as project_code,
-      p.name as project_name,
-      c.name as client_name,
-      COUNT(*) FILTER (WHERE t.image_urls IS NOT NULL AND array_length(t.image_urls, 1) > 0) as timesheets_with_images,
-      SUM(array_length(t.image_urls, 1)) FILTER (WHERE t.image_urls IS NOT NULL) as total_images
-    FROM timesheets t
-    LEFT JOIN projects p ON t.project_id = p.id
-    LEFT JOIN clients c ON p.client_id = c.id
-    WHERE t.image_urls IS NOT NULL AND array_length(t.image_urls, 1) > 0
-  `;
-  const params: any[] = [];
+  // Use Supabase to aggregate images from timesheets
+  const { data: timesheets, error } = await supabase
+    .from('timesheets')
+    .select('project_id, image_urls, user_id')
+    .neq('image_urls', null);
 
-  // If user can't view all, only show their own timesheet images
-  if (!canViewAll) {
-    sql += ` AND t.user_id = $1`;
-    params.push(req.user!.id);
+  if (error) {
+    log.error('Failed to load timesheet images summary', error);
+    return res.json([]);
   }
 
-  sql += ` GROUP BY t.project_id, p.code, p.name, c.name ORDER BY c.name, p.code`;
-
-  const result = await query(sql, params);
-
-  // Convert numeric strings to numbers
-  const rows = result.rows.map((row: any) => ({
-    ...row,
-    timesheets_with_images: parseInt(row.timesheets_with_images) || 0,
-    total_images: parseInt(row.total_images) || 0
-  }));
-
-  res.json(rows);
+  const filtered = (timesheets || []).filter(t => canViewAll || t.user_id === req.user!.id);
+  const summaryMap = new Map<string, { project_id: string; timesheets_with_images: number; total_images: number }>();
+  for (const t of filtered) {
+    const key = String(t.project_id);
+    const entry = summaryMap.get(key) || { project_id: key, timesheets_with_images: 0, total_images: 0 };
+    entry.timesheets_with_images += 1;
+    entry.total_images += Array.isArray((t as any).image_urls) ? (t as any).image_urls.length : 0;
+    summaryMap.set(key, entry);
+  }
+  res.json(Array.from(summaryMap.values()));
 }));
 
 // Get timesheet images for a specific project - must be before /:id route
@@ -149,50 +160,33 @@ router.get('/timesheet-images/:projectId', authenticate, asyncHandler(async (req
                      req.user!.role === 'manager' || 
                      (req.user!.permissions && req.user!.permissions.includes('can_view_all_timesheets'));
 
-  let sql = `
-    SELECT 
-      t.id as timesheet_id,
-      t.user_id,
-      t.date as timesheet_date,
-      t.image_urls,
-      t.created_at,
-      u.name as user_name,
-      p.code as project_code,
-      p.name as project_name
-    FROM timesheets t
-    LEFT JOIN users u ON t.user_id = u.id
-    LEFT JOIN projects p ON t.project_id = p.id
-    WHERE t.project_id = $1 
-      AND t.image_urls IS NOT NULL 
-      AND array_length(t.image_urls, 1) > 0
-  `;
-  const params: any[] = [req.params.projectId];
+  const { data: rows, error } = await supabase
+    .from('timesheets')
+    .select('id, user_id, date, image_urls, created_at')
+    .eq('project_id', req.params.projectId)
+    .neq('image_urls', null)
+    .order('date', { ascending: false })
+    .order('created_at', { ascending: false });
 
-  // If user can't view all, only show their own timesheet images
-  if (!canViewAll) {
-    sql += ` AND t.user_id = $2`;
-    params.push(req.user!.id);
+  if (error) {
+    log.error('Failed to load project timesheet images', error);
+    return res.json([]);
   }
 
-  sql += ` ORDER BY t.date DESC, t.created_at DESC`;
-
-  const result = await query(sql, params);
-
-  // Flatten image_urls into individual image objects
   const images: any[] = [];
-  result.rows.forEach((row: any) => {
+  (rows || []).forEach((row: any) => {
     if (row.image_urls && Array.isArray(row.image_urls)) {
       row.image_urls.forEach((url: string, index: number) => {
         const filename = url.split('/').pop() || '';
         images.push({
           url,
           filename,
-          timesheet_id: row.timesheet_id,
-          timesheet_date: row.timesheet_date,
+          timesheet_id: row.id,
+          timesheet_date: row.date,
           upload_date: row.created_at,
-          user_name: row.user_name,
-          project_code: row.project_code,
-          project_name: row.project_name,
+          user_name: null,
+          project_code: null,
+          project_name: null,
           image_index: index
         });
       });
@@ -204,120 +198,55 @@ router.get('/timesheet-images/:projectId', authenticate, asyncHandler(async (req
 
 // Get single file metadata (must be after specific routes)
 router.get('/:id', authenticate, requirePermission('can_view_financials'), asyncHandler(async (req: AuthRequest, res: Response) => {
-  const result = await query(
-    `SELECT f.*,
-      u.name as uploaded_by_name,
-      p.code as project_code,
-      p.name as project_name,
-      c.name as client_name,
-      cc.code as cost_center_code,
-      cc.name as cost_center_name
-    FROM project_files f
-    LEFT JOIN users u ON f.uploaded_by = u.id
-    LEFT JOIN projects p ON f.project_id = p.id
-    LEFT JOIN clients c ON p.client_id = c.id
-    LEFT JOIN cost_centers cc ON f.cost_center_id = cc.id
-    WHERE f.id = $1`,
-    [req.params.id]
-  );
-
-  if (result.rows.length === 0) {
+  const storage = await StorageFactory.getInstance();
+  const storagePath = decodeId(req.params.id);
+  const exists = await storage.exists(storagePath);
+  if (!exists) {
     throw new NotFoundError('File', req.params.id);
   }
-
-  res.json(result.rows[0]);
+  const meta = await storage.getMetadata(storagePath);
+  const url = await storage.url(storagePath);
+  const { project_id, cost_center_id } = parseProjectPath(storagePath);
+  return res.json({
+    id: req.params.id,
+    project_id: project_id || null,
+    cost_center_id: cost_center_id || null,
+    file_name: meta.name || storagePath.split('/').pop(),
+    file_path: storagePath,
+    file_type: (meta.mimeType || 'application/octet-stream').startsWith('image/') ? 'image' : (meta.mimeType === 'application/pdf' ? 'pdf' : 'document'),
+    file_size: meta.size || 0,
+    mime_type: meta.mimeType || 'application/octet-stream',
+    uploaded_by: null,
+    uploaded_by_name: null,
+    project_code: null,
+    project_name: null,
+    client_name: null,
+    cost_center_code: null,
+    cost_center_name: null,
+    created_at: (meta.lastModified || new Date()).toISOString(),
+    updated_at: (meta.lastModified || new Date()).toISOString(),
+    url,
+  });
 }));
 
 // Download file with access control
 router.get('/:id/download', authenticate, requirePermission('can_view_financials'), asyncHandler(async (req: AuthRequest, res: Response) => {
-  const result = await query(
-    `SELECT f.*, p.id as project_id, p.client_id
-     FROM project_files f
-     LEFT JOIN projects p ON f.project_id = p.id
-     WHERE f.id = $1`,
-    [req.params.id]
-  );
-
-  if (result.rows.length === 0) {
-    throw new NotFoundError('File', req.params.id);
-  }
-
-  const file = result.rows[0];
-
-  // Verify user has access to the project
-  if (file.project_id) {
-    // Admins and managers can access all files
-    if (req.user!.role !== 'admin' && req.user!.role !== 'manager') {
-      // Check if user has access to this project
-      const accessResult = await query(
-        'SELECT 1 FROM timesheets WHERE project_id = $1 AND user_id = $2 LIMIT 1',
-        [file.project_id, req.user!.id]
-      );
-
-      if (accessResult.rows.length === 0) {
-        throw new ForbiddenError('You do not have access to this file');
-      }
-    }
-  }
-
-  // Get storage provider
   const storage = await StorageFactory.getInstance();
-  
-  // Extract storage path from file_path
-  // file_path could be: /uploads/projects/... (local) or https://... (S3 signed URL)
-  let storagePath: string;
-  let useOldPath = false;
-  
-  if (file.file_path.startsWith('http://') || file.file_path.startsWith('https://')) {
-    // S3 signed URL - redirect directly
-    return res.redirect(file.file_path);
-  } else {
-    // Local path - extract relative path
-    storagePath = resolveStoragePath(file.file_path);
-  }
-  
-  // Check if file exists in storage (new path)
-  let exists = await storage.exists(storagePath);
-  
-  // Hybrid support: If not found in new storage, try old filesystem path
-  if (!exists) {
-    // Try old path format: /uploads/projects/{project_id}/files/{filename}
-    const oldPath = file.file_path.startsWith('/') 
-      ? file.file_path.substring(1) // Remove leading slash
-      : file.file_path;
-    
-    // Check if old path exists in filesystem (only for local storage)
-    if (storage.getDriver() === 'local') {
-      const absoluteOldPath = path.join(process.cwd(), oldPath);
-      if (fs.existsSync(absoluteOldPath)) {
-        // File exists in old location - use it for now
-        storagePath = oldPath;
-        exists = true;
-        useOldPath = true;
-        log.info('File found in old location, serving from old path', { fileId: file.id, oldPath });
-      }
+  const storagePath = decodeId(req.params.id);
+  const { project_id } = parseProjectPath(storagePath);
+  // Access control: allow admins/managers; otherwise require project context
+  if (req.user!.role !== 'admin' && req.user!.role !== 'manager') {
+    if (!project_id) {
+      throw new ForbiddenError('You do not have access to this file');
     }
   }
-  
-  if (!exists) {
-    throw new NotFoundError('File', 'in storage');
-  }
-  
-  // Get file stream from storage
-  const fileStream = useOldPath && storage.getDriver() === 'local'
-    ? fs.createReadStream(path.join(process.cwd(), storagePath))
-    : await storage.getStream(storagePath);
-  
-  const metadata = useOldPath && storage.getDriver() === 'local'
-    ? { mimeType: file.mime_type, name: file.file_name, size: 0 }
-    : await storage.getMetadata(storagePath);
-  
-  // Set headers
-  res.setHeader('Content-Disposition', `attachment; filename="${file.file_name}"`);
-  res.setHeader('Content-Type', metadata.mimeType || file.mime_type || 'application/octet-stream');
+  const exists = await storage.exists(storagePath);
+  if (!exists) throw new NotFoundError('File', req.params.id);
+  const meta = await storage.getMetadata(storagePath);
+  res.setHeader('Content-Disposition', `attachment; filename="${meta.name || 'file'}"`);
+  res.setHeader('Content-Type', meta.mimeType || 'application/octet-stream');
   res.setHeader('Cache-Control', 'public, max-age=3600');
-  
-  // Stream file to response
+  const fileStream = await storage.getStream(storagePath);
   fileStream.pipe(res);
 }));
 
@@ -401,226 +330,120 @@ router.post(
     // Use storage provider to get the URL (will be signed URL for S3, regular path for local)
     const fileUrl = await storage.url(storagePath);
     
-    const result = await query(
-      `INSERT INTO project_files (
-        project_id, cost_center_id, file_name, file_path, file_type, file_size, mime_type, uploaded_by
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-      RETURNING *`,
-      [
-        project_id,
-        cost_center_id || null,
-        req.file.originalname,
-        fileUrl, // Storage provider URL (signed for S3, /uploads/... for local)
-        fileType,
-        req.file.size,
-        req.file.mimetype,
-        req.user!.id
-      ]
-    );
-
-    // Log activity
-    await query(
-      `INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [req.user!.id, 'upload', 'file', result.rows[0].id, JSON.stringify({ file_name: req.file.originalname })]
-    );
-
     // Check if user wants OCR processing (optional parameter)
     const processOCR = req.body.process_ocr === 'true' || req.body.process_ocr === true;
     
     if (processOCR && req.file.mimetype.startsWith('image/')) {
-      // Create document_scan record and process in background
-      try {
-        const scanResult = await query(
-          `INSERT INTO document_scans (file_id, user_id, status)
-           VALUES ($1, $2, 'pending')
-           RETURNING id`,
-          [result.rows[0].id, req.user!.id]
-        );
-
-        // Process OCR in background
-        // For OCR, we need to get the file from storage
-        // For now, use the storage path - OCR service will need to be updated to use storage provider
-        processDocumentOCR(scanResult.rows[0].id, storagePath).catch(error => {
-          log.error('Background OCR processing failed', error, { fileId: result.rows[0].id });
-        });
-      } catch (ocrError) {
-        // Don't fail file upload if OCR setup fails
-        log.error('Failed to initiate OCR processing', ocrError);
-      }
+      // Trigger OCR processing asynchronously without DB dependency
+      ocrService.processImage(storagePath).catch(err => log.error('OCR processing failed', err));
     }
-
-    res.status(201).json(result.rows[0]);
+    const meta = await storage.getMetadata(storagePath);
+    const id = encodeId(storagePath);
+    res.status(201).json({
+      id,
+      project_id: projectId,
+      cost_center_id: cost_center_id || null,
+      file_name: req.file.originalname,
+      file_path: storagePath,
+      file_type: fileType,
+      file_size: req.file.size,
+      mime_type: req.file.mimetype,
+      uploaded_by: req.user!.id,
+      uploaded_by_name: req.user!.name || null,
+      project_code: null,
+      project_name: null,
+      client_name: null,
+      cost_center_code: null,
+      cost_center_name: null,
+      created_at: (meta.lastModified || new Date()).toISOString(),
+      updated_at: (meta.lastModified || new Date()).toISOString(),
+      url: await storage.url(storagePath),
+    });
   })
 );
 
 // Delete file
 router.delete('/:id', authenticate, requirePermission('can_edit_projects'), asyncHandler(async (req: AuthRequest, res: Response) => {
-  const result = await query(
-    `SELECT f.*, p.id as project_id
-     FROM project_files f
-     LEFT JOIN projects p ON f.project_id = p.id
-     WHERE f.id = $1`,
-    [req.params.id]
-  );
-
-  if (result.rows.length === 0) {
-    throw new NotFoundError('File', req.params.id);
-  }
-
-  const file = result.rows[0];
-
-  // Verify user has access to delete this file (must have access to the project)
-  if (file.project_id) {
-    if (req.user!.role !== 'admin' && req.user!.role !== 'manager') {
-      const accessResult = await query(
-        'SELECT 1 FROM timesheets WHERE project_id = $1 AND user_id = $2 LIMIT 1',
-        [file.project_id, req.user!.id]
-      );
-
-      if (accessResult.rows.length === 0) {
-        throw new ForbiddenError('You do not have permission to delete this file');
-      }
-    }
-  }
-
-  // Get storage provider
   const storage = await StorageFactory.getInstance();
-  
-  // Extract storage path from file_path
-  let storagePath: string | undefined;
-  if (file.file_path.startsWith('http://') || file.file_path.startsWith('https://')) {
-    // S3 signed URL - extract key from URL or use file_path as-is for deletion
-    // For S3, we need the key, not the URL. Store key separately or extract from URL
-    // For now, if it's a URL, we can't delete it (would need to store S3 key separately)
-    log.warn('Cannot delete file with S3 URL - key not stored', { fileId: req.params.id, filePath: file.file_path });
-    storagePath = undefined;
-  } else {
-    // Local path - extract relative path
-    storagePath = resolveStoragePath(file.file_path);
+  const storagePath = decodeId(req.params.id);
+  const exists = await storage.exists(storagePath);
+  if (!exists) throw new NotFoundError('File', req.params.id);
+  // Admin/manager can delete; others blocked for now until ACLs are defined
+  if (req.user!.role !== 'admin' && req.user!.role !== 'manager') {
+    throw new ForbiddenError('You do not have permission to delete this file');
   }
-  
-  // Delete from database first
-  await query('DELETE FROM project_files WHERE id = $1', [req.params.id]);
-
-  // Delete file from storage (if we have a valid path)
-  if (storagePath && !storagePath.startsWith('http')) {
-    try {
-      await storage.delete(storagePath);
-    } catch (deleteError: any) {
-      log.error('Failed to delete file from storage', deleteError, {
-        fileId: req.params.id,
-        storagePath,
-      });
-      // Continue even if file deletion fails - it's already removed from DB
-    }
+  try {
+    await storage.delete(storagePath);
+  } catch (err: any) {
+    log.error('Failed to delete file from storage', err, { storagePath });
+    throw new FileError('Failed to delete file from storage');
   }
-
-  // Log activity
-  await query(
-    `INSERT INTO activity_logs (user_id, action, entity_type, entity_id)
-     VALUES ($1, $2, $3, $4)`,
-    [req.user!.id, 'delete', 'file', req.params.id]
-  );
-
   res.json({ message: 'File deleted successfully' });
 }));
 
 // Get files for a project
 router.get('/projects/:projectId', authenticate, requirePermission('can_view_financials'), asyncHandler(async (req: AuthRequest, res: Response) => {
-  const result = await query(
-    `SELECT f.*,
-      u.name as uploaded_by_name,
-      cc.code as cost_center_code,
-      cc.name as cost_center_name
-    FROM project_files f
-    LEFT JOIN users u ON f.uploaded_by = u.id
-    LEFT JOIN cost_centers cc ON f.cost_center_id = cc.id
-    WHERE f.project_id = $1
-    ORDER BY f.created_at DESC`,
-    [req.params.projectId]
-  );
-
-  res.json(result.rows);
+  const storage = await StorageFactory.getInstance();
+  const basePath = `projects/${req.params.projectId}/files`;
+  const entries = await storage.list(basePath);
+  const files: any[] = [];
+  // List direct files
+  for (const e of entries.filter(e => !e.isDirectory)) {
+    files.push({
+      id: encodeId(e.path),
+      project_id: req.params.projectId,
+      cost_center_id: null,
+      file_name: e.name,
+      file_path: e.path,
+      file_type: 'document',
+      file_size: e.size || 0,
+      mime_type: e.mimeType || 'application/octet-stream',
+      uploaded_by_name: null,
+      project_name: null,
+      client_name: null,
+      cost_center_code: null,
+      cost_center_name: null,
+      url: await storage.url(e.path),
+      created_at: (e.lastModified || new Date()).toISOString(),
+      updated_at: (e.lastModified || new Date()).toISOString(),
+    });
+  }
+  // List nested cost center directories
+  for (const dir of entries.filter(e => e.isDirectory)) {
+    const nested = await storage.list(`${basePath}/${dir.name}`);
+    for (const e of nested.filter(n => !n.isDirectory)) {
+      files.push({
+        id: encodeId(e.path),
+        project_id: req.params.projectId,
+        cost_center_id: dir.name,
+        file_name: e.name,
+        file_path: e.path,
+        file_type: 'document',
+        file_size: e.size || 0,
+        mime_type: e.mimeType || 'application/octet-stream',
+        uploaded_by_name: null,
+        project_name: null,
+        client_name: null,
+        cost_center_code: null,
+        cost_center_name: null,
+        url: await storage.url(e.path),
+        created_at: (e.lastModified || new Date()).toISOString(),
+        updated_at: (e.lastModified || new Date()).toISOString(),
+      });
+    }
+  }
+  res.json(files);
 }));
 
 // Get files for a cost center
 router.get('/cost-centers/:costCenterId', authenticate, requirePermission('can_view_financials'), asyncHandler(async (req: AuthRequest, res: Response) => {
-  const result = await query(
-    `SELECT f.*,
-      u.name as uploaded_by_name,
-      p.code as project_code,
-      p.name as project_name
-    FROM project_files f
-    LEFT JOIN users u ON f.uploaded_by = u.id
-    LEFT JOIN projects p ON f.project_id = p.id
-    WHERE f.cost_center_id = $1
-    ORDER BY f.created_at DESC`,
-    [req.params.costCenterId]
-  );
-
-  res.json(result.rows);
+  const storage = await StorageFactory.getInstance();
+  // Without project context, we cannot reliably list cost-center files; return empty
+  res.json([]);
 }));
 
 // Get timesheet images for a specific project
-router.get('/timesheet-images/:projectId', authenticate, asyncHandler(async (req: AuthRequest, res: Response) => {
-  // Check if user can view all timesheets
-  const canViewAll = req.user!.role === 'admin' || 
-                     req.user!.role === 'manager' || 
-                     (req.user!.permissions && req.user!.permissions.includes('can_view_all_timesheets'));
-
-  let sql = `
-    SELECT 
-      t.id as timesheet_id,
-      t.user_id,
-      t.date as timesheet_date,
-      t.image_urls,
-      t.created_at,
-      u.name as user_name,
-      p.code as project_code,
-      p.name as project_name
-    FROM timesheets t
-    LEFT JOIN users u ON t.user_id = u.id
-    LEFT JOIN projects p ON t.project_id = p.id
-    WHERE t.project_id = $1 
-      AND t.image_urls IS NOT NULL 
-      AND array_length(t.image_urls, 1) > 0
-  `;
-  const params: any[] = [req.params.projectId];
-
-  // If user can't view all, only show their own timesheet images
-  if (!canViewAll) {
-    sql += ` AND t.user_id = $2`;
-    params.push(req.user!.id);
-  }
-
-  sql += ` ORDER BY t.date DESC, t.created_at DESC`;
-
-  const result = await query(sql, params);
-
-  // Flatten image_urls into individual image objects
-  const images: any[] = [];
-  result.rows.forEach((row: any) => {
-    if (row.image_urls && Array.isArray(row.image_urls)) {
-      row.image_urls.forEach((url: string, index: number) => {
-        const filename = url.split('/').pop() || '';
-        images.push({
-          url,
-          filename,
-          timesheet_id: row.timesheet_id,
-          timesheet_date: row.timesheet_date,
-          upload_date: row.created_at,
-          user_name: row.user_name,
-          project_code: row.project_code,
-          project_name: row.project_name,
-          image_index: index
-        });
-      });
-    }
-  });
-
-  res.json(images);
-}));
+// (Removed duplicate route: handled earlier with Supabase)
 
 // Delete a logo file
 router.delete('/logos/:filename', authenticate, requirePermission('can_manage_settings'), asyncHandler(async (req: AuthRequest, res: Response) => {

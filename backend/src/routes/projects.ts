@@ -5,23 +5,11 @@ import { supabase as supabaseClient } from '../db/supabase';
 import { authenticate, requirePermission, AuthRequest } from '../middleware/auth';
 import { parsePaginationParams, createPaginatedResponse } from '../lib/pagination';
 import { log } from '../lib/logger';
-import { PROJECT_CODE_CONSTANTS } from '../lib/constants';
 import { StorageFactory } from '../lib/storage/StorageFactory';
 import { resolveStoragePath } from '../lib/storage/pathUtils';
 
 const router = Router();
 const supabase = supabaseClient!;
-
-// Generate project code
-const generateProjectCode = async (): Promise<string> => {
-  const year = new Date().getFullYear();
-  const result = await query(
-    `SELECT COUNT(*) FROM projects WHERE code LIKE $1`,
-    [`${PROJECT_CODE_CONSTANTS.PREFIX}-${year}-%`]
-  );
-  const count = parseInt(result.rows[0].count) + 1;
-  return `${PROJECT_CODE_CONSTANTS.PREFIX}-${year}-${String(count).padStart(PROJECT_CODE_CONSTANTS.PADDING_LENGTH, '0')}`;
-};
 
 // Get all projects
 router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
@@ -35,8 +23,8 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
     let query_builder = supabase
       .from('projects')
       .select(`
-        id, code, name, description, client_id, status, budget, actual_cost, 
-        start_date, end_date, xero_project_id, files, created_at, updated_at, po_commitments, deleted_at,
+        id, name, description, client_id, status, budget, 
+        start_date, end_date, is_billable, hourly_rate, is_active, created_at, updated_at, created_by,
         clients(id, name)
       `, { count: 'exact' });
 
@@ -52,7 +40,7 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
     if (search) {
       const searchTerm = `%${search}%`;
       query_builder = query_builder.or(
-        `name.ilike.${searchTerm},code.ilike.${searchTerm},description.ilike.${searchTerm}`
+        `name.ilike.${searchTerm},description.ilike.${searchTerm}`
       );
     }
 
@@ -109,8 +97,8 @@ router.get('/:id', authenticate, async (req: AuthRequest, res: Response) => {
     const { data: project, error } = await supabase
       .from('projects')
       .select(`
-        id, code, name, description, client_id, status, budget, actual_cost,
-        start_date, end_date, xero_project_id, files, created_at, updated_at, po_commitments, deleted_at,
+        id, name, description, client_id, status, budget,
+        start_date, end_date, is_billable, hourly_rate, is_active, created_at, updated_at, created_by,
         clients(id, name)
       `)
       .eq('id', req.params.id)
@@ -148,9 +136,7 @@ router.get('/:id', authenticate, async (req: AuthRequest, res: Response) => {
     // Calculate financials
     const financials = {
       budget: projectData.budget || 0,
-      po_commitments: projectData.po_commitments || 0,
-      actual_cost: projectData.actual_cost || 0,
-      available_budget: (projectData.budget || 0) - (projectData.po_commitments || 0) - (projectData.actual_cost || 0)
+      available_budget: projectData.budget || 0
     };
 
     res.json({
@@ -169,64 +155,23 @@ router.get('/:id', authenticate, async (req: AuthRequest, res: Response) => {
 // Get project financials
 router.get('/:id/financials', authenticate, async (req: AuthRequest, res: Response) => {
   try {
-    const projectResult = await query('SELECT id, code, name FROM projects WHERE id = $1', [req.params.id]);
-    if (projectResult.rows.length === 0) {
+    const { data: project, error } = await supabase
+      .from('projects')
+      .select('id, name, budget, created_by')
+      .eq('id', req.params.id)
+      .single();
+
+    if (error || !project) {
       return res.status(404).json({ error: 'Project not found' });
     }
 
-    // Get budget, PO commitments, and actual costs
-    const financialsResult = await query(
-      `SELECT 
-        COALESCE(p.budget, 0) as budget,
-        COALESCE(p.po_commitments, 0) as po_commitments,
-        COALESCE(p.actual_cost, 0) as actual_cost,
-        COALESCE(p.budget, 0) - COALESCE(p.po_commitments, 0) - COALESCE(p.actual_cost, 0) as available_budget
-      FROM projects p
-      WHERE p.id = $1`,
-      [req.params.id]
-    );
-
-    // Get purchase orders summary
-    const poSummary = await query(
-      `SELECT 
-        COUNT(*) as total_count,
-        COALESCE(SUM(total_amount), 0) as total_committed,
-        COUNT(*) FILTER (WHERE status = 'DRAFT') as draft_count,
-        COUNT(*) FILTER (WHERE status = 'AUTHORISED') as authorised_count,
-        COUNT(*) FILTER (WHERE status = 'BILLED') as billed_count
-      FROM xero_purchase_orders
-      WHERE project_id = $1`,
-      [req.params.id]
-    );
-
-    // Get bills summary
-    const billsSummary = await query(
-      `SELECT 
-        COUNT(*) as total_count,
-        COALESCE(SUM(amount), 0) as total_amount,
-        COALESCE(SUM(amount_paid), 0) as total_paid,
-        COALESCE(SUM(amount_due), 0) as total_due
-      FROM xero_bills
-      WHERE project_id = $1`,
-      [req.params.id]
-    );
-
-    // Get expenses summary
-    const expensesSummary = await query(
-      `SELECT 
-        COUNT(*) as total_count,
-        COALESCE(SUM(amount), 0) as total_amount
-      FROM xero_expenses
-      WHERE project_id = $1`,
-      [req.params.id]
-    );
-
+    // Return simplified financial summary
     res.json({
-      project: projectResult.rows[0],
-      financials: financialsResult.rows[0] || { budget: 0, po_commitments: 0, actual_cost: 0, available_budget: 0 },
-      purchase_orders: poSummary.rows[0] || { total_count: 0, total_committed: 0, draft_count: 0, authorised_count: 0, billed_count: 0 },
-      bills: billsSummary.rows[0] || { total_count: 0, total_amount: 0, total_paid: 0, total_due: 0 },
-      expenses: expensesSummary.rows[0] || { total_count: 0, total_amount: 0 }
+      project: project,
+      financials: { 
+        budget: project.budget || 0,
+        available_budget: project.budget || 0
+      }
     });
   } catch (error) {
     log.error('Failed to fetch project financials', error, { projectId: req.params.id });
@@ -248,20 +193,18 @@ router.post('/', authenticate, requirePermission('can_edit_projects'),
     const { name, client_id, status = 'quoted', budget = 0, description, start_date, end_date, cost_center_ids = [] } = req.body;
 
     try {
-      const code = await generateProjectCode();
-
       // Create project
       const { data: project, error: projectError } = await supabase
         .from('projects')
         .insert([{
-          code,
           name,
           client_id,
           status,
           budget,
           description,
           start_date,
-          end_date
+          end_date,
+          created_by: req.user!.id
         }])
         .select()
         .single();
@@ -289,11 +232,15 @@ router.post('/', authenticate, requirePermission('can_edit_projects'),
 
       // Log activity
       try {
-        await query(
-          `INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) 
-           VALUES ($1, $2, $3, $4, $5)`,
-          [req.user!.id, 'create', 'project', project.id, JSON.stringify({ name, code })]
-        );
+        await supabase
+          .from('activity_logs')
+          .insert({
+            user_id: req.user!.id,
+            action: 'create',
+            entity_type: 'project',
+            entity_id: project.id,
+            details: { name }
+          });
       } catch (logError) {
         log.warn('Failed to log activity', { error: logError });
       }
@@ -309,11 +256,11 @@ router.post('/', authenticate, requirePermission('can_edit_projects'),
 // Update project
 router.put('/:id', authenticate, requirePermission('can_edit_projects'),
   async (req: AuthRequest, res: Response) => {
-    const { name, client_id, status, budget, actual_cost, description, start_date, end_date, cost_center_ids, xero_project_id } = req.body;
+    const { name, client_id, status, budget, description, start_date, end_date, cost_center_ids, is_billable, hourly_rate } = req.body;
 
     try {
       const updates: any = {};
-      const fields = { name, client_id, status, budget, actual_cost, description, start_date, end_date, xero_project_id };
+      const fields = { name, client_id, status, budget, description, start_date, end_date, is_billable, hourly_rate };
       
       for (const [key, value] of Object.entries(fields)) {
         if (value !== undefined) {
@@ -370,8 +317,8 @@ router.put('/:id', authenticate, requirePermission('can_edit_projects'),
       const { data: project } = await supabase
         .from('projects')
         .select(`
-          id, code, name, description, client_id, status, budget, actual_cost,
-          start_date, end_date, xero_project_id, files, created_at, updated_at, po_commitments, deleted_at,
+          id, name, description, client_id, status, budget,
+          start_date, end_date, is_billable, hourly_rate, is_active, created_at, updated_at, created_by,
           clients(id, name)
         `)
         .eq('id', req.params.id)

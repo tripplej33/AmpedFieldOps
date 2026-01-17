@@ -9,14 +9,15 @@ dotenv.config({
 });
 
 interface EnvConfig {
-  // Database
-  DATABASE_URL: string;
+  // Database (DEPRECATED - migrated to Supabase)
+  DATABASE_URL?: string;
   
   // Auth
   JWT_SECRET: string;
-  // Supabase (optional during migration)
+  // Supabase
   SUPABASE_URL?: string;
   SUPABASE_SERVICE_ROLE_KEY?: string;
+  SUPABASE_ANON_KEY?: string;
   
   // Server
   PORT: number;
@@ -63,7 +64,7 @@ function validateEnv(): EnvConfig {
   }
 
   return {
-    DATABASE_URL: getEnvVar('DATABASE_URL'),
+    DATABASE_URL: getEnvVar('DATABASE_URL', false), // DEPRECATED - Supabase migration complete
     JWT_SECRET: jwtSecret,
     PORT: parseInt(getEnvVar('PORT', false, '3001'), 10),
     NODE_ENV: (getEnvVar('NODE_ENV', false, 'development') as 'development' | 'production' | 'test'),
@@ -71,6 +72,7 @@ function validateEnv(): EnvConfig {
     BACKEND_URL: getEnvVar('BACKEND_URL', false),
     SUPABASE_URL: getEnvVar('SUPABASE_URL', false),
     SUPABASE_SERVICE_ROLE_KEY: getEnvVar('SUPABASE_SERVICE_ROLE_KEY', false),
+    SUPABASE_ANON_KEY: getEnvVar('SUPABASE_ANON_KEY', false),
     XERO_CLIENT_ID: getEnvVar('XERO_CLIENT_ID', false),
     XERO_CLIENT_SECRET: getEnvVar('XERO_CLIENT_SECRET', false),
     XERO_REDIRECT_URI: getEnvVar('XERO_REDIRECT_URI', false),

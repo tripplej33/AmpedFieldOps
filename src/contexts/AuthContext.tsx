@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { supabase } from '@/lib/supabase';
+import { api } from '@/lib/api';
 import type { Session } from '@supabase/supabase-js';
 
 interface User {
@@ -31,16 +32,26 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
  * Load user profile from public.users table
  * This maps the Supabase auth.users to the app's user profile
  */
-async function loadUserProfile(userId: string): Promise<User | null> {
+async function loadUserProfile(userId: string, session?: Session | null): Promise<User | null> {
   try {
+    console.log('loadUserProfile called for userId:', userId, 'with session:', !!session?.user);
+    
+    // The Supabase client already carries the current session for authenticated queries
     const { data, error } = await supabase
       .from('users')
-      .select('id, email, name, role, avatar')
+      .select('id, email, name, role, avatar_url')
       .eq('id', userId)
       .single();
 
+    console.log('User profile query result:', { data, error });
+
     if (error) {
-      console.error('Failed to load user profile:', error);
+      console.error('Failed to load user profile - error details:', {
+        code: error.code,
+        message: error.message,
+        hint: error.hint,
+        details: error.details,
+      });
       return null;
     }
 
@@ -51,7 +62,7 @@ async function loadUserProfile(userId: string): Promise<User | null> {
     // Load user permissions
     const { data: permData, error: permError } = await supabase
       .from('user_permissions')
-      .select('permission_id')
+      .select('permission')
       .eq('user_id', userId);
 
     if (permError) {
@@ -62,14 +73,15 @@ async function loadUserProfile(userId: string): Promise<User | null> {
     // Map permission_ids to permission names by querying permissions table
     let permissions: string[] = [];
     if (permData && permData.length > 0) {
-      const permIds = permData.map((p) => p.permission_id);
+      // permissions table uses key; user_permissions.permission references that key
+      const permKeys = permData.map((p) => p.permission);
       const { data: permNames, error: nameError } = await supabase
         .from('permissions')
-        .select('name')
-        .in('id', permIds);
+        .select('name, key')
+        .in('key', permKeys);
 
       if (!nameError && permNames) {
-        permissions = permNames.map((p) => p.name);
+        permissions = permNames.map((p) => p.key || p.name).filter(Boolean);
       }
     }
 
@@ -119,6 +131,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
 
         if (session?.user) {
+          // Propagate token to API client for backend auth
+          api.setToken(session.access_token);
           setSession(session);
           const userProfile = await loadUserProfile(session.user.id);
           setUser(userProfile);
@@ -136,13 +150,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('Auth state changed:', event);
+      console.log('Auth state changed:', event, 'Session exists:', !!session?.user);
+      // Propagate Supabase access token to API client for backend requests
+      api.setToken(session?.access_token || null);
       setSession(session);
 
       if (session?.user) {
-        const userProfile = await loadUserProfile(session.user.id);
-        setUser(userProfile);
+        try {
+          const userProfile = await loadUserProfile(session.user.id, session);
+          if (userProfile) {
+            console.log('User profile loaded successfully:', userProfile.email);
+            setUser(userProfile);
+          } else {
+            console.warn('User profile returned null for user:', session.user.id);
+            // Don't clear user on profile load failure - user is authenticated even if profile loads slowly
+            // This prevents bouncing back to login on slow network
+          }
+        } catch (err) {
+          console.error('Error loading user profile:', err);
+        }
       } else {
+        console.log('No session user, clearing auth state');
         setUser(null);
       }
     });
@@ -166,18 +194,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       throw new Error('Login failed: No user or session returned');
     }
 
-    const userProfile = await loadUserProfile(data.user.id);
-    if (!userProfile) {
-      throw new Error('Failed to load user profile after login');
+    // Set backend API token to Supabase access token so protected routes work
+    api.setToken(data.session.access_token);
+
+    // Load user profile - but don't fail login if profile load is slow/fails
+    // The onAuthStateChange listener will also attempt to load it
+    try {
+      const userProfile = await loadUserProfile(data.user.id, data.session);
+      if (userProfile) {
+        console.log('User profile loaded after login:', userProfile.email);
+        setSession(data.session);
+        setUser(userProfile);
+        return { user: userProfile, session: data.session };
+      } else {
+        console.warn('Profile load returned null, but authentication succeeded');
+        // Still set session even if profile isn't loaded yet
+        setSession(data.session);
+        return { user: null, session: data.session };
+      }
+    } catch (profileError) {
+      console.warn('Profile load failed but auth succeeded, proceeding:', profileError);
+      setSession(data.session);
+      return { user: null, session: data.session };
     }
-
-    setSession(data.session);
-    setUser(userProfile);
-
-    return {
-      user: userProfile,
-      session: data.session,
-    };
   };
 
   const signup = async (email: string, password: string, name: string) => {
@@ -256,7 +295,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         session,
         isLoading,
-        isAuthenticated: !!user,
+        isAuthenticated: !!session?.user,
         login,
         logout,
         signup,

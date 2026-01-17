@@ -42,8 +42,8 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
       .from('timesheets')
       .select(`
         *,
-        users(id, name),
-        projects(id, name, code),
+        users!timesheets_user_id_fkey(id, name),
+        projects(id, name),
         clients(id, name),
         activity_types(id, name, icon, color, hourly_rate),
         cost_centers(id, code, name)

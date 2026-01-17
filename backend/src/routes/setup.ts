@@ -2,7 +2,7 @@ import { Router, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { body, validationResult } from 'express-validator';
-import { query } from '../db';
+import { createClient } from '@supabase/supabase-js';
 import { logoUpload, bufferToStream } from '../middleware/upload';
 import { env } from '../config/env';
 import { StorageFactory } from '../lib/storage/StorageFactory';
@@ -11,39 +11,48 @@ import { log } from '../lib/logger';
 
 const router = Router();
 
+// Initialize Supabase client for setup operations
+const supabase = createClient(
+  env.SUPABASE_URL || 'http://127.0.0.1:54321',
+  env.SUPABASE_SERVICE_ROLE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNsajd4NHBob3dvcHp1dmprZ3poIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTY5ODY5NDMyMiwiZXhwIjoyMDE0MjcwMzIyfQ.DKvHYXBJVyNKKZuUpbJnjAqgx6w6NZCbcD-qPvKH9_w'
+);
+
+// Also initialize an anon client for certain operations that need to go through auth
+const supabaseAnon = createClient(
+  env.SUPABASE_URL || 'http://127.0.0.1:54321',
+  env.SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNsajd4NHBob3dvcHp1dmprZ3poIiwicm9sZSI6ImFub24iLCJpYXQiOjE2OTg2OTQzMjIsImV4cCI6MjAxNDI3MDMyMn0.VtQgVXMx20H2sFXyb1XYSZZS_7hFI7fzvM8rr0TfvZc'
+);
+
 // Check setup status
 router.get('/status', async (req, res) => {
   try {
-    // Check if setup is completed
-    const setupCompleted = await query(
-      `SELECT value FROM settings WHERE key = 'setup_completed' AND user_id IS NULL`
-    );
+    // Check if any admin users exist in Supabase Auth
+    const { data: authUsers, error: authError } = await supabase.auth.admin.listUsers();
+    
+    if (authError) {
+      throw authError;
+    }
 
-    if (setupCompleted.rows.length > 0 && setupCompleted.rows[0].value === 'true') {
+    // Check if setup is marked as complete in Supabase
+    const { data: setupSettings, error: setupError } = await supabase
+      .from('app_settings')
+      .select('setup_complete')
+      .single();
+
+    if (setupSettings?.setup_complete) {
       return res.json({ 
         completed: true,
         step: null
       });
     }
 
-    // Check for existing admin user
-    const adminUser = await query(`SELECT id FROM users WHERE role = 'admin' LIMIT 1`);
-    
-    if (adminUser.rows.length === 0) {
+    if (!authUsers || authUsers.length === 0) {
       return res.json({ 
         completed: false, 
         step: 1,
         message: 'Create admin account'
       });
     }
-
-    // Mark setup as completed after admin is created (company name prompt removed)
-    // Company name can be changed later in Settings
-    await query(
-      `INSERT INTO settings (key, value, user_id)
-       VALUES ('setup_completed', 'true', NULL)
-       ON CONFLICT (key, user_id) DO UPDATE SET value = 'true', updated_at = CURRENT_TIMESTAMP`
-    );
 
     return res.json({ 
       completed: true,
@@ -59,46 +68,31 @@ router.get('/status', async (req, res) => {
 // Check if default admin exists
 router.get('/default-admin-status', async (req, res) => {
   try {
-    const defaultAdmin = await query(
-      `SELECT id, email FROM users WHERE email = 'admin@ampedfieldops.com' AND role = 'admin' LIMIT 1`
-    );
-    
-    res.json({ hasDefaultAdmin: defaultAdmin.rows.length > 0 });
+    const { count, error } = await supabase
+      .from('users')
+      .select('id', { count: 'exact', head: true })
+      .eq('role', 'admin');
+
+    if (error) {
+      log.warn('Database error checking admins', error);
+      return res.json({ hasDefaultAdmin: false });
+    }
+
+    log.info('Admin count check', { count });
+    const hasAdminUsers = (count ?? 0) > 0;
+    res.json({ hasDefaultAdmin: hasAdminUsers });
   } catch (error) {
-    console.error('Failed to check default admin status:', error);
-    res.status(500).json({ error: 'Failed to check default admin status' });
+    log.error('Failed to check default admin status', error as any);
+    res.json({ hasDefaultAdmin: false });
   }
 });
 
 // Delete default admin user (only if another admin exists)
 router.delete('/default-admin', async (req, res) => {
   try {
-    // Check if default admin exists
-    const defaultAdmin = await query(
-      `SELECT id FROM users WHERE email = 'admin@ampedfieldops.com' AND role = 'admin' LIMIT 1`
-    );
-
-    if (defaultAdmin.rows.length === 0) {
-      return res.json({ message: 'Default admin does not exist' });
-    }
-
-    // Check if there's at least one other admin
-    const otherAdmins = await query(
-      `SELECT id FROM users WHERE role = 'admin' AND email != 'admin@ampedfieldops.com' LIMIT 1`
-    );
-
-    if (otherAdmins.rows.length === 0) {
-      return res.status(400).json({ 
-        error: 'Cannot delete default admin: No other admin exists. Please create a new admin first.' 
-      });
-    }
-
-    // Delete default admin
-    await query(
-      `DELETE FROM users WHERE email = 'admin@ampedfieldops.com' AND role = 'admin'`
-    );
-
-    res.json({ message: 'Default admin deleted successfully' });
+    // Note: This endpoint is deprecated with Supabase migration
+    // Default admin management now handled via Supabase Auth
+    res.json({ message: 'Default admin management handled via Supabase Auth' });
   } catch (error) {
     console.error('Failed to delete default admin:', error);
     res.status(500).json({ error: 'Failed to delete default admin' });
@@ -128,14 +122,34 @@ router.post('/admin',
         return res.status(500).json({ error: 'Supabase client not initialized' });
       }
 
-      // Check if admin already exists
-      const { data: existingUsers } = await supabase
-        .from('users')
-        .select('id')
-        .eq('role', 'admin')
-        .limit(1);
+      // Cleanup: remove stale admin profiles in public.users without matching auth.users
+      try {
+        const { data: publicAdmins } = await supabase
+          .from('users')
+          .select('id,email')
+          .eq('role', 'admin');
 
-      if (existingUsers && existingUsers.length > 0) {
+        const { data: authUsersList } = await supabase.auth.admin.listUsers();
+        const authUsersArr = (authUsersList?.users || []) as Array<{ email?: string }>;
+        const authEmails = new Set(authUsersArr.map((u) => ((u.email ?? '').toLowerCase())));
+
+        const publicAdminsArr = (publicAdmins || []) as Array<{ id: string; email?: string }>;
+        const staleAdmins = publicAdminsArr.filter((u) => !authEmails.has((u.email ?? '').toLowerCase()));
+        for (const stale of staleAdmins) {
+          await supabase.from('users').delete().eq('id', stale.id);
+        }
+      } catch (cleanupErr) {
+        log.warn('Setup cleanup: failed to remove stale admin(s)', cleanupErr as any);
+      }
+
+      // Check if any admin exists in Supabase Auth (source of truth)
+      const { data: authUsersList2, error: listErr } = await supabase.auth.admin.listUsers();
+      if (listErr) {
+        return res.status(500).json({ error: 'Failed to query auth users' });
+      }
+      const authUsersArr2 = (authUsersList2?.users || []) as Array<{ user_metadata?: any }>;
+      const hasAdminInAuth = authUsersArr2.some((u) => (u.user_metadata?.role === 'admin'));
+      if (hasAdminInAuth) {
         return res.status(400).json({ error: 'Admin account already exists' });
       }
 
@@ -157,23 +171,20 @@ router.post('/admin',
 
       const userId = authData.user.id;
 
-      // Create user profile in public.users
-      const { error: profileError } = await supabase
+      // Profile is auto-created by DB trigger on auth.users insert.
+      // Optionally update profile fields to ensure consistency.
+      const { error: profileUpdateError } = await supabase
         .from('users')
-        .insert({
-          id: userId,
-          email,
-          password_hash: '', // Empty since Supabase Auth handles password
+        .update({
           name,
           role: 'admin',
           is_active: true
-        });
+        })
+        .eq('id', userId);
 
-      if (profileError) {
-        console.error('Profile creation error:', profileError);
-        // Try to delete the auth user if profile creation fails
-        await supabase.auth.admin.deleteUser(userId);
-        return res.status(400).json({ error: 'Failed to create user profile' });
+      if (profileUpdateError) {
+        console.error('Profile update error:', profileUpdateError);
+        // Not fatal; proceed since trigger should have created the profile
       }
 
       // Generate Supabase session token (use admin API to create session)
@@ -284,20 +295,22 @@ router.post('/logo', logoUpload.single('logo'), async (req, res) => {
       });
     }
 
-    // Save logo URL to settings
-    await query(
-      `UPDATE settings SET value = $1, updated_at = CURRENT_TIMESTAMP 
-       WHERE key = 'company_logo' AND user_id IS NULL`,
-      [logoUrl]
-    );
+    // Save logo URL to Supabase app_settings
+    const { error: updateError } = await supabase
+      .from('app_settings')
+      .update({ company_logo: logoUrl, updated_at: new Date().toISOString() })
+      .is('id', null);  // Ensure we update the single row
 
-    // Insert if doesn't exist
-    await query(
-      `INSERT INTO settings (key, value, user_id)
-       VALUES ('company_logo', $1, NULL)
-       ON CONFLICT (key, user_id) DO UPDATE SET value = $1, updated_at = CURRENT_TIMESTAMP`,
-      [logoUrl]
-    );
+    if (updateError) {
+      // Try to insert if update fails (table might be empty)
+      const { error: insertError } = await supabase
+        .from('app_settings')
+        .insert({ company_logo: logoUrl });
+      
+      if (insertError && !insertError.message.includes('duplicate')) {
+        throw insertError;
+      }
+    }
 
     res.json({ logo_url: logoUrl });
   } catch (error: any) {
@@ -325,20 +338,17 @@ router.post('/company',
     const { company_name, timezone } = req.body;
 
     try {
-      await query(
-        `INSERT INTO settings (key, value, user_id)
-         VALUES ('company_name', $1, NULL)
-         ON CONFLICT (key, user_id) DO UPDATE SET value = $1, updated_at = CURRENT_TIMESTAMP`,
-        [company_name]
-      );
+      const { error: updateError } = await supabase
+        .from('app_settings')
+        .update({ 
+          company_name, 
+          timezone,
+          updated_at: new Date().toISOString()
+        })
+        .is('id', null);
 
-      if (timezone) {
-        await query(
-          `INSERT INTO settings (key, value, user_id)
-           VALUES ('timezone', $1, NULL)
-           ON CONFLICT (key, user_id) DO UPDATE SET value = $1, updated_at = CURRENT_TIMESTAMP`,
-          [timezone]
-        );
+      if (updateError && !updateError.message.includes('no rows')) {
+        throw updateError;
       }
 
       res.json({ message: 'Company details updated', step: 3 });
@@ -360,14 +370,23 @@ router.post('/client',
     const { name, contact_name, email, phone, address } = req.body;
 
     try {
-      const result = await query(
-        `INSERT INTO clients (name, contact_name, email, phone, address)
-         VALUES ($1, $2, $3, $4, $5)
-         RETURNING *`,
-        [name, contact_name, email, phone, address]
-      );
+      const { data: client, error: insertError } = await supabase
+        .from('clients')
+        .insert({
+          name,
+          contact_name,
+          email,
+          phone,
+          address
+        })
+        .select()
+        .single();
 
-      res.status(201).json(result.rows[0]);
+      if (insertError) {
+        throw insertError;
+      }
+
+      res.status(201).json(client);
     } catch (error) {
       res.status(500).json({ error: 'Failed to create client' });
     }
@@ -377,11 +396,32 @@ router.post('/client',
 // Complete setup
 router.post('/complete', async (req, res) => {
   try {
-    await query(
-      `INSERT INTO settings (key, value, user_id)
-       VALUES ('setup_completed', 'true', NULL)
-       ON CONFLICT (key, user_id) DO UPDATE SET value = 'true', updated_at = CURRENT_TIMESTAMP`
-    );
+    if (!supabase) {
+      return res.status(500).json({ error: 'Supabase not configured' });
+    }
+
+    const { data: existing, error: fetchError } = await supabase
+      .from('app_settings')
+      .select('id')
+      .limit(1)
+      .single();
+
+    if (fetchError) {
+      throw fetchError;
+    }
+
+    if (!existing) {
+      return res.status(400).json({ error: 'app_settings not initialized' });
+    }
+
+    const { error: updateError } = await supabase
+      .from('app_settings')
+      .update({ setup_complete: true, updated_at: new Date().toISOString() })
+      .eq('id', existing.id);
+
+    if (updateError) {
+      throw updateError;
+    }
 
     res.json({ message: 'Setup completed successfully' });
   } catch (error) {
@@ -392,23 +432,23 @@ router.post('/complete', async (req, res) => {
 // Get company settings (public - for login page branding)
 router.get('/branding', async (req, res) => {
   try {
-    const settings = await query(
-      `SELECT key, value FROM settings 
-       WHERE key IN ('company_name', 'company_logo', 'company_favicon') AND user_id IS NULL`
-    );
-
-    const result: any = {};
-    settings.rows.forEach(row => {
-      result[row.key] = row.value;
-    });
+    const { data: appSettings, error: settingsError } = await supabase
+      .from('app_settings')
+      .select('company_name, company_logo, company_favicon')
+      .single();
 
     res.json({
-      company_name: result.company_name || 'AmpedFieldOps',
-      company_logo: result.company_logo || null,
-      company_favicon: result.company_favicon || null
+      company_name: appSettings?.company_name || 'AmpedFieldOps',
+      company_logo: appSettings?.company_logo || null,
+      company_favicon: appSettings?.company_favicon || null
     });
   } catch (error) {
-    res.status(500).json({ error: 'Failed to fetch branding' });
+    // Return defaults if Supabase is unavailable
+    res.json({
+      company_name: 'AmpedFieldOps',
+      company_logo: null,
+      company_favicon: null
+    });
   }
 });
 

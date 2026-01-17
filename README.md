@@ -36,8 +36,8 @@ A mobile-first service business management platform designed for electrical cont
 
 ### Backend
 - Node.js with Express
-- PostgreSQL database
-- JWT authentication
+- Supabase (Postgres + Auth + PostgREST + Storage)
+- JWT authentication (Supabase JWTs + app fallback)
 - Xero API integration
 - Nodemailer for email delivery
 
@@ -45,8 +45,8 @@ A mobile-first service business management platform designed for electrical cont
 
 ### Prerequisites
 - Node.js 18+
-- PostgreSQL 14+
-- Docker (optional, for containerized setup)
+- Docker (for containerized setup)
+- Supabase CLI (optional for local dev)
 
 ### Option 1: Docker Installation (Recommended)
 
@@ -63,10 +63,9 @@ chmod +x install.sh
 This will:
 1. Check Docker installation
 2. Generate secure secrets
-3. Prompt for admin credentials
-4. Start all services
-5. Run migrations and seeds
-6. Create your admin account
+3. Start all services (frontend, backend, supabase stack, redis, ocr)
+4. Build and deploy frontend assets to nginx
+5. Prepare Supabase (migrations applied separately)
 
 Access the app at **http://localhost:3000**
 
@@ -91,11 +90,7 @@ cd backend && npm install && cd ..
 cp .env.example .env
 # Edit .env with your database credentials
 
-# Run migrations
-cd backend && npm run migrate && cd ..
-
-# Seed default data
-cd backend && npm run seed && cd ..
+# Supabase runs locally via CLI or Docker; migrations applied via SQL in `supabase/migrations/`
 
 # Start backend (terminal 1)
 cd backend && npm run dev
@@ -106,28 +101,22 @@ npm run dev
 
 ## Environment Variables
 
-Create a `.env` file in the `backend` directory based on `.env.example`:
+Environment variables are defined in the root `.env`:
 
 ```env
-# Database
-DATABASE_URL=postgresql://user:password@localhost:5432/ampedfieldops
-
-# Authentication
+VITE_API_URL=
+VITE_SUPABASE_URL=http://supabase.ampedlogix.com:54321   # https in production
+VITE_SUPABASE_ANON_KEY=<anon key>
+SUPABASE_URL=http://127.0.0.1:54321
+SUPABASE_SERVICE_ROLE_KEY=<service role key>
 JWT_SECRET=your-secret-key-min-32-characters
-
-# Server
 PORT=3001
 NODE_ENV=development
-FRONTEND_URL=http://localhost:5173
+FRONTEND_URL=http://localhost:3000
 BACKEND_URL=http://localhost:3001
-
-# Xero Integration (Optional - can also be configured in Settings)
 XERO_CLIENT_ID=
 XERO_CLIENT_SECRET=
 XERO_REDIRECT_URI=http://localhost:3001/api/xero/callback
-
-# Email/SMTP (Optional - can be configured in Settings page)
-# These are fallback values if not set in the Settings page
 SMTP_HOST=
 SMTP_PORT=
 SMTP_USER=
@@ -139,13 +128,10 @@ SMTP_FROM=
 
 ## First-Time Setup
 
-1. Navigate to http://localhost:5173 (or http://localhost:3000 for Docker)
-2. Complete the setup wizard:
-   - Create admin account
-   - Configure company name and logo
-   - Set up email configuration (optional)
-   - Connect Xero (optional)
-3. Start adding clients and projects!
+1. Navigate to http://localhost:3000
+2. If no admin exists, the Login page shows the Admin Setup modal
+3. Create the first admin (Supabase Auth)
+4. Modal stays hidden thereafter; proceed to login/dashboard
 
 ## Configuration
 

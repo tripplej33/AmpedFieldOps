@@ -34,6 +34,7 @@ import filesRoutes from './routes/files';
 import safetyDocumentsRoutes from './routes/safetyDocuments';
 import backupsRoutes from './routes/backups';
 import documentScanRoutes from './routes/documentScan';
+import { createProxyMiddleware } from 'http-proxy-middleware';
 
 const app = express();
 
@@ -82,6 +83,40 @@ app.use(async (req, res, next) => {
 app.use(cors({
   origin: createDynamicCorsOrigin(),
   credentials: true
+}));
+
+// Supabase proxy - MUST be BEFORE body-parser so proxy can stream raw request body
+// Proxies /api/supabase/* to the Supabase Kong gateway to avoid browser mixed-content and cert CN issues
+app.use('/api/supabase', createProxyMiddleware({
+  target: env.SUPABASE_URL || 'http://127.0.0.1:54321',
+  changeOrigin: true,
+  secure: false,
+  xfwd: true,
+  timeout: 30000,
+  proxyTimeout: 30000,
+  pathRewrite: {
+    '^/api/supabase': ''
+  },
+  onProxyReq: (proxyReq, req, res) => {
+    log.info('Proxying Supabase request', { 
+      path: req.path, 
+      target: env.SUPABASE_URL,
+      method: req.method,
+      contentType: req.headers['content-type']
+    });
+  },
+  onProxyRes: (proxyRes, req, res) => {
+    log.info('Supabase proxy response', { 
+      path: req.path,
+      statusCode: proxyRes.statusCode
+    });
+  },
+  onError: (err: any, req: any, res: any) => {
+    log.error('Supabase proxy error', err, { path: req.path, method: req.method });
+    if (!res.headersSent) {
+      res.status(502).json({ error: 'Supabase gateway unavailable' });
+    }
+  },
 }));
 
 // Request size limits to prevent DoS attacks

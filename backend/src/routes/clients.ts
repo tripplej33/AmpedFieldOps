@@ -22,8 +22,7 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
     let query_builder = supabase
       .from('clients')
       .select(
-        `id, name, contact_name, email, phone, address, location, billing_address, 
-         billing_email, client_type, status, notes, xero_contact_id, created_at, updated_at`,
+        `id, name, email, phone, address, city, state, postal_code, country, website, is_active, created_at, updated_at, created_by`,
         { count: 'exact' }
       );
 
@@ -35,17 +34,11 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
     if (search) {
       const searchTerm = `%${search}%`;
       query_builder = query_builder.or(
-        `name.ilike.${searchTerm},contact_name.ilike.${searchTerm},address.ilike.${searchTerm}`
+        `name.ilike.${searchTerm},address.ilike.${searchTerm}`
       );
     }
 
-    if (client_type) {
-      if (client_type === 'customer') {
-        query_builder = query_builder.in('client_type', ['customer', 'both']);
-      } else if (client_type === 'supplier') {
-        query_builder = query_builder.in('client_type', ['supplier', 'both']);
-      }
-    }
+    // client_type filter removed - column doesn't exist in Supabase schema
 
     // Apply sorting
     const validSorts = ['name', 'created_at'];

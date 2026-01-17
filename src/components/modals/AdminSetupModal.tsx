@@ -10,9 +10,10 @@ import { toast } from 'sonner';
 interface AdminSetupModalProps {
   open: boolean;
   onSuccess: (user: any, token: string) => void;
+  onClose?: () => void;
 }
 
-export default function AdminSetupModal({ open, onSuccess }: AdminSetupModalProps) {
+export default function AdminSetupModal({ open, onSuccess, onClose }: AdminSetupModalProps) {
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -89,7 +90,14 @@ export default function AdminSetupModal({ open, onSuccess }: AdminSetupModalProp
   };
 
   return (
-    <Dialog open={open} onOpenChange={() => {}}>
+    <Dialog
+      open={open}
+      onOpenChange={(isOpen) => {
+        if (!isOpen) {
+          onClose?.();
+        }
+      }}
+    >
       <DialogContent className="max-w-[95vw] sm:max-w-md" onInteractOutside={(e) => e.preventDefault()}>
         <DialogHeader>
           <div className="flex items-center gap-3 mb-2">

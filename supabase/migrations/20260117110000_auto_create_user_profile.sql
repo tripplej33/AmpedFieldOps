@@ -1,22 +1,20 @@
 -- Auto-create user profile in public.users when auth.users record is created
 -- This ensures public.users stays in sync with auth.users
 
--- Function to create/update user profile (matches existing schema with password_hash, avatar, is_active)
+-- Function to create/update user profile
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
-security definer
+security definer set search_path = public
 as $$
 begin
-  insert into public.users (id, email, password_hash, name, role, avatar, is_active)
+  insert into public.users (id, email, name, role, avatar_url)
   values (
     new.id,
     new.email,
-    '',  -- Empty password_hash since auth.users handles authentication
     coalesce(new.raw_user_meta_data->>'name', split_part(new.email, '@', 1)),
     coalesce(new.raw_user_meta_data->>'role', 'user'),
-    new.raw_user_meta_data->>'avatar',
-    true
+    new.raw_user_meta_data->>'avatar_url'
   )
   on conflict (id) do update
   set
@@ -32,18 +30,6 @@ drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
-
--- Backfill: Link existing auth.users to public.users by email
--- For existing public.users that match auth.users by email, update the UUID
-update public.users u
-set id = au.id,
-    updated_at = now()
-from auth.users au
-where u.email = au.email
-  and u.id != au.id;
-
--- Backfill: Create public.users records for auth.users that don't have matches
-insert into public.users (id, email, password_hash, name, role, avatar, is_active)
 select
   au.id,
   au.email,

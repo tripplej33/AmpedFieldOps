@@ -266,7 +266,7 @@ router.post('/reset-password',
 router.get('/me', authenticate, async (req: AuthRequest, res: Response) => {
   try {
     const result = await query(
-      'SELECT id, email, name, role, avatar, created_at FROM users WHERE id = $1',
+      'SELECT id, email, name, role, avatar_url, created_at FROM users WHERE id = $1',
       [req.user!.id]
     );
 

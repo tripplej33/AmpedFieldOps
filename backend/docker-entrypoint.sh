@@ -31,20 +31,11 @@ if [ "$(id -u)" = "0" ]; then
   exec su-exec node "$0" "$@"
 fi
 
-# Wait for PostgreSQL to be ready
-echo "⏳ Waiting for PostgreSQL..."
-until pg_isready -h postgres -U ampedfieldops -d ampedfieldops; do
-  sleep 1
-done
-echo "✅ PostgreSQL is ready"
+# Note: No need to wait for PostgreSQL - we're using Supabase
+# Backend connects to Supabase via HTTP API, not direct PostgreSQL connection
 
-# Run migrations
-echo "🔄 Running database migrations..."
-npx tsx src/db/migrate.ts || echo "⚠️  Migration failed or already run"
-
-# Run seeds (only if tables are empty)
-echo "🌱 Seeding database..."
-npx tsx src/db/seed.ts || echo "⚠️  Seed failed or already run"
+# Skip legacy migrations and seeds - all data now managed via Supabase migrations
+echo "⏭️  Skipping legacy PostgreSQL migrations (using Supabase)"
 
 # Start the application
 echo "🎯 Starting API server..."

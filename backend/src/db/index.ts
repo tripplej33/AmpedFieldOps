@@ -8,7 +8,12 @@ import { env } from '../config/env';
  * - For external production databases, require proper SSL with certificate validation
  */
 function getSslConfig(): boolean | { rejectUnauthorized: boolean } {
-  const dbUrl = env.DATABASE_URL.toLowerCase();
+  const dbUrl = (env.DATABASE_URL || '').toLowerCase();
+  
+  // If no DATABASE_URL, return false (no SSL needed for disabled pool)
+  if (!dbUrl) {
+    return false;
+  }
   
   // If DATABASE_URL explicitly specifies SSL mode, parse it
   if (dbUrl.includes('sslmode=')) {
@@ -56,13 +61,25 @@ function getSslConfig(): boolean | { rejectUnauthorized: boolean } {
   return false;
 }
 
-const pool = new Pool({
+// DEPRECATED: This pool is for legacy PostgreSQL routes only
+// All new routes should use Supabase client directly
+const pool = env.DATABASE_URL ? new Pool({
   connectionString: env.DATABASE_URL,
   ssl: getSslConfig()
-});
+}) : null;
 
-export const query = (text: string, params?: any[]) => pool.query(text, params);
+export const query = (text: string, params?: any[]) => {
+  if (!pool) {
+    throw new Error('Legacy PostgreSQL pool not configured. Use Supabase client instead.');
+  }
+  return pool.query(text, params);
+};
 
-export const getClient = () => pool.connect();
+export const getClient = () => {
+  if (!pool) {
+    throw new Error('Legacy PostgreSQL pool not configured. Use Supabase client instead.');
+  }
+  return pool.connect();
+};
 
 export default pool;

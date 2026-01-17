@@ -1,211 +1,132 @@
-# Docker Setup Guide
+# Docker Setup Guide (Supabase Stack)
 
 ## Prerequisites
 
-1. **Install Docker Desktop** (if not already installed):
-   - Windows: Download from https://www.docker.com/products/docker-desktop/
-   - Make sure Docker Desktop is running before proceeding
+1. Install Docker (or Docker Desktop on Windows/macOS)
+2. Verify installation:
 
-2. **Verify Docker Installation**:
-   ```powershell
-   docker --version
-   docker compose version
-   ```
+```bash
+docker --version
+docker compose version
+```
 
 ## Quick Start
 
-### 1. Create Environment File
+### 1) Environment Variables
 
-A `.env` file has been created with secure random secrets. You can edit it if needed:
+Use the root `.env`. Key variables:
 
 ```env
-DB_PASSWORD=changeme123
-JWT_SECRET=your-super-secret-jwt-key-change-in-production
+# Frontend
+VITE_API_URL=
+VITE_SUPABASE_URL=http://supabase.ampedlogix.com:54321   # https in production with valid cert
+VITE_SUPABASE_ANON_KEY=<anon key>
+
+# Backend
+SUPABASE_URL=http://127.0.0.1:54321                      # or http://host.docker.internal:54321 from containers
+SUPABASE_SERVICE_ROLE_KEY=<service role key>
+JWT_SECRET=<32+ chars>
+PORT=3001
 FRONTEND_URL=http://localhost:3000
-API_URL=http://localhost:3001
 ```
 
-### 2. Build and Start Containers
+### 2) Build and Start Containers
 
-```powershell
+```bash
 # Build and start all services
-docker compose up --build
-
-# Or run in detached mode (background)
 docker compose up --build -d
-```
 
-### 3. View Logs
-
-```powershell
-# View all logs
+# Tail logs (optional)
 docker compose logs -f
-
-# View specific service logs
-docker compose logs -f backend
-docker compose logs -f frontend
-docker compose logs -f postgres
 ```
 
-### 4. Access the Application
+### 3) Access the Application
 
-- **Frontend**: http://localhost:3000
-- **Backend API**: http://localhost:3001
-- **PostgreSQL**: localhost:5432
+- Frontend: http://localhost:3000
+- Backend API: http://localhost:3001
+- Supabase (Kong): http://localhost:54321 (browser should use supabase.ampedlogix.com in production)
 
-### 5. Stop Containers
+### 4) Stop Containers
 
-```powershell
-# Stop all containers
+```bash
 docker compose down
-
-# Stop and remove volumes (clears database)
+# Remove volumes (clears Supabase data)
 docker compose down -v
+```
+
+## Rebuilds and Deployments
+
+### Rebuild Frontend Bundle
+
+```bash
+# Build locally (uses VITE_* baked at build time)
+docker run --rm -v "$PWD":/workspace -w /workspace node:20 npm ci
+docker run --rm -v "$PWD":/workspace -w /workspace node:20 npm run build
+
+# Deploy into nginx container
+docker exec ampedfieldops-web rm -rf /usr/share/nginx/html/assets
+docker cp dist/. ampedfieldops-web:/usr/share/nginx/html/
+```
+
+### Apply Backend Source Changes
+
+```bash
+# Copy updated files into container
+docker cp backend/src/routes/setup.ts ampedfieldops-api:/app/src/routes/setup.ts
+docker cp backend/src/config/env.ts ampedfieldops-api:/app/src/config/env.ts
+docker cp backend/tsconfig.json ampedfieldops-api:/app/tsconfig.json
+
+# Rebuild dist & restart
+docker exec ampedfieldops-api sh -c "cd /app && npm run build"
+docker restart ampedfieldops-api
 ```
 
 ## Troubleshooting
 
-### Database Connection Issues
+### Supabase Connectivity
 
-If the backend can't connect to the database:
+```bash
+# Check containers
+docker ps --format '{{.Names}} {{.Status}}'
 
-1. Check if PostgreSQL container is running:
-   ```powershell
-   docker compose ps
-   ```
+# Check Supabase Kong logs
+docker compose logs -f supabase_kong_AmpedFieldOps
+```
 
-2. Check PostgreSQL logs:
-   ```powershell
-   docker compose logs postgres
-   ```
-
-3. Verify database credentials in `.env` match `docker-compose.yml`
-
-### Backend Migration Issues
-
-The backend automatically runs migrations on startup. If migrations fail:
-
-1. Check backend logs:
-   ```powershell
-   docker compose logs backend
-   ```
-
-2. Manually run migrations:
-   ```powershell
-   docker compose exec backend npm run migrate
-   ```
-
-3. Run fresh migration (WARNING: deletes all data):
-   ```powershell
-   docker compose exec backend npm run migrate -- --fresh
-   docker compose exec backend npm run seed
-   ```
+- Verify `.env` has `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`.
+- If you see `net::ERR_CERT_COMMON_NAME_INVALID` in the browser for `auth/v1/token`, use HTTP for dev (`VITE_SUPABASE_URL=http://supabase.ampedlogix.com:54321`) or install a valid certificate for the subdomain and rebuild the frontend.
 
 ### Frontend Not Loading
 
-1. Check if frontend container is running:
-   ```powershell
-   docker compose ps frontend
-   ```
-
-2. Check frontend logs:
-   ```powershell
-   docker compose logs frontend
-   ```
-
-3. Verify nginx is proxying correctly:
-   - Frontend should proxy `/api/*` to backend
-   - Check browser console for API errors
-
-### Port Already in Use
-
-If you get "port already in use" errors:
-
-1. Check what's using the ports:
-   ```powershell
-   netstat -ano | findstr :3000
-   netstat -ano | findstr :3001
-   netstat -ano | findstr :5432
-   ```
-
-2. Change ports in `docker-compose.yml`:
-   ```yaml
-   ports:
-     - "3002:3001"  # Change external port
-   ```
-
-### Rebuild After Code Changes
-
-```powershell
-# Rebuild and restart
-docker compose up --build
-
-# Or rebuild specific service
-docker compose build backend
-docker compose up backend
+```bash
+docker compose ps ampedfieldops-web
+docker compose logs -f ampedfieldops-web
 ```
 
-## Development Workflow
+- Frontend static files are served by nginx in `ampedfieldops-web`.
+- Check browser console for API/Supabase errors (mixed content, cert issues).
 
-### Making Code Changes
+### Backend Build Issues
 
-1. Make your code changes
-2. Rebuild the affected service:
-   ```powershell
-   docker compose build backend
-   docker compose up backend
-   ```
-
-### Accessing Container Shells
-
-```powershell
-# Backend shell
-docker compose exec backend sh
-
-# PostgreSQL shell
-docker compose exec postgres psql -U ampedfieldops -d ampedfieldops
+```bash
+docker compose logs -f ampedfieldops-api
 ```
 
-### Viewing Database
-
-```powershell
-# Connect to PostgreSQL
-docker compose exec postgres psql -U ampedfieldops -d ampedfieldops
-
-# List tables
-\dt
-
-# Query users
-SELECT * FROM users;
-```
-
-## Environment Variables
-
-The `.env` file contains:
-- `DB_PASSWORD`: PostgreSQL password
-- `JWT_SECRET`: JWT signing secret (must be 32+ characters)
-- `FRONTEND_URL`: Frontend URL for CORS
-- `API_URL`: Backend API URL
-- `XERO_CLIENT_ID`: Xero OAuth client ID (optional)
-- `XERO_CLIENT_SECRET`: Xero OAuth secret (optional)
+- Ensure `tsconfig.json` exists in `/app` before running `npm run build`.
+- Rebuild `/app/dist` after copying source; then restart the container.
 
 ## First-Time Setup
 
-After starting containers for the first time:
-
-1. Wait for migrations to complete (check backend logs)
-2. Access http://localhost:3000
-3. Complete the setup wizard to create your admin account
-4. Start using the application!
+1. Access http://localhost:3000
+2. If no admin exists, the Login page shows the Admin Setup modal
+3. Create the first admin (handled via Supabase Auth)
+4. On subsequent loads, the modal stays hidden (`/api/setup/default-admin-status` returns true)
 
 ## Production Considerations
 
-For production deployment:
-
-1. Change all default passwords and secrets
-2. Use strong JWT_SECRET (32+ characters)
-3. Set proper CORS origins in `FRONTEND_URL`
-4. Use environment-specific database credentials
-5. Enable SSL/TLS for database connections
-6. Set up proper backup strategy for PostgreSQL volumes
+1. Use a valid certificate for `supabase.ampedlogix.com` (or wildcard `*.ampedlogix.com`)
+2. Set `VITE_SUPABASE_URL` to `https://supabase.ampedlogix.com` and rebuild the frontend
+3. Keep `VITE_API_URL` empty; proxy `/api/*` to backend via nginx
+4. Rotate all secrets and store securely
+5. Monitor container health and logs
 

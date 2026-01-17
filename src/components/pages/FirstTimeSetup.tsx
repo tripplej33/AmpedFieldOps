@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+import { api } from '@/lib/api';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -112,17 +113,8 @@ export default function FirstTimeSetup() {
   const handleCompleteSetup = async () => {
     setIsLoading(true);
     try {
-      // Mark setup as complete in app_settings
-      const { error } = await supabase
-        .from('app_settings')
-        .update({ 
-          setup_complete: true,
-          first_user_id: user!.id,
-          updated_at: new Date().toISOString()
-        })
-        .eq('id', true);
-
-      if (error) throw error;
+      // Mark setup as complete via backend (service role)
+      await api.request('/api/setup/complete', { method: 'POST' });
 
       // Update user context
       updateUser({ isFirstTimeSetup: false });
@@ -241,6 +233,7 @@ export default function FirstTimeSetup() {
                     <SelectItem value="Europe/London">GMT/UK</SelectItem>
                     <SelectItem value="Europe/Paris">CET/Europe</SelectItem>
                     <SelectItem value="Asia/Tokyo">JST/Tokyo</SelectItem>
+                    <SelectItem value="Pacific/Auckland">NZST/NZDT (Auckland)</SelectItem>
                     <SelectItem value="Australia/Sydney">AEST/Sydney</SelectItem>
                   </SelectContent>
                 </Select>
