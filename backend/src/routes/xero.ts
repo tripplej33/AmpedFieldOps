@@ -5,6 +5,7 @@ import { env } from '../config/env';
 import { log } from '../lib/logger';
 import { ensureXeroTables } from '../db/ensureXeroTables';
 import { saveXeroToken, getValidXeroToken } from '../lib/xero/tokenManager';
+import { supabase as supabaseClient } from '../db/supabase';
 import { fetchWithRateLimit } from '../lib/xero/rateLimiter';
 import { parseXeroError, getErrorMessage } from '../lib/xero/errorHandler';
 import { createPaymentInXero, storePayment, getPayments, CreatePaymentData } from '../lib/xero/payments';
@@ -66,13 +67,40 @@ router.use((req, res, next) => {
   });
 });
 
-// Stub function for disabled endpoints (kept for reference)
+// Get Xero credentials from Supabase settings table
 async function getXeroCredentials() {
-  return {
-    clientId: env.XERO_CLIENT_ID || '',
-    clientSecret: env.XERO_CLIENT_SECRET || '',
-    redirectUri: env.XERO_REDIRECT_URI || ''
-  };
+  const supabase = supabaseClient!;
+  
+  try {
+    const { data: settings, error } = await supabase
+      .from('settings')
+      .select('key, value')
+      .in('key', ['xero_client_id', 'xero_client_secret', 'xero_redirect_uri'])
+      .is('user_id', null);
+    
+    if (error) {
+      log.error('Failed to fetch Xero credentials from settings', error);
+      return { clientId: '', clientSecret: '', redirectUri: '' };
+    }
+    
+    const credMap = (settings || []).reduce((acc, s) => {
+      acc[s.key] = s.value;
+      return acc;
+    }, {} as Record<string, string>);
+    
+    // Use current origin for redirect URI if not set
+    const redirectUri = credMap.xero_redirect_uri || 
+                       (env.FRONTEND_URL ? `${env.FRONTEND_URL}/api/xero/callback` : '');
+    
+    return {
+      clientId: credMap.xero_client_id || '',
+      clientSecret: credMap.xero_client_secret || '',
+      redirectUri
+    };
+  } catch (error) {
+    log.error('Error fetching Xero credentials', error);
+    return { clientId: '', clientSecret: '', redirectUri: '' };
+  }
 }
 
 // OAuth Callback Handler
@@ -334,20 +362,33 @@ router.get('/callback', async (req, res) => {
       );
     }
 
-    // Get Xero credentials from settings
-    const clientId = env.XERO_CLIENT_ID;
-    const clientSecret = env.XERO_CLIENT_SECRET;
-    const redirectUri = env.XERO_REDIRECT_URI;
+    // Get Xero credentials from Supabase settings table
+    const { clientId, clientSecret, redirectUri } = await getXeroCredentials();
 
-    if (!clientId || !clientSecret || !redirectUri) {
-      log.error('Xero credentials not configured', { hasClientId: !!clientId, hasSecret: !!clientSecret, hasUri: !!redirectUri });
+    if (!clientId || !clientSecret) {
+      log.error('Xero credentials not configured in settings', { hasClientId: !!clientId, hasSecret: !!clientSecret });
       return res.redirect(
-        `${frontendUrl}/settings?tab=integrations&xero_error=missing_credentials&xero_error_msg=${encodeURIComponent('Xero credentials not configured in environment')}`
+        `${frontendUrl}/settings?tab=integrations&xero_error=missing_credentials&xero_error_msg=${encodeURIComponent('Xero credentials not configured. Please add them in Settings → Integrations.')}`
+      );
+    }
+    
+    // Use current origin for redirect URI if not set in settings
+    const finalRedirectUri = redirectUri || `${frontendUrl}/api/xero/callback`;
+    
+    // Validate credentials format
+    if (clientId.length !== 32) {
+      log.error('Invalid Xero Client ID format', { length: clientId.length });
+      return res.redirect(
+        `${frontendUrl}/settings?tab=integrations&xero_error=invalid_credentials&xero_error_msg=${encodeURIComponent('Client ID must be 32 characters. Please check your Xero settings.')}`
       );
     }
 
     // Exchange authorization code for tokens
-    log.info('Exchanging Xero authorization code for tokens');
+    log.info('Exchanging Xero authorization code for tokens', { 
+      clientIdLength: clientId.length,
+      hasSecret: !!clientSecret,
+      redirectUri: finalRedirectUri 
+    });
     const tokenResponse = await fetch('https://identity.xero.com/connect/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -356,7 +397,7 @@ router.get('/callback', async (req, res) => {
         client_id: clientId,
         client_secret: clientSecret,
         code: codeStr,
-        redirect_uri: redirectUri
+        redirect_uri: finalRedirectUri
       }).toString()
     });
 
