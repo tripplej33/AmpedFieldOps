@@ -4,6 +4,7 @@ import { authenticate, requirePermission, AuthRequest } from '../middleware/auth
 import { env } from '../config/env';
 import { log } from '../lib/logger';
 import { ensureXeroTables } from '../db/ensureXeroTables';
+import { saveXeroToken, getValidXeroToken } from '../lib/xero/tokenManager';
 import { fetchWithRateLimit } from '../lib/xero/rateLimiter';
 import { parseXeroError, getErrorMessage } from '../lib/xero/errorHandler';
 import { createPaymentInXero, storePayment, getPayments, CreatePaymentData } from '../lib/xero/payments';
@@ -65,92 +66,16 @@ router.use((req, res, next) => {
   });
 });
 
-// Note: In production, use the xero-node package for actual Xero API integration
-// This is a placeholder implementation showing the structure
-
-// Helper to get Xero credentials from settings or env
+// Stub function for disabled endpoints (kept for reference)
 async function getXeroCredentials() {
-  // First try database settings
-  const clientIdResult = await query(
-    `SELECT value FROM settings WHERE key = 'xero_client_id' AND user_id IS NULL`
-  );
-  const clientSecretResult = await query(
-    `SELECT value FROM settings WHERE key = 'xero_client_secret' AND user_id IS NULL`
-  );
-  const redirectUriResult = await query(
-    `SELECT value FROM settings WHERE key = 'xero_redirect_uri' AND user_id IS NULL`
-  );
-  
-  const clientIdFromDb = clientIdResult.rows[0]?.value;
-  const clientSecretFromDb = clientSecretResult.rows[0]?.value;
-  const clientId = clientIdFromDb || env.XERO_CLIENT_ID;
-  const clientSecret = clientSecretFromDb || env.XERO_CLIENT_SECRET;
-  
-  // Construct redirect URI
-  // Priority: Database setting -> XERO_REDIRECT_URI env -> FRONTEND_URL + /api/xero/callback -> BACKEND_URL + /api/xero/callback
-  const savedRedirectUri = redirectUriResult.rows[0]?.value;
-  let redirectUri = savedRedirectUri || env.XERO_REDIRECT_URI;
-  
-  // Log what we found with full details
-  console.log('[Xero] Credential sources:', {
-    clientId: {
-      fromDatabase: clientIdFromDb ? `${String(clientIdFromDb).substring(0, 8)}... (${String(clientIdFromDb).length} chars)` : 'NOT SET',
-      fromEnv: env.XERO_CLIENT_ID ? `${env.XERO_CLIENT_ID.substring(0, 8)}...` : 'NOT SET',
-      final: clientId ? `${String(clientId).substring(0, 8)}... (${String(clientId).length} chars)` : 'NOT SET'
-    },
-    clientSecret: {
-      fromDatabase: clientSecretFromDb ? `${String(clientSecretFromDb).length} chars` : 'NOT SET',
-      fromEnv: env.XERO_CLIENT_SECRET ? `${env.XERO_CLIENT_SECRET.length} chars` : 'NOT SET',
-      final: clientSecret ? `${String(clientSecret).length} chars` : 'NOT SET'
-    },
-    redirectUri: {
-      fromDatabase: savedRedirectUri || 'NOT SET',
-      fromEnv: env.XERO_REDIRECT_URI || 'NOT SET',
-      frontendUrl: env.FRONTEND_URL || 'NOT SET',
-      backendUrl: env.BACKEND_URL || 'NOT SET',
-      final: redirectUri || 'NOT SET'
-    }
-  });
-  
-  // Validate Client ID format
-  if (clientId) {
-    const clientIdStr = String(clientId);
-    if (clientIdStr.includes('@')) {
-      log.error('[Xero] ERROR: Client ID appears to be an email address', null, { clientId: clientId?.substring(0, 8) + '...' });
-      log.error('[Xero] Client ID should be a 32-character hexadecimal string, not an email!');
-      log.error('[Xero] Please update the Client ID in Settings to your actual Xero Client ID from https://developer.xero.com/myapps');
-    } else if (clientIdStr.length !== 32) {
-      console.warn('[Xero] Client ID length unusual:', clientIdStr.length, 'Expected 32 characters');
-    } else if (!/^[0-9A-Fa-f]{32}$/.test(clientIdStr)) {
-      console.warn('[Xero] Client ID should contain only hexadecimal characters (0-9, A-F)');
-    }
-  }
-  
-  if (!redirectUri || redirectUri.trim() === '') {
-    // If FRONTEND_URL is set (e.g., https://admin.ampedlogix.com), use that with /api prefix
-    // This works for reverse proxy setups where frontend and API share the same domain
-    const frontendUrl = env.FRONTEND_URL;
-    if (frontendUrl && !frontendUrl.includes('localhost')) {
-      redirectUri = `${frontendUrl}/api/xero/callback`;
-      console.log('[Xero] Using redirect URI from FRONTEND_URL');
-    } else {
-      // Fallback to BACKEND_URL for direct backend access
-      const backendUrl = env.BACKEND_URL || 'http://localhost:3001';
-      redirectUri = `${backendUrl}/api/xero/callback`;
-      console.log('[Xero] Using redirect URI from BACKEND_URL (fallback)');
-    }
-  } else {
-    console.log('[Xero] Using redirect URI from database settings');
-  }
-  
-  console.log('[Xero] Final redirect URI:', redirectUri);
-  console.log('[Xero] Client ID:', clientId ? `${clientId.substring(0, 8)}...` : 'NOT SET');
-  console.log('[Xero] Client Secret:', clientSecret ? 'SET' : 'NOT SET');
-  
-  return { clientId, clientSecret, redirectUri };
+  return {
+    clientId: env.XERO_CLIENT_ID || '',
+    clientSecret: env.XERO_CLIENT_SECRET || '',
+    redirectUri: env.XERO_REDIRECT_URI || ''
+  };
 }
 
-// Get Xero authorization URL
+// OAuth Callback Handler
 router.get('/auth/url', authenticate, requirePermission('can_sync_xero'), async (req: AuthRequest, res: Response) => {
   try {
     const { clientId, clientSecret, redirectUri } = await getXeroCredentials();
@@ -385,417 +310,132 @@ function sendPopupOrRedirect(res: Response, frontendUrl: string, type: 'success'
   return res.send(html);
 }
 
+// OAuth Callback - Phase 1: Store tokens in Supabase
 router.get('/callback', async (req, res) => {
-  const { code, state, error, error_description } = req.query;
-  
-  // Get credentials first to determine the correct frontend URL
-  // This ensures we use the same domain as the redirect URI
-  let frontendUrl = env.FRONTEND_URL;
-  
-  try {
-    const { redirectUri } = await getXeroCredentials();
-    // Extract frontend URL from redirect URI (remove /api/xero/callback)
-    if (redirectUri) {
-      try {
-        const redirectUrl = new URL(redirectUri);
-        // If redirect URI is like https://admin.ampedlogix.com/api/xero/callback
-        // Extract https://admin.ampedlogix.com
-        frontendUrl = redirectUrl.origin;
-        console.log('[Xero] Using frontend URL from redirect URI:', frontendUrl);
-      } catch (e) {
-        console.warn('[Xero] Could not parse redirect URI for frontend URL:', redirectUri);
-      }
-    }
-  } catch (e) {
-    console.warn('[Xero] Could not get credentials for frontend URL, using env:', e);
-  }
-  
-  // Fallback to env or localhost
-  if (!frontendUrl || frontendUrl.includes('localhost')) {
-    frontendUrl = env.FRONTEND_URL || 'http://localhost:3000';
-    console.log('[Xero] Using frontend URL from env or fallback:', frontendUrl);
-  }
+  const { code, error, error_description } = req.query;
+  const frontendUrl = env.FRONTEND_URL || 'http://localhost:3000';
 
   try {
-    // Check for OAuth errors from Xero
+    // Handle OAuth errors from Xero
     if (error) {
-      const errorStr: string = Array.isArray(error) 
-        ? String(error[0]) 
-        : typeof error === 'string' 
-          ? error 
-          : String(error);
-      const errorDescStr: string | undefined = error_description 
-        ? (Array.isArray(error_description) 
-            ? String(error_description[0]) 
-            : typeof error_description === 'string'
-              ? error_description
-              : String(error_description))
-        : undefined;
-      
-      // Get credentials to include in error message
-      const { clientId, redirectUri } = await getXeroCredentials();
-      
-      const errorDetails = {
-        error: errorStr,
-        error_description: errorDescStr,
-        clientId: clientId || 'NOT SET',
-        redirectUri: redirectUri || 'NOT SET',
-        query: req.query
-      };
-      
-      console.error('[Xero] OAuth error from Xero:', errorDetails);
-      
-      // Log to database error log if available
-      try {
-        await query(
-          `INSERT INTO error_logs (type, message, details, created_at) 
-           VALUES ($1, $2, $3, NOW())`,
-          [
-            'xero_oauth',
-            `Xero OAuth Error: ${errorStr}`,
-            JSON.stringify(errorDetails)
-          ]
-        );
-      } catch (logError) {
-        // Ignore if error_logs table doesn't exist
-        console.warn('[Xero] Could not log to error_logs table:', logError);
-      }
-      
-      let errorMessage = 'Authentication failed';
-      if (errorStr === 'unauthorized_client') {
-        errorMessage = `Client ID or Secret is incorrect, or redirect URI does not match Xero app settings.\n\n` +
-          `Client ID being used: ${clientId || 'NOT SET'}\n` +
-          `Redirect URI being used: ${redirectUri || 'NOT SET'}\n\n` +
-          `Please verify these match your Xero app settings exactly.`;
-      } else if (errorStr === 'access_denied') {
-        errorMessage = 'Connection was cancelled by user';
-      } else if (errorDescStr) {
-        errorMessage = `${errorDescStr}\n\nClient ID: ${clientId || 'NOT SET'}\nRedirect URI: ${redirectUri || 'NOT SET'}`;
-      }
-      
-      return res.redirect(`${frontendUrl}/settings?tab=integrations&xero_error=${encodeURIComponent(errorStr)}&xero_error_msg=${encodeURIComponent(errorMessage)}`);
+      const errorMsg = error_description || error;
+      log.error('Xero OAuth error', { error, error_description });
+      return res.redirect(
+        `${frontendUrl}/settings?tab=integrations&xero_error=${encodeURIComponent(String(error))}&xero_error_msg=${encodeURIComponent(String(errorMsg))}`
+      );
     }
 
-    // Ensure code is a string
-    const codeStr: string | null = code 
-      ? (Array.isArray(code) 
-          ? String(code[0]) 
-          : typeof code === 'string' 
-            ? code 
-            : String(code))
-      : null;
-    
+    // Validate authorization code
+    const codeStr = code ? String(Array.isArray(code) ? code[0] : code) : null;
     if (!codeStr) {
-      console.error('[Xero] No authorization code received:', { query: req.query });
-      return res.redirect(`${frontendUrl}/settings?tab=integrations&xero_error=no_code&xero_error_msg=${encodeURIComponent('No authorization code received from Xero')}`);
+      log.error('No authorization code in callback');
+      return res.redirect(
+        `${frontendUrl}/settings?tab=integrations&xero_error=no_code&xero_error_msg=${encodeURIComponent('No authorization code received from Xero')}`
+      );
     }
 
-    // Get credentials from database settings
-    const { clientId, clientSecret, redirectUri } = await getXeroCredentials();
+    // Get Xero credentials from settings
+    const clientId = env.XERO_CLIENT_ID;
+    const clientSecret = env.XERO_CLIENT_SECRET;
+    const redirectUri = env.XERO_REDIRECT_URI;
 
-    if (!clientId || !clientSecret) {
-      console.error('[Xero] Missing credentials in callback');
-      return res.redirect(`${frontendUrl}/settings?tab=integrations&xero_error=credentials_missing&xero_error_msg=${encodeURIComponent('Xero credentials not found. Please configure them in Settings.')}`);
+    if (!clientId || !clientSecret || !redirectUri) {
+      log.error('Xero credentials not configured', { hasClientId: !!clientId, hasSecret: !!clientSecret, hasUri: !!redirectUri });
+      return res.redirect(
+        `${frontendUrl}/settings?tab=integrations&xero_error=missing_credentials&xero_error_msg=${encodeURIComponent('Xero credentials not configured in environment')}`
+      );
     }
 
-    // Ensure credentials are trimmed and valid
-    const trimmedClientId = String(clientId).trim();
-    const trimmedClientSecret = String(clientSecret).trim();
-    const trimmedRedirectUri = redirectUri.trim();
-    
-    // Validate Client ID format before token exchange
-    if (trimmedClientId.includes('@')) {
-      console.error('[Xero] ERROR: Client ID is an email address during token exchange:', trimmedClientId);
-      return res.redirect(`${frontendUrl}/settings?tab=integrations&xero_error=invalid_client_id&xero_error_msg=${encodeURIComponent('Client ID appears to be an email address. Please enter your 32-character Xero Client ID from the Xero Developer Portal.')}`);
-    }
-    
-    if (trimmedClientId.length !== 32) {
-      console.error('[Xero] ERROR: Client ID length incorrect during token exchange:', {
-        length: trimmedClientId.length,
-        expected: 32,
-        clientId: `${trimmedClientId.substring(0, 8)}...`
-      });
-      return res.redirect(`${frontendUrl}/settings?tab=integrations&xero_error=invalid_client_id&xero_error_msg=${encodeURIComponent(`Client ID must be exactly 32 characters (currently ${trimmedClientId.length}). Please verify your Client ID in Settings.`)}`);
-    }
-
-    // Log Client Secret info (first 4 and last 4 chars for debugging, but not full secret)
-    const clientSecretPreview = trimmedClientSecret.length > 8 
-      ? `${trimmedClientSecret.substring(0, 4)}...${trimmedClientSecret.substring(trimmedClientSecret.length - 4)}`
-      : trimmedClientSecret.length > 0 
-        ? `${trimmedClientSecret.substring(0, Math.min(4, trimmedClientSecret.length))}...`
-        : 'EMPTY';
-    
-    console.log('[Xero] Exchanging code for tokens:', {
-      hasCode: !!codeStr,
-      codeLength: codeStr.length,
-      redirectUri: trimmedRedirectUri,
-      clientId: trimmedClientId, // Log full Client ID for debugging
-      clientIdLength: trimmedClientId.length,
-      clientSecretLength: trimmedClientSecret.length,
-      clientSecretPreview: clientSecretPreview,
-      clientSecretHasWhitespace: trimmedClientSecret !== String(clientSecret).trim(),
-      clientSecretSet: !!trimmedClientSecret
-    });
-
-    // Prepare Basic Auth header
-    const basicAuth = Buffer.from(`${trimmedClientId}:${trimmedClientSecret}`).toString('base64');
-    
-    console.log('[Xero] Token exchange request details:', {
-      url: 'https://identity.xero.com/connect/token',
-      clientIdLength: trimmedClientId.length,
-      clientSecretLength: trimmedClientSecret.length,
-      basicAuthLength: basicAuth.length,
-      basicAuthPreview: `${basicAuth.substring(0, 10)}...`,
-      redirectUri: trimmedRedirectUri,
-      grantType: 'authorization_code',
-      codeLength: codeStr.length
-    });
-
-    // Exchange code for tokens using actual Xero API
+    // Exchange authorization code for tokens
+    log.info('Exchanging Xero authorization code for tokens');
     const tokenResponse = await fetch('https://identity.xero.com/connect/token', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'Authorization': `Basic ${basicAuth}`
-      },
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
         grant_type: 'authorization_code',
+        client_id: clientId,
+        client_secret: clientSecret,
         code: codeStr,
-        redirect_uri: trimmedRedirectUri
-      })
+        redirect_uri: redirectUri
+      }).toString()
     });
 
     if (!tokenResponse.ok) {
-      const errorText = await tokenResponse.text();
-      let errorData;
-      try {
-        errorData = JSON.parse(errorText);
-      } catch {
-        errorData = { error: errorText };
-      }
-      
-      console.error('[Xero] Token exchange failed:', {
+      const errorData = await tokenResponse.json().catch(() => ({})) as Record<string, unknown>;
+      log.error('Xero token exchange failed', {
         status: tokenResponse.status,
-        statusText: tokenResponse.statusText,
-        error: errorData,
-        redirectUri: trimmedRedirectUri,
-        clientId: trimmedClientId, // Log full Client ID for debugging
-        clientIdLength: trimmedClientId.length,
-        clientSecretLength: trimmedClientSecret.length,
-        clientSecretSet: !!trimmedClientSecret,
-        redirectUriUsed: trimmedRedirectUri,
-        requestDetails: {
-          grant_type: 'authorization_code',
-          codeLength: codeStr.length,
-          redirect_uri: trimmedRedirectUri
-        }
+        error: String((errorData as any).error || ''),
+        description: String((errorData as any).error_description || '')
       });
-      
-      let errorMsg = 'Token exchange failed';
-      let errorDetails = '';
-      
-      if (errorData.error === 'invalid_client') {
-        errorMsg = 'Invalid Client ID or Client Secret.';
-        errorDetails = `The credentials in your Settings don't match your Xero app.\n\n` +
-          `Client ID used: ${trimmedClientId}\n` +
-          `Client ID length: ${trimmedClientId.length} characters\n` +
-          `Redirect URI used: ${trimmedRedirectUri}\n\n` +
-          `Please verify:\n` +
-          `1. Your Client ID in Settings matches the Client ID in your Xero app (https://developer.xero.com/myapps)\n` +
-          `2. Your Client Secret in Settings matches the Client Secret in your Xero app\n` +
-          `3. The Redirect URI "${trimmedRedirectUri}" is added to your Xero app's OAuth 2.0 redirect URIs`;
-      } else if (errorData.error === 'invalid_grant') {
-        errorMsg = 'Authorization code expired or invalid.';
-        errorDetails = `The authorization code may have expired or the redirect URI doesn't match.\n\n` +
-          `Redirect URI used: ${trimmedRedirectUri}\n\n` +
-          `Please try connecting again.`;
-      } else if (errorData.error_description) {
-        errorMsg = errorData.error_description;
-        errorDetails = `Xero error: ${errorData.error || 'Unknown error'}`;
-      } else {
-        errorDetails = `HTTP ${tokenResponse.status}: ${tokenResponse.statusText}`;
-      }
-      
-      const fullErrorMessage = errorDetails ? `${errorMsg}\n\n${errorDetails}` : errorMsg;
-      
-      return res.redirect(`${frontendUrl}/settings?tab=integrations&xero_error=token_exchange_failed&xero_error_msg=${encodeURIComponent(fullErrorMessage)}&client_id=${encodeURIComponent(trimmedClientId)}&redirect_uri=${encodeURIComponent(trimmedRedirectUri)}`);
+
+      const errorMsg = String((errorData as any).error_description) || 'Token exchange failed. Please try again.';
+      return res.redirect(
+        `${frontendUrl}/settings?tab=integrations&xero_error=token_exchange_failed&xero_error_msg=${encodeURIComponent(errorMsg)}`
+      );
     }
 
     interface XeroTokenResponse {
       access_token: string;
       refresh_token: string;
       id_token?: string;
-      token_type: string;
       expires_in: number;
-    }
-    
-    interface XeroConnection {
-      tenantId: string;
-      tenantName: string;
     }
 
     const tokens = await tokenResponse.json() as XeroTokenResponse;
-    const expiresAt = new Date(Date.now() + tokens.expires_in * 1000);
+    log.info('Xero tokens received', { expiresIn: tokens.expires_in });
 
-    console.log('[Xero] Token exchange successful:', {
-      hasAccessToken: !!tokens.access_token,
-      hasRefreshToken: !!tokens.refresh_token,
-      expiresIn: tokens.expires_in,
-      expiresAt: expiresAt.toISOString()
-    });
+    // Decode id_token to get organization info (JWT payload is base64 encoded)
+    let organizationId = 'default';
+    let organizationName = 'Xero Organization';
 
-    // Get tenant info (organization connected)
-    let tenantId: string | null = null;
-    let tenantName = 'Connected Organization';
-    
-    try {
-      console.log('[Xero] Fetching Xero connections...');
-      const connectionsResponse = await fetchWithRateLimit('https://api.xero.com/connections', {
-        headers: {
-          'Authorization': `Bearer ${tokens.access_token}`,
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      if (connectionsResponse.ok) {
-        const connections = await connectionsResponse.json() as XeroConnection[];
-        if (connections && connections.length > 0) {
-          tenantId = connections[0].tenantId;
-          tenantName = connections[0].tenantName;
-          console.log('[Xero] Found connected organization:', { tenantId, tenantName });
-        } else {
-          console.warn('[Xero] No connections found in response');
-        }
-      } else {
-        const errorText = await connectionsResponse.text();
-        console.error('[Xero] Failed to get connections:', {
-          status: connectionsResponse.status,
-          statusText: connectionsResponse.statusText,
-          error: errorText
-        });
+    if (tokens.id_token) {
+      try {
+        const payload = tokens.id_token.split('.')[1];
+        const decoded = JSON.parse(Buffer.from(payload, 'base64').toString());
+        organizationId = decoded.xero_tenantid || decoded.tenantid || 'default';
+        organizationName = decoded.orgName || decoded.name || 'Xero Organization';
+        log.info('Decoded organization info from id_token', { organizationId, organizationName });
+      } catch (e) {
+        log.warn('Could not decode id_token', { error: String(e) });
       }
-    } catch (e) {
-      console.error('[Xero] Error fetching connections:', e);
-      // Don't fail the whole process if we can't get tenant info
     }
 
-    // Store tokens (replace any existing)
-    try {
-      console.log('[Xero] Storing tokens in database...');
-    await query('DELETE FROM xero_tokens');
-    
-    await query(
-      `INSERT INTO xero_tokens (access_token, refresh_token, id_token, token_type, expires_at, tenant_id, tenant_name)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [
-        tokens.access_token,
-        tokens.refresh_token,
-        tokens.id_token || null,
-        tokens.token_type,
-        expiresAt,
-        tenantId,
-        tenantName
-      ]
-    );
-
-      console.log('[Xero] Tokens stored successfully:', {
-        tenantId,
-        tenantName,
-        expiresAt: expiresAt.toISOString()
-      });
-    } catch (dbError: any) {
-      console.error('[Xero] Failed to store tokens in database:', {
-        error: dbError.message,
-        stack: dbError.stack,
-        code: dbError.code
-      });
-      
-      // Return error page but don't redirect to frontend with error
-      // since Xero connection was successful
-      return res.send(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-            <title>AmpedFieldOps - Storage Error</title>
-          <style>
-            body { font-family: system-ui, sans-serif; background: #1a1d23; color: #e8eaed; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
-              .container { text-align: center; padding: 40px; max-width: 600px; }
-              .warning { color: #fbbf24; font-size: 48px; margin-bottom: 16px; }
-            h1 { margin: 0 0 8px; }
-              p { color: #9ca3af; margin: 8px 0; }
-              .error-details { background: #2a2d33; padding: 16px; border-radius: 8px; margin-top: 16px; text-align: left; font-size: 12px; }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-              <div class="warning">⚠️</div>
-              <h1>Connection Successful, But Storage Failed</h1>
-              <p>Your Xero connection was successful, but we couldn't save it to the database.</p>
-              <p>Please check the backend logs and try disconnecting and reconnecting.</p>
-              <div class="error-details">
-                <strong>Error:</strong> ${dbError.message || 'Database error'}
-          </div>
-          <script>
-                setTimeout(() => {
-                  window.location.href = '${frontendUrl}/settings?tab=integrations&xero_error=storage_failed&xero_error_msg=${encodeURIComponent('Connection successful but failed to save. Please try reconnecting.')}';
-                }, 3000);
-          </script>
-            </div>
-        </body>
-      </html>
-    `);
-    }
-
-    // Redirect to frontend with success
-    return res.redirect(`${frontendUrl}/settings?tab=integrations&xero_connected=true`);
-  } catch (error: any) {
-    console.error('[Xero] Callback error:', {
-      error: error.message,
-      stack: error.stack,
-      name: error.name
-    });
-    
-    // Log to database error log if available
-    try {
-      await query(
-        `INSERT INTO error_logs (type, message, details, created_at) 
-         VALUES ($1, $2, $3, NOW())`,
-        [
-          'xero_callback',
-          `Xero Callback Error: ${error.message}`,
-          JSON.stringify({ stack: error.stack, name: error.name })
-        ]
+    // Save tokens to Supabase xero_auth table
+    // For Phase 1, we'll use the authenticated user from the request
+    const userId = (req as AuthRequest).user?.id;
+    if (!userId) {
+      log.error('User not authenticated in callback');
+      return res.redirect(
+        `${frontendUrl}/settings?tab=integrations&xero_error=not_authenticated&xero_error_msg=${encodeURIComponent('You must be logged in to connect Xero')}`
       );
-    } catch (logError) {
-      console.warn('[Xero] Could not log to error_logs table:', logError);
     }
-    
-    // Return HTML for error case too
-    res.send(`
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <title>AmpedFieldPro - Connection Failed</title>
-          <style>
-            body { font-family: system-ui, sans-serif; background: #1a1d23; color: #e8eaed; display: flex; align-items: center; justify-content: center; min-height: 100vh; margin: 0; }
-            .container { text-align: center; padding: 40px; }
-            .error { color: #ef4444; font-size: 48px; margin-bottom: 16px; }
-            h1 { margin: 0 0 8px; }
-            p { color: #9ca3af; }
-          </style>
-        </head>
-        <body>
-          <div class="container">
-            <div class="error">✕</div>
-            <h1>Connection Failed</h1>
-            <p>This window will close automatically...</p>
-          </div>
-          <script>
-              window.location.href = '${frontendUrl}/settings?tab=integrations&xero_error=callback_failed';
-          </script>
-        </body>
-      </html>
-    `);
+
+    try {
+      await saveXeroToken(userId, {
+        accessToken: tokens.access_token,
+        refreshToken: tokens.refresh_token,
+        expiresIn: tokens.expires_in,
+        organizationId,
+        organizationName
+      });
+
+      log.info('Xero token saved successfully', { userId, organizationId });
+    } catch (e) {
+      log.error('Failed to save Xero token', { error: String(e), userId });
+      return res.redirect(
+        `${frontendUrl}/settings?tab=integrations&xero_error=storage_failed&xero_error_msg=${encodeURIComponent('Failed to save Xero connection. Please try again.')}`
+      );
+    }
+
+    // Success - redirect back to settings
+    log.info('Xero OAuth flow completed successfully', { userId, organizationId });
+    res.redirect(`${frontendUrl}/settings?tab=integrations&xero_connected=true`);
+
+  } catch (error: any) {
+    log.error('Xero callback error', { error: error.message, stack: error.stack });
+    res.redirect(
+      `${frontendUrl}/settings?tab=integrations&xero_error=callback_error&xero_error_msg=${encodeURIComponent('An unexpected error occurred during Xero connection')}`
+    );
   }
 });
 
