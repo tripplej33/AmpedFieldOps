@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Client, Project, ProjectFile } from '@/types';
 import { api } from '@/lib/api';
+import { getClients, getProjects } from '@/lib/supabaseQueries';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -115,15 +116,11 @@ export default function Files() {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [clientsResponse, projectsResponse, filesData] = await Promise.all([
-        api.getClients({ limit: 100 }),
-        api.getProjects({ limit: 100 }),
+      const [clientsData, projectsData, filesData] = await Promise.all([
+        getClients({ limit: 100 }),
+        getProjects({ limit: 100 }),
         api.getFiles()
       ]);
-      
-      // Handle paginated responses
-      const clientsData = clientsResponse.data || (Array.isArray(clientsResponse) ? clientsResponse : []);
-      const projectsData = projectsResponse.data || (Array.isArray(projectsResponse) ? projectsResponse : []);
 
       // Load logos if user has permission
       let logosData: LogoFile[] = [];

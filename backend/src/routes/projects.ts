@@ -157,7 +157,7 @@ router.get('/:id/financials', authenticate, async (req: AuthRequest, res: Respon
   try {
     const { data: project, error } = await supabase
       .from('projects')
-      .select('id, name, budget, created_by')
+      .select('id, name, budget, actual_cost, created_by')
       .eq('id', req.params.id)
       .single();
 
@@ -359,7 +359,7 @@ router.delete('/:id', authenticate, requirePermission('can_edit_projects'), asyn
     // Get project info before deletion
     const { data: project } = await supabase
       .from('projects')
-      .select('id, name, code')
+      .select('id, name')
       .eq('id', projectId)
       .single();
 

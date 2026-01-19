@@ -33,7 +33,59 @@
   - Code pattern: `app.use(cors()); app.use('/proxy', createProxyMiddleware()); app.use(express.json());`
   - Lesson: Proxies need raw request stream access - place them before ANY body-consuming middleware (json, urlencoded, multipart)
 
-## Preventative Practices
+## CRITICAL: Missing Required Columns in INSERT/UPDATE Payloads (2026-01-19)
+- **Cause:** Creating clients/projects returned 400 "Bad Request" from Supabase REST API OR clients/projects created but not appearing in list
+- **Root Issue:** Supabase query helpers were not including ALL required columns when inserting records
+  - All tables have `company_name` column that is required (not nullable)
+  - `clients`, `projects`, `activity_types`, `cost_centers` all need `company_name` 
+  - `timesheets` needs `is_submitted` and `is_approved` booleans
+  - Frontend forms weren't collecting these fields, so inserts were missing required data
+  - **UPDATE (2026-01-19):** Also found missing form fields: `client_type` in clients, numeric type casting in projects
+- **Error Pattern:** POST `/api/supabase/rest/v1/{table}?columns=...&select=* 400 Bad Request`
+  - URL showed columns like `location`, `notes`, `client_type` that don't exist in actual schema
+  - This was confusing; root cause was missing `company_name` not the column names themselves
+- **Fix Applied:** Added default values for required columns in all INSERT payloads:
+  - `createClient()`: Added `company_name: client.company_name || 'Default'` AND `client_type: client.client_type ?? 'customer'`
+  - `createProject()`: Added `company_name: project.company_name || 'Default'` AND `budget: project.budget ? parseFloat(project.budget) : 0`
+  - `createActivityType()`: Added `company_name: type.company_name || 'Default'`
+  - `createCostCenter()`: Completely rewrote payload, added `company_name: 'Default'` and proper type hints
+  - `createTimesheet()`: Added `is_submitted: false` and `is_approved: false` defaults
+- **Numeric Field Casting Issue (2026-01-19):** Budget and hourly_rate came as strings from form, needed parseFloat() conversion
+  - Without casting: Supabase might accept them as text or throw type mismatch error
+  - Fix: Check form fields for numeric types and use parseFloat() before inserting
+- **Form Field Mapping Issue (2026-01-19):** UI form uses different field names than database schema
+  - Form: `location`, `notes`, `client_type` | Database: `address`, `description`, `client_type`
+  - Fix: In createClient/createProject, map: `address: client.address ?? client.location`
+  - Prevention: Always check form field names vs database column names; document mapping in comments
+- **Prevention Checklist:** For every INSERT/UPDATE payload:
+  1. Query actual schema: `\d+ public.{table}` to see all columns
+  2. Check for NOT NULL constraints or defaults
+  3. If column has no default and is NOT NULL, add it to payload with sensible default
+  4. Document required columns in code comments
+  5. Check form field names match database column names; add mapping comments
+  6. For numeric fields, use parseFloat() if they come from form inputs
+  7. Add console.log() statements to debug payloads in browser console
+  8. Test with minimal form data to catch missing fields early
+- **Pattern for Required Columns:**
+  ```typescript
+  const payload: Record<string, any> = {
+    // Required fields (no defaults)
+    name: record.name,
+    // Optional fields with defaults
+    is_active: record.is_active ?? true,
+    // Required company_name - ALWAYS NEEDED
+    company_name: record.company_name || 'Default',
+    // Map form fields to schema columns
+    address: record.address ?? record.location ?? '',
+    // Numeric fields from forms need casting
+    budget: record.budget ? parseFloat(record.budget) : 0,
+    // Track who created it
+    created_by: await currentUserId(),
+  };
+  console.log('[createRecord] Inserting payload:', payload);
+  ```
+
+## CRITICAL: Missing Required Columns in INSERT/UPDATE Payloads (2026-01-19)
 - Do not commit secrets or private keys (`.env`, `ssl/`).
 - Prefer Docker network service names over `localhost` for inter-container calls.
 - Rebuild frontend when changing `VITE_*` env vars; they’re baked at build time.
@@ -102,3 +154,24 @@
 3. **Arithmetic Operations** - Use RPC or SELECT+UPDATE
 4. **Dead Code** - Disable function entirely with early error throw
 5. **Health Checks** - Safe to keep
+
+## CRITICAL: Deleted API Routes But Frontend Still Calls Them (2026-01-19)
+- **Cause:** Deleted 15 backend route files (clients.ts, projects.ts, timesheets.ts, activityTypes.ts, costCenters.ts, etc.) but forgot to check if frontend components were calling `api.getClients()`, `api.getProjects()`, etc. via the old API client class.
+- **Symptom:** After backend rebuild, frontend returns 500/501 errors: "POST /api/clients 500", "GET /api/activity-types 500", etc.
+- **Root Issue:** 
+  1. Created new `supabaseQueries.ts` with direct Supabase helpers (getClients, createClient, etc.)
+  2. Updated 4 major components (Clients.tsx, Projects.tsx, Timesheets.tsx, ActivityTypes.tsx) to import from supabaseQueries
+  3. BUT left `src/lib/api.ts` intact with methods like `getClients()`, `createClient()` that call `/api/clients` endpoint
+  4. 20+ other components (Files, SafetyDocuments, DocumentScan, Financials, CostCenters, Modals) still call `api.getClients()`, `api.getProjects()`, etc.
+  5. Deleted the backend routes, so these calls now fail with 500 (no handler) or 501 (middleware returns unimplemented)
+- **Impact:** App is broken for 20+ components; users cannot interact with non-migrated pages
+- **Fix Applied:** 
+  1. Search all components for `api.getClients`, `api.getProjects`, `api.getTimesheets`, `api.getActivityTypes`, `api.getCostCenters`
+  2. Replace with imports from supabaseQueries helpers
+  3. Rebuild frontend
+- **Prevention:** When deleting backend routes, ALWAYS grep the entire codebase for calls to those endpoints (e.g., `api.getClients`, `/api/clients`, `POST /api/clients`) and update them to use direct Supabase queries BEFORE deleting the routes. Use this pattern:
+  ```bash
+  grep -r "api\.getClients\|api\.createClient\|/api/clients" src/
+  grep -r "api\.getProjects\|api\.createProject\|/api/projects" src/
+  grep -r "api\.getTimesheets\|/api/timesheets" src/
+  ```

@@ -35,7 +35,7 @@ export const authenticate = async (req: AuthRequest, res: Response, next: NextFu
       const email = tokenInfo.email || '';
 
       // Load app-specific role and permissions from our public schema
-      const userProfile = await loadUserWithPermissions(userId);
+      const userProfile = await loadUserWithPermissions(userId, token);
 
       if (!userProfile) {
         return res.status(403).json({ error: 'Profile not found' });
@@ -128,7 +128,7 @@ export const optionalAuth = async (req: AuthRequest, res: Response, next: NextFu
       if (supabase && env.SUPABASE_URL) {
         const tokenInfo = await verifySupabaseToken(token);
         if (tokenInfo) {
-          const userProfile = await loadUserWithPermissions(tokenInfo.userId);
+          const userProfile = await loadUserWithPermissions(tokenInfo.userId, token);
           if (userProfile) {
             req.user = {
               id: tokenInfo.userId,

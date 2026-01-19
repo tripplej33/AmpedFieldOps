@@ -31,15 +31,31 @@ const router = Router();
 router.get('/', async (req, res: Response) => {
   try {
     const supabase = supabaseClient!;
+    const debug = {
+      supabaseClientExists: !!supabase,
+      supabaseType: supabase ? typeof supabase : 'null',
+    };
+    
+    if (!supabase) {
+      return res.json({
+        status: 'unhealthy',
+        database: { healthy: false, status: 'supabase_client_null' },
+        debug,
+        xero: { configured: false, connected: false, status: 'not_configured' },
+        timestamp: new Date().toISOString(),
+      });
+    }
 
     // Check database connection
     let dbHealthy = false;
+    let dbError = null;
     try {
-      // Check Supabase connection by querying a simple table
-      await query('SELECT 1');
-      dbHealthy = true;
-    } catch (error) {
-      console.error('Database health check failed:', error);
+      // Check Supabase connection by querying clients table (one that should exist)
+      const { error } = await supabase.from('clients').select('id').limit(1);
+      dbError = error?.message || error?.code || null;
+      dbHealthy = !error;
+    } catch (error: any) {
+      dbError = error?.message || String(error);
     }
 
     // Check Xero connection status (if credentials exist)
@@ -70,7 +86,8 @@ router.get('/', async (req, res: Response) => {
       status: dbHealthy ? 'healthy' : 'unhealthy',
       database: {
         healthy: dbHealthy,
-        status: dbHealthy ? 'connected' : 'disconnected'
+        status: dbHealthy ? 'connected' : 'disconnected',
+        error: dbError
       },
       xero: {
         configured: xeroConfigured,
@@ -79,6 +96,7 @@ router.get('/', async (req, res: Response) => {
           ? (xeroConnected ? 'connected' : 'not_connected')
           : 'not_configured'
       },
+      debug,
       timestamp: new Date().toISOString()
     });
   } catch (error) {

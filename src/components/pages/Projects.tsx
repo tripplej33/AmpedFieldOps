@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { useAuth } from '@/contexts/AuthContext';
 import Header from '@/components/layout/Header';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -9,7 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { api } from '@/lib/api';
+import { getProjects, createProject, updateProject, deleteProject, getClients } from '@/lib/supabaseQueries';
 import { Project, ProjectStatus, Client } from '@/types';
 import { Plus, MoreVertical, TrendingUp, Clock, DollarSign, Loader2, Archive, CheckCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -153,10 +154,15 @@ export default function Projects() {
     status: 'quoted' as ProjectStatus,
   });
 
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
+
   useEffect(() => {
-    loadProjects();
-    loadClients();
-  }, []);
+    // Only load data once auth is complete and user is authenticated
+    if (!authLoading && isAuthenticated) {
+      loadProjects();
+      loadClients();
+    }
+  }, [authLoading, isAuthenticated]);
 
   // Handle URL parameters for opening specific project or create modal
   useEffect(() => {
@@ -181,17 +187,11 @@ export default function Projects() {
   const loadProjects = async () => {
     setIsLoading(true);
     try {
-      // For Kanban board, load more items (100 per page)
-      const response = await api.getProjects({ limit: 100 });
-      
-      // Handle paginated response
-      const projectsData = response.data || (Array.isArray(response) ? response : []);
-      setProjects(Array.isArray(projectsData) ? projectsData : []);
+      const data = await getProjects();
+      setProjects(Array.isArray(data) ? data : []);
     } catch (error: any) {
       console.error('Failed to load projects:', error);
-      if (error?.message !== 'Failed to fetch') {
-        toast.error('Failed to load projects');
-      }
+      toast.error(error.message || 'Failed to load projects');
       setProjects([]);
     } finally {
       setIsLoading(false);
@@ -200,11 +200,8 @@ export default function Projects() {
 
   const loadClients = async () => {
     try {
-      const response = await api.getClients({ limit: 100 });
-      
-      // Handle both paginated and non-paginated responses
-      const clientsList = response.data || (Array.isArray(response) ? response : []);
-      setClients(Array.isArray(clientsList) ? clientsList.filter(c => c.id) : []);
+      const data = await getClients();
+      setClients(Array.isArray(data) ? data.filter(c => c.id) : []);
     } catch (error) {
       console.error('Failed to load clients:', error);
       toast.error('Failed to load clients');
@@ -239,7 +236,7 @@ export default function Projects() {
 
     setIsSubmitting(true);
     try {
-      await api.createProject({
+      await createProject({
         ...formData,
         budget: parseFloat(formData.budget) || 0,
       });
@@ -258,7 +255,7 @@ export default function Projects() {
     if (!confirm(`Are you sure you want to delete "${project.name}"?`)) return;
 
     try {
-      await api.deleteProject(project.id);
+      await deleteProject(project.id);
       toast.success('Project deleted');
       loadProjects();
     } catch (error: any) {

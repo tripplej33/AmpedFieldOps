@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { api } from '@/lib/api';
+import { getProjects } from '@/lib/supabaseQueries';
 import { Project, CostCenter } from '@/types';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -54,8 +55,7 @@ export default function ExpenseModal({ projectId: initialProjectId, open, onOpen
 
   const loadProjects = async () => {
     try {
-      const projectsData = await api.getProjects();
-      const projectsList = projectsData.data || (Array.isArray(projectsData) ? projectsData : []);
+      const projectsList = await getProjects();
       setProjects(Array.isArray(projectsList) ? projectsList.filter(p => p.id) : []);
     } catch (error) {
       console.error('Failed to load projects:', error);
@@ -70,7 +70,7 @@ export default function ExpenseModal({ projectId: initialProjectId, open, onOpen
       if (project) {
         setSelectedProject(project);
       } else {
-        const allProjects = await api.getProjects();
+        const allProjects = await getProjects();
         const foundProject = Array.isArray(allProjects) ? allProjects.find((p: Project) => p.id === projId) : null;
         setSelectedProject(foundProject || null);
       }

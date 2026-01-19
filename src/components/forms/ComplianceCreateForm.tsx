@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Project, ComplianceData, SafetyCertificateData } from '@/types';
 import { api } from '@/lib/api';
+import { getProjects } from '@/lib/supabaseQueries';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -90,8 +91,7 @@ export function ComplianceCreateForm({
 
   const loadData = async () => {
     try {
-      const projectsResponse = await api.getProjects({ limit: 100 });
-      const projectsData = projectsResponse.data || (Array.isArray(projectsResponse) ? projectsResponse : []);
+      const projectsData = await getProjects({ limit: 100 });
       setProjects(Array.isArray(projectsData) ? projectsData : []);
     } catch (error: any) {
       toast.error('Failed to load form data');

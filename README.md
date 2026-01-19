@@ -148,7 +148,7 @@ Email configuration can be managed in the Settings page (Admin only):
    - From Email Address (optional, defaults to SMTP User)
 3. Click **Send Test Email** to verify your configuration
 
-For detailed email setup instructions, see [EMAIL_SETUP.md](./EMAIL_SETUP.md).
+For detailed email setup instructions, see [EMAIL_SETUP.md](./docs/EMAIL_SETUP.md).
 
 ### Xero Integration
 
@@ -157,7 +157,7 @@ For detailed email setup instructions, see [EMAIL_SETUP.md](./EMAIL_SETUP.md).
 3. Add your Client ID and Secret in **Settings → Xero Integration**
 4. Click **Connect to Xero** and authorize the connection
 
-For detailed Xero setup instructions, see [XERO_SETUP.md](./XERO_SETUP.md).
+For detailed Xero setup instructions, see [XERO_SETUP.md](./docs/XERO_SETUP.md).
 
 ## User Roles & Permissions
 
@@ -383,7 +383,7 @@ psql -U postgres ampedfieldops < backup.sql
 - Verify SMTP settings in Settings page
 - Test email configuration using "Send Test Email"
 - Check SMTP credentials and firewall settings
-- See [EMAIL_SETUP.md](./EMAIL_SETUP.md) for detailed setup
+- See [EMAIL_SETUP.md](./docs/EMAIL_SETUP.md) for detailed setup
 
 **"401 Unauthorized"**
 - Token may have expired, try logging in again
@@ -419,12 +419,12 @@ cd backend && npm run build
 
 ## Additional Documentation
 
-- [DOCKER_SETUP.md](./DOCKER_SETUP.md) - Detailed Docker setup instructions
-- [EMAIL_SETUP.md](./EMAIL_SETUP.md) - Email/SMTP configuration guide
-- [XERO_SETUP.md](./XERO_SETUP.md) - Xero integration setup guide
-- [IMPLEMENTATION.md](./IMPLEMENTATION.md) - Implementation details
-- [TROUBLESHOOTER_PROMPT.md](./TROUBLESHOOTER_PROMPT.md) - Troubleshooting guide
-- [ARCHITECTURE_DIAGRAMS.md](./ARCHITECTURE_DIAGRAMS.md) - System architecture diagrams
+- [DOCKER_SETUP.md](./docs/DOCKER_SETUP.md) - Detailed Docker setup instructions
+- [EMAIL_SETUP.md](./docs/EMAIL_SETUP.md) - Email/SMTP configuration guide
+- [XERO_SETUP.md](./docs/XERO_SETUP.md) - Xero integration setup guide
+- [IMPLEMENTATION.md](./docs/IMPLEMENTATION.md) - Implementation details
+- [TROUBLESHOOTER_PROMPT.md](./docs/TROUBLESHOOTER_PROMPT.md) - Troubleshooting guide
+- [ARCHITECTURE_DIAGRAMS.md](./docs/ARCHITECTURE_DIAGRAMS.md) - System architecture diagrams
 
 **Historical Documentation:** Archived implementation summaries and reviews are available in `docs/archive/` for reference.
 

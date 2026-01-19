@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useAuth } from '@/contexts/AuthContext';
 import Header from '@/components/layout/Header';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -18,7 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { api } from '@/lib/api';
+import { getActivityTypes, createActivityType, updateActivityType, deleteActivityType } from '@/lib/supabaseQueries';
 import { ActivityType } from '@/types';
 import { Plus, Edit, Trash2, Loader2, Wrench, CheckCircle, Search, MessageSquare, Settings2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -56,13 +57,17 @@ export default function ActivityTypes() {
   const [formRate, setFormRate] = useState('');
 
   useEffect(() => {
-    loadActivityTypes();
-  }, []);
+    if (!authLoading && isAuthenticated) {
+      loadActivityTypes();
+    }
+  }, [/* eslint-disable-line react-hooks/exhaustive-deps */]);
+
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
 
   const loadActivityTypes = async () => {
     setIsLoading(true);
     try {
-      const data = await api.getActivityTypes();
+      const data = await getActivityTypes();
       setActivityTypes(Array.isArray(data) ? data : []);
       setIsLoading(false);
     } catch (error: any) {
@@ -114,10 +119,10 @@ export default function ActivityTypes() {
       };
 
       if (editingType) {
-        await api.updateActivityType(editingType.id, data);
+        await updateActivityType(editingType.id, data);
         toast.success('Activity type updated');
       } else {
-        await api.createActivityType(data);
+        await createActivityType(data);
         toast.success('Activity type created');
       }
       setShowModal(false);
@@ -132,7 +137,7 @@ export default function ActivityTypes() {
 
   const handleToggleActive = async (type: ActivityType) => {
     try {
-      await api.updateActivityType(type.id, { is_active: !type.is_active });
+      await updateActivityType(type.id, { is_active: !type.is_active });
       toast.success(type.is_active ? 'Activity type deactivated' : 'Activity type activated');
       loadActivityTypes();
     } catch (error: any) {
@@ -149,7 +154,7 @@ export default function ActivityTypes() {
     if (!confirm(`Are you sure you want to delete "${type.name}"?`)) return;
 
     try {
-      await api.deleteActivityType(type.id);
+      await deleteActivityType(type.id);
       toast.success('Activity type deleted');
       loadActivityTypes();
     } catch (error: any) {

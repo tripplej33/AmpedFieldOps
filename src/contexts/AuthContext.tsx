@@ -116,19 +116,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [initComplete, setInitComplete] = useState(false);
+  const initRan = React.useRef(false);
 
   // Initialize auth on mount
   useEffect(() => {
     const initAuth = async () => {
+      if (initRan.current) {
+        return;
+      }
+      initRan.current = true;
       try {
-        // Get current session
+        console.log('Starting auth initialization...');
+        // Get current session - this is the source of truth for initial state
         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
         
         if (sessionError) {
           console.error('Failed to get session:', sessionError);
+          setInitComplete(true);
           setIsLoading(false);
           return;
         }
+
+        console.log('getSession returned:', !!session?.user);
 
         if (session?.user) {
           // Propagate token to API client for backend auth
@@ -140,38 +150,57 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } catch (error) {
         console.error('Auth initialization failed:', error);
       } finally {
+        // Mark initialization complete - now we know the real auth state
+        console.log('Auth initialization complete');
+        setInitComplete(true);
         setIsLoading(false);
       }
     };
 
     initAuth();
 
-    // Subscribe to auth state changes
+    // Subscribe to auth state changes - only update state after initialization
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange(async (event, session) => {
-      console.log('Auth state changed:', event, 'Session exists:', !!session?.user);
+      console.log('Auth state changed:', event, 'Session exists:', !!session?.user, 'initComplete:', initComplete);
+      
+      // Skip INITIAL_SESSION event - we already handled it in initAuth via getSession()
+      if (event === 'INITIAL_SESSION') {
+        console.log('Skipping INITIAL_SESSION event (handled in initAuth)');
+        return;
+      }
+
       // Propagate Supabase access token to API client for backend requests
       api.setToken(session?.access_token || null);
       setSession(session);
 
-      if (session?.user) {
-        try {
-          const userProfile = await loadUserProfile(session.user.id, session);
-          if (userProfile) {
-            console.log('User profile loaded successfully:', userProfile.email);
-            setUser(userProfile);
-          } else {
-            console.warn('User profile returned null for user:', session.user.id);
-            // Don't clear user on profile load failure - user is authenticated even if profile loads slowly
-            // This prevents bouncing back to login on slow network
-          }
-        } catch (err) {
-          console.error('Error loading user profile:', err);
+      if (!session?.user) {
+        if (event === 'SIGNED_OUT' || event === 'USER_DELETED') {
+          console.log('Signed out, clearing auth state');
+          setUser(null);
+        } else {
+          console.log('No session user, clearing auth state');
+          setUser(null);
         }
-      } else {
-        console.log('No session user, clearing auth state');
-        setUser(null);
+        setIsLoading(false);
+        setInitComplete(true);
+        return;
+      }
+
+      try {
+        const userProfile = await loadUserProfile(session.user.id, session);
+        if (userProfile) {
+          console.log('User profile loaded after auth event:', userProfile.email);
+          setUser(userProfile);
+        } else {
+          console.warn('User profile returned null for user:', session.user.id);
+        }
+      } catch (err) {
+        console.error('Error loading user profile:', err);
+      } finally {
+        setIsLoading(false);
+        setInitComplete(true);
       }
     });
 

@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { SafetyDocument, Project, Client } from '@/types';
 import { api } from '@/lib/api';
+import { getProjects } from '@/lib/supabaseQueries';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -44,12 +45,11 @@ export default function SafetyDocuments() {
   const loadData = async () => {
     try {
       setLoading(true);
-      const [docsData, projectsResponse] = await Promise.all([
+      const [docsData, projectsData] = await Promise.all([
         api.getSafetyDocuments(),
-        api.getProjects({ limit: 100 })
+        getProjects({ limit: 100 })
       ]);
       setDocuments(docsData);
-      const projectsData = projectsResponse.data || (Array.isArray(projectsResponse) ? projectsResponse : []);
       setProjects(Array.isArray(projectsData) ? projectsData : []);
     } catch (error: any) {
       toast.error('Failed to load safety documents');

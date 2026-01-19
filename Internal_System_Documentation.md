@@ -13,7 +13,59 @@ AmpedFieldOps is a service management platform with a React/Vite frontend, Node/
 - Supabase Auth endpoints responding at https://supabase.ampedlogix.com/auth/v1/health
 
 ## Project Road Map
-- Feature_Implementation_Roadmap.md
+- See docs at `docs/Feature_Implementation_Roadmap.md`
+
+## Services Status & Health Check (2026-01-18)
+
+### Running Services (Docker Compose)
+| Service | Container Name | Port | Status | Purpose |
+|---------|---|---|---|---|
+| **Frontend** | ampedfieldops-web | 3000 | ✅ Up (9h) | React/Vite UI |
+| **Backend API** | ampedfieldops-api | 3001 | ✅ Up (13m) | Express REST API |
+| **OCR Service** | ampedfieldops-ocr | 8000 | ✅ Up (19h) | Python Flask document processing |
+| **Redis** | ampedfieldops-redis | 6379 | ✅ Up (19h) | Cache & job queue |
+| **Supabase Studio** | supabase_studio_AmpedFieldOps | 54323 | ✅ Up (9h) | Database UI & management |
+| **Supabase Kong (API Gateway)** | supabase_kong_AmpedFieldOps | 54321 | ✅ Up (9h) | REST/RealTime proxy |
+| **Supabase PostgreSQL** | supabase_db_AmpedFieldOps | 54322 | ✅ Up (9h) | Primary database |
+| **Supabase Auth** | supabase_auth_AmpedFieldOps | 9999 | ✅ Up (8h) | JWT token issuer |
+| **Supabase Storage** | supabase_storage_AmpedFieldOps | 5000 | ✅ Up (9h) | File storage API |
+| **Supabase RealTime** | supabase_realtime_AmpedFieldOps | 4000 | ✅ Up (9h) | WebSocket subscriptions |
+| **Supabase REST** | supabase_rest_AmpedFieldOps | 3000 | ✅ Up (9h) | PostgREST (read/write API) |
+| **Supabase Edge Runtime** | supabase_edge_runtime_AmpedFieldOps | 8081 | ✅ Up (9h) | Serverless functions |
+| **Supabase Vector** | supabase_vector_AmpedFieldOps | - | ✅ Up (9h) | pgvector embeddings |
+| **Supabase PgMeta** | supabase_pg_meta_AmpedFieldOps | 8080 | ✅ Up (9h) | Postgres metadata API |
+| **Supabase Analytics** | supabase_analytics_AmpedFieldOps | 54327 | ✅ Up (9h) | Logflare logs/telemetry |
+| **Supabase Mail** | supabase_inbucket_AmpedFieldOps | 54324 | ✅ Up (9h) | Email capture (dev/test) |
+
+### Quick Health Check Command
+```bash
+# All services
+docker ps --format "table {{.Names}}\t{{.Status}}\t{{.Ports}}"
+
+# Individual service health
+curl -s http://localhost:3000/health        # Frontend
+curl -s http://localhost:3001/health        # Backend
+curl -s http://localhost:8000/health        # OCR
+echo PING | nc -w1 localhost 6379           # Redis
+curl -s http://localhost:54321/rest/v1/     # Supabase REST API
+```
+
+### Expected Service Startup Order
+1. **supabase_db_AmpedFieldOps** (PostgreSQL) - ~10s
+2. **supabase_kong_AmpedFieldOps** (Kong proxy) - ~15s
+3. **supabase_auth_AmpedFieldOps** - ~20s
+4. **ampedfieldops-redis** - ~5s
+5. **ampedfieldops-api** (Backend) - ~30s (waits for Supabase)
+6. **ampedfieldops-ocr** - ~10s
+7. **ampedfieldops-web** (Frontend) - ~5s
+
+### Troubleshooting
+- **Backend failing to start**: Check `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` in `.env`
+- **Frontend can't reach backend**: Verify `VITE_API_URL` points to `http://localhost:3001` (dev) or `https://admin.ampedlogix.com/api` (prod)
+- **Supabase schema issues**: Connect to PostgreSQL (`psql -h 127.0.0.1 -U postgres -d postgres -p 54322`) and run migrations from `supabase/migrations/`
+- **Redis connection errors**: Ensure `REDIS_URL` in `.env` is `redis://ampedfieldops-redis:6379` (Docker) or `redis://localhost:6379` (host)
+
+---
 
 ## Architecture Summary
 - **Frontend**: React 18 + Vite, served on port 3000 behind nginx. Uses `https://supabase.ampedlogix.com` for Supabase client.

@@ -20,6 +20,7 @@ import {
 import { Checkbox } from '@/components/ui/checkbox';
 import { Card } from '@/components/ui/card';
 import { api } from '@/lib/api';
+import { getClients, getProjects } from '@/lib/supabaseQueries';
 import { Client, Project, ActivityType, CostCenter, User } from '@/types';
 import { Camera, Wrench, Clock, Loader2, Image, X, Calendar, Users, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -74,13 +75,12 @@ export default function MobileTimesheetModal({ open, onOpenChange }: MobileTimes
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const [clientsResponse, activityData, usersData] = await Promise.all([
-        api.getClients({ status: 'active', limit: 100 }).catch(() => ({ data: [] })),
+      const [clientsList, activityData, usersData] = await Promise.all([
+        getClients().catch(() => []),
         api.getActivityTypes(true).catch(() => []),
         api.getUsers().catch(() => ({ data: [] })),
       ]);
       
-      const clientsList = clientsResponse.data || (Array.isArray(clientsResponse) ? clientsResponse : []);
       setClients(Array.isArray(clientsList) ? clientsList.filter(c => c.id) : []);
       setActivityTypes(Array.isArray(activityData) ? activityData.filter(a => a.id) : []);
       
@@ -104,8 +104,7 @@ export default function MobileTimesheetModal({ open, onOpenChange }: MobileTimes
     
     if (clientId) {
       try {
-        const projectsResponse = await api.getProjects({ client_id: clientId, limit: 100 });
-        const projectsData = projectsResponse.data || (Array.isArray(projectsResponse) ? projectsResponse : []);
+        const projectsData = await getProjects({ client_id: clientId, limit: 100 });
         setProjects(Array.isArray(projectsData) ? projectsData.filter(p => p.id) : []);
       } catch (error) {
         console.error('Failed to load projects:', error);

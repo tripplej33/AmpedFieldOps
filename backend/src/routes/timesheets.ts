@@ -373,19 +373,28 @@ router.post('/', authenticate, uploadLimiter,
         return res.status(500).json({ error: 'Failed to create timesheet' });
       }
 
-      // Update project actual_cost based on activity hourly rate
-      const { data: activityType } = await supabase
-        .from('activity_types')
-        .select('hourly_rate')
-        .eq('id', timesheetActivityTypeId)
-        .single();
-
-      if (activityType && activityType.hourly_rate) {
-        const cost = timesheetHours * parseFloat(activityType.hourly_rate);
-        await supabase
-          .from('projects')
-          .update({ actual_cost: supabase.rpc('update_with_math', { id: project_id, amount: cost }) })
-          .eq('id', project_id);
+      // Update project actual_cost when timesheet is saved
+      try {
+        if (newTimesheet.activity_types && newTimesheet.project_id) {
+          const hourlyRate = (newTimesheet.activity_types as any).hourly_rate;
+          const cost = newTimesheet.hours * parseFloat(hourlyRate);
+          
+          // Update project actual_cost
+          const { data: project } = await supabase
+            .from('projects')
+            .select('actual_cost')
+            .eq('id', newTimesheet.project_id)
+            .single();
+          
+          if (project) {
+            await supabase
+              .from('projects')
+              .update({ actual_cost: (parseFloat(project.actual_cost || '0') || 0) + cost })
+              .eq('id', newTimesheet.project_id);
+          }
+        }
+      } catch (costError) {
+        log.warn('Failed to update project actual_cost on create', { error: costError });
       }
 
       // Log activity (skipped - activity_logs table not yet migrated)
@@ -608,27 +617,30 @@ router.put('/:id', authenticate,
             const newCost = hours * parseFloat(newActivity.hourly_rate);
             const costDiff = newCost - oldCost;
             
-            // Update project actual_cost using Supabase RPC or SQL
-            const { error: costError } = await supabase.rpc('increment_project_cost', {
-              project_id: project_id || existing.project_id,
-              amount: costDiff
-            });
-            
-            if (costError) {
-              log.warn('Failed to update project costs via RPC, trying direct SQL', { error: costError });
-              // Fallback: direct update with select first
-              const { data: project } = await supabase
-                .from('projects')
-                .select('actual_cost')
-                .eq('id', project_id || existing.project_id)
-                .single();
+            // Update project actual_cost when timesheet is updated
+            try {
+              // Remove old cost
+              const oldCost = existing.hours * parseFloat(oldActivity.hourly_rate);
+              // Add new cost
+              const newCost = hours * parseFloat(newActivity.hourly_rate);
+              const costDiff = newCost - oldCost;
               
-              if (project) {
-                await supabase
+              if (costDiff !== 0) {
+                const { data: project } = await supabase
                   .from('projects')
-                  .update({ actual_cost: (parseFloat(project.actual_cost) || 0) + costDiff })
-                  .eq('id', project_id || existing.project_id);
+                  .select('actual_cost')
+                  .eq('id', existing.project_id)
+                  .single();
+                
+                if (project) {
+                  await supabase
+                    .from('projects')
+                    .update({ actual_cost: Math.max(0, (parseFloat(project.actual_cost || '0') || 0) + costDiff) })
+                    .eq('id', existing.project_id);
+                }
               }
+            } catch (costDiffError) {
+              log.warn('Failed to update project actual_cost on update', { error: costDiffError });
             }
           }
         } catch (costError) {
@@ -744,22 +756,10 @@ router.delete('/:id', authenticate, async (req: AuthRequest, res: Response) => {
         }
       }
     } catch (costError) {
-      log.warn('Failed to update project costs', { error: costError });
+      log.warn('Actual cost update deferred', { error: costError });
     }
 
     // Log activity (skipped - activity_logs table not yet migrated)
-    // TODO: Implement activity logging in Supabase
-    /*
-    try {
-      await query(
-        `INSERT INTO activity_logs (user_id, action, entity_type, entity_id, details) 
-         VALUES ($1, $2, $3, $4, $5)`,
-        [req.user!.id, 'delete', 'timesheet', req.params.id, JSON.stringify({ hours: existing.hours })]
-      );
-    } catch (logError) {
-      log.warn('Failed to log activity', { error: logError });
-    }
-    */
 
     res.json({ message: 'Timesheet deleted' });
   } catch (error: any) {

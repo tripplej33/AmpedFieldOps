@@ -59,6 +59,13 @@ function ProtectedRoute({ children, permission }: { children: React.ReactNode; p
 function AppRoutes() {
   const { isAuthenticated, isLoading, user } = useAuth();
 
+  // Load favicon only after auth is ready to avoid 401s on stale tokens after refresh
+  useEffect(() => {
+    if (!isLoading && isAuthenticated) {
+      loadFaviconFromSettings(api);
+    }
+  }, [isLoading, isAuthenticated]);
+
   return (
     <Suspense fallback={
       <div className="flex items-center justify-center h-screen bg-background">
@@ -148,15 +155,6 @@ function AppRoutes() {
 }
 
 function App() {
-  // Load favicon on app startup if user is authenticated
-  useEffect(() => {
-    const token = api.getToken();
-    if (token) {
-      // User is authenticated, try to load favicon
-      loadFaviconFromSettings(api);
-    }
-  }, []);
-
   return (
     <ErrorBoundary>
       <AuthProvider>

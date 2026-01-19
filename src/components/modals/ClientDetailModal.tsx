@@ -16,6 +16,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card } from '@/components/ui/card';
 import { api } from '@/lib/api';
+import { getProjects, getTimesheets } from '@/lib/supabaseQueries';
 import { 
   DollarSign, 
   Clock, 
@@ -102,12 +103,12 @@ export default function ClientDetailModal({ client, open, onOpenChange, onClient
       // Load customer data
       if (isCustomer) {
         const [projectsData, timesheetsData, invoicesData, paymentsData] = await Promise.all([
-          api.getProjects({ client_id: client.id }),
-          api.getTimesheets({ client_id: client.id }),
+          getProjects({ client_id: client.id }),
+          getTimesheets({ client_id: client.id }),
           api.getXeroInvoices({ client_id: client.id }).catch(() => []),
           api.getPayments().catch(() => []),
         ]);
-        setProjects(Array.isArray(projectsData) ? projectsData : ((projectsData && typeof projectsData === 'object' && 'data' in projectsData && Array.isArray(projectsData.data)) ? projectsData.data : []));
+        setProjects(Array.isArray(projectsData) ? projectsData : []);
         setTimesheets(Array.isArray(timesheetsData) ? timesheetsData : ((timesheetsData && typeof timesheetsData === 'object' && 'data' in timesheetsData && Array.isArray(timesheetsData.data)) ? timesheetsData.data : []));
         setInvoices(Array.isArray(invoicesData) ? invoicesData : ((invoicesData && typeof invoicesData === 'object' && 'data' in invoicesData && Array.isArray(invoicesData.data)) ? invoicesData.data : []));
         // Filter payments by client invoices

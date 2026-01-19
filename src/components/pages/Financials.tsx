@@ -11,6 +11,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
 import { api } from '@/lib/api';
+import { getClients, getProjects } from '@/lib/supabaseQueries';
 import { XeroInvoice, XeroQuote, Client, Project } from '@/types';
 import { 
   DollarSign, 
@@ -152,9 +153,8 @@ export default function Financials() {
 
   const loadClients = async () => {
     try {
-      const data = await api.getClients();
-      const clientsList = data.data || (Array.isArray(data) ? data : []);
-      setClients(Array.isArray(clientsList) ? clientsList.filter(c => c.id) : []);
+      const data = await getClients();
+      setClients(Array.isArray(data) ? data.filter(c => c.id) : []);
     } catch (error) {
       console.error('Failed to load clients:', error);
       toast.error('Failed to load clients');
@@ -168,9 +168,8 @@ export default function Financials() {
       return;
     }
     try {
-      const data = await api.getProjects({ client_id: clientId });
-      const projectsList = data.data || (Array.isArray(data) ? data : []);
-      setProjects(Array.isArray(projectsList) ? projectsList.filter(p => p.id) : []);
+      const data = await getProjects({ client_id: clientId });
+      setProjects(Array.isArray(data) ? data.filter(p => p.id) : []);
     } catch (error) {
       console.error('Failed to load projects:', error);
       toast.error('Failed to load projects');

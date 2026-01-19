@@ -17,6 +17,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card } from '@/components/ui/card';
 import { api } from '@/lib/api';
+import { updateProject } from '@/lib/supabaseQueries'; // Import Supabase helper
 import { DollarSign, Clock, Calendar, TrendingUp, Wrench, Loader2, Pencil, Plus, FolderOpen, Trash2, ShoppingCart, Receipt, File, FileText, Image, Shield, Upload, Eye, Download as DownloadIcon } from 'lucide-react';
 import { ProjectFinancials, ProjectFile, SafetyDocument } from '@/types';
 import { FileUpload } from '@/components/ui/file-upload';
@@ -69,10 +70,12 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
 
   useEffect(() => {
     if (project && open) {
-      loadCostCenters();
-      loadProjectFinancials();
-      loadProjectFiles();
-      loadSafetyDocuments();
+      // DISABLED: Legacy API calls that need migration to Supabase
+      // loadCostCenters();
+      // loadProjectFinancials();
+      // loadProjectFiles();
+      // loadSafetyDocuments();
+      
       // Reset edit form when project changes
       setEditForm({
         name: project.name,
@@ -87,22 +90,24 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
 
   const loadProjectFiles = async () => {
     if (!project) return;
-    try {
-      const files = await api.getProjectFiles(project.id);
-      setProjectFiles(files);
-    } catch (error: any) {
-      console.error('Failed to load project files:', error);
-    }
+    // DISABLED: Legacy API call - needs migration to Supabase Storage
+    // try {
+    //   const files = await api.getProjectFiles(project.id);
+    //   setProjectFiles(files);
+    // } catch (error: any) {
+    //   console.error('Failed to load project files:', error);
+    // }
   };
 
   const loadSafetyDocuments = async () => {
     if (!project) return;
-    try {
-      const docs = await api.getSafetyDocuments({ project_id: project.id });
-      setSafetyDocuments(docs);
-    } catch (error: any) {
-      console.error('Failed to load safety documents:', error);
-    }
+    // DISABLED: Legacy API call - needs migration to Supabase
+    // try {
+    //   const docs = await api.getSafetyDocuments({ project_id: project.id });
+    //   setSafetyDocuments(docs);
+    // } catch (error: any) {
+    //   console.error('Failed to load safety documents:', error);
+    // }
   };
 
   const formatFileSize = (bytes: number) => {
@@ -115,25 +120,27 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
 
   const loadProjectFinancials = async () => {
     if (!project) return;
-    try {
-      const financials = await api.getProjectFinancials(project.id);
-      setProjectFinancials(financials);
-    } catch (error) {
-      console.error('Failed to load project financials:', error);
-      setProjectFinancials(null);
-    }
+    // DISABLED: Legacy API call - needs migration to Supabase
+    // try {
+    //   const financials = await api.getProjectFinancials(project.id);
+    //   setProjectFinancials(financials);
+    // } catch (error) {
+    //   console.error('Failed to load project financials:', error);
+    //   setProjectFinancials(null);
+    // }
   };
 
 
   const loadCostCenters = async () => {
     if (!project) return;
-    try {
-      const data = await api.getCostCenters(false, project.id);
-      setCostCenters(Array.isArray(data) ? data : []);
-    } catch (error) {
-      console.error('Failed to load cost centers:', error);
-      setCostCenters([]);
-    }
+    // DISABLED: Legacy API call - needs migration to Supabase
+    // try {
+    //   const data = await api.getCostCenters(false, project.id);
+    //   setCostCenters(Array.isArray(data) ? data : []);
+    // } catch (error) {
+    //   console.error('Failed to load cost centers:', error);
+    //   setCostCenters([]);
+    // }
   };
 
   const resetCostCenterForm = () => {
@@ -215,7 +222,8 @@ export default function ProjectDetailModal({ project, open, onOpenChange, onProj
 
     setIsSaving(true);
     try {
-      await api.updateProject(project.id, {
+      // Use Supabase query helper instead of legacy API
+      await updateProject(project.id, {
         name: editForm.name,
         description: editForm.description,
         budget: parseFloat(editForm.budget) || 0,

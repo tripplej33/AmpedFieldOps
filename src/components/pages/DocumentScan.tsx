@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { api } from '@/lib/api';
+import { getProjects, getClients } from '@/lib/supabaseQueries';
 import type { DocumentScan, DocumentMatch } from '@/types';
 import { Project, Client } from '@/types';
 import { 
@@ -73,14 +74,8 @@ export default function DocumentScan() {
     try {
       const params: any = {};
       if (clientId) params.client_id = clientId;
-      const response = await api.getProjects(params);
-      // Handle paginated response: { data: [...], pagination: {...} }
-      const projectsList = Array.isArray(response) 
-        ? response 
-        : ((response && typeof response === 'object' && ('data' in response || 'items' in response)) 
-          ? (('data' in response && Array.isArray(response.data)) ? response.data : (('items' in response && Array.isArray(response.items)) ? response.items : []))
-          : []);
-      setProjects(projectsList);
+      const projectsList = await getProjects(params);
+      setProjects(Array.isArray(projectsList) ? projectsList : []);
     } catch (error: any) {
       console.error('Failed to load projects:', error);
       toast.error(error.message || 'Failed to load projects');
@@ -89,14 +84,8 @@ export default function DocumentScan() {
 
   const loadClients = async () => {
     try {
-      const response = await api.getClients();
-      // Handle paginated response: { data: [...], pagination: {...} }
-      const clientsList = Array.isArray(response) 
-        ? response 
-        : ((response && typeof response === 'object' && ('data' in response || 'items' in response)) 
-          ? (('data' in response && Array.isArray(response.data)) ? response.data : (('items' in response && Array.isArray(response.items)) ? response.items : []))
-          : []);
-      setClients(clientsList);
+      const clientsList = await getClients();
+      setClients(Array.isArray(clientsList) ? clientsList : []);
     } catch (error: any) {
       console.error('Failed to load clients:', error);
       toast.error(error.message || 'Failed to load clients');

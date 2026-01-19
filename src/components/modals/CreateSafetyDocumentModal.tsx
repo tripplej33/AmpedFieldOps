@@ -8,6 +8,7 @@ import { JSAForm } from '@/components/forms/JSAForm';
 import { ComplianceCreateForm } from '@/components/forms/ComplianceCreateForm';
 import { Project, Client, CostCenter, JSAData, ComplianceData, SafetyCertificateData } from '@/types';
 import { api } from '@/lib/api';
+import { getProjects } from '@/lib/supabaseQueries';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -76,8 +77,7 @@ export default function CreateSafetyDocumentModal({
 
   const loadProjects = async () => {
     try {
-      const response = await api.getProjects({ limit: 100 });
-      const projectsData = response.data || (Array.isArray(response) ? response : []);
+      const projectsData = await getProjects({ limit: 100 });
       setProjects(Array.isArray(projectsData) ? projectsData.filter(p => p.id) : []);
     } catch (error) {
       console.error('Failed to load projects:', error);

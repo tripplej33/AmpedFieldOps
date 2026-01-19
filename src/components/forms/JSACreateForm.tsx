@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Project, CostCenter, User, JSAData } from '@/types';
 import { api } from '@/lib/api';
+import { getProjects } from '@/lib/supabaseQueries';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -39,11 +40,10 @@ export function JSACreateForm({ projectId, costCenterId, onSubmit, onCancel, isS
 
   const loadData = async () => {
     try {
-      const [projectsResponse, usersData] = await Promise.all([
-        api.getProjects({ limit: 100 }),
+      const [projectsData, usersData] = await Promise.all([
+        getProjects({ limit: 100 }),
         api.getUsers(),
       ]);
-      const projectsData = projectsResponse.data || (Array.isArray(projectsResponse) ? projectsResponse : []);
       setProjects(Array.isArray(projectsData) ? projectsData : []);
       setUsers(usersData);
 

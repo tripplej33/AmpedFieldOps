@@ -1,11 +1,17 @@
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { env } from '../config/env';
 import jwt from 'jsonwebtoken';
 
 // Create a Supabase service client for server-side operations
 // Only initialized when SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are provided
+// Service-role client when available (preferred)
 export const supabase = (() => {
+  console.log('[Supabase] Initializing client...');
+  console.log('[Supabase] SUPABASE_URL:', env.SUPABASE_URL ? 'SET' : 'NOT SET');
+  console.log('[Supabase] SUPABASE_SERVICE_ROLE_KEY:', env.SUPABASE_SERVICE_ROLE_KEY ? 'SET (length: ' + env.SUPABASE_SERVICE_ROLE_KEY.length + ')' : 'NOT SET');
+  
   if (env.SUPABASE_URL && env.SUPABASE_SERVICE_ROLE_KEY) {
+    console.log('[Supabase] Creating client with URL:', env.SUPABASE_URL);
     return createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
       auth: {
         persistSession: false,
@@ -13,8 +19,30 @@ export const supabase = (() => {
       },
     });
   }
+  
+  console.warn('[Supabase] Client NOT initialized - missing URL or key!');
   return null;
 })();
+
+// Fallback: build a scoped client using anon key and caller access token (respects RLS)
+export function getSupabaseClient(accessToken?: string): SupabaseClient | null {
+  if (!env.SUPABASE_URL) return null;
+
+  const key = env.SUPABASE_SERVICE_ROLE_KEY || env.SUPABASE_ANON_KEY;
+  if (!key) return null;
+
+  const headers = accessToken
+    ? { Authorization: `Bearer ${accessToken}` }
+    : undefined;
+
+  return createClient(env.SUPABASE_URL, key, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
+    global: headers ? { headers } : undefined,
+  });
+}
 
 /**
  * Verify a Supabase JWT token and extract the user ID
@@ -60,14 +88,13 @@ export async function verifySupabaseToken(token: string): Promise<{ userId: stri
  * Query the public.users table to get user profile and permissions
  * This is called after verifying the JWT to get app-specific user data
  */
-export async function loadUserWithPermissions(userId: string) {
-  if (!supabase) {
-    return null;
-  }
+export async function loadUserWithPermissions(userId: string, accessToken?: string) {
+  const client = supabase || getSupabaseClient(accessToken);
+  if (!client) return null;
 
   try {
     // Fetch user profile using service role (bypasses RLS)
-    const { data: profileData, error: profileError } = await supabase
+    const { data: profileData, error: profileError } = await client
       .from('users')
       .select('id, email, name, role, avatar_url')
       .eq('id', userId)
@@ -79,7 +106,7 @@ export async function loadUserWithPermissions(userId: string) {
     }
 
     // Fetch user permissions (user_permissions.permission FK -> permissions.key)
-    const { data: permData, error: permError } = await supabase
+    const { data: permData, error: permError } = await client
       .from('user_permissions')
       .select('permission')
       .eq('user_id', userId);
@@ -96,7 +123,7 @@ export async function loadUserWithPermissions(userId: string) {
     let permissions: string[] = [];
     if (permData && permData.length > 0) {
       const permKeys = permData.map((p: any) => p.permission);
-      const { data: permNames, error: nameError } = await supabase
+      const { data: permNames, error: nameError } = await client
         .from('permissions')
         .select('key, name')
         .in('key', permKeys);

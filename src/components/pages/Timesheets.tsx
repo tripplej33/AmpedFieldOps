@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { useAuth } from '@/contexts/AuthContext';
 import Header from '@/components/layout/Header';
 import { Card } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
@@ -11,7 +12,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Checkbox } from '@/components/ui/checkbox';
-import { api } from '@/lib/api';
+import { getTimesheets, createTimesheet, updateTimesheet, deleteTimesheet, getProjects as getProjectsSupabase, getClients, getActivityTypes, getCostCenters, getUsers } from '@/lib/supabaseQueries';
 import { TimesheetEntry, Client, Project, ActivityType, CostCenter, User } from '@/types';
 import { Plus, Calendar, Clock, Wrench, Pencil, Trash2, Loader2, Camera, Image, X, ChevronLeft, ChevronRight, Users, CheckCircle2, AlertCircle, CheckCircle, Search, MessageSquare, Settings2 } from 'lucide-react';
 import ImageViewer from '@/components/modals/ImageViewer';
@@ -191,15 +192,23 @@ export default function Timesheets() {
   //   hasPrev: boolean;
   // } | null>(null);
 
-  useEffect(() => {
-    loadTimesheets();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedUserId, selectedDateRange.from.toISOString(), selectedDateRange.to.toISOString()]);
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
 
   useEffect(() => {
-    loadFormData();
-    loadUsers();
-  }, []);
+    // Only load data once auth is complete and user is authenticated
+    if (!authLoading && isAuthenticated) {
+      loadTimesheets();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedUserId, selectedDateRange.from.toISOString(), selectedDateRange.to.toISOString(), authLoading, isAuthenticated]);
+
+  useEffect(() => {
+    // Only load data once auth is complete and user is authenticated
+    if (!authLoading && isAuthenticated) {
+      loadFormData();
+      loadUsers();
+    }
+  }, [authLoading, isAuthenticated]);
 
   // Handle URL parameters for opening specific timesheet
   useEffect(() => {
@@ -221,21 +230,18 @@ export default function Timesheets() {
       const dateFrom = selectedDateRange.from.toISOString().split('T')[0];
       const dateTo = selectedDateRange.to.toISOString().split('T')[0];
       
-      const params: any = {
-        date_from: dateFrom,
-        date_to: dateTo,
-        limit: 1000, // Load all timesheets in date range
-      };
+      let data = await getTimesheets();
       
+      // Filter by date range
+      data = data.filter((entry: any) => {
+        const entryDate = entry.date ? entry.date.split('T')[0] : entry.date;
+        return entryDate >= dateFrom && entryDate <= dateTo;
+      });
+      
+      // Filter by user if not 'all'
       if (selectedUserId !== 'all') {
-        params.user_id = selectedUserId;
+        data = data.filter((entry: any) => entry.user_id === selectedUserId);
       }
-      
-      const response = await api.getTimesheets(params);
-      // API returns { data: [], pagination: {} }
-      const data = (response && typeof response === 'object' && 'data' in response) 
-        ? response.data 
-        : (Array.isArray(response) ? response : []);
       
       // Normalize dates in entries (remove time components)
       const normalizedData = Array.isArray(data) ? data.map((entry: any) => ({
@@ -246,9 +252,7 @@ export default function Timesheets() {
       setEntries(normalizedData);
     } catch (error: any) {
       console.error('Failed to load timesheets:', error);
-      if (error?.message !== 'Failed to fetch') {
-        toast.error('Failed to load timesheets');
-      }
+      toast.error(error.message || 'Failed to load timesheets');
       setEntries([]);
     } finally {
       setIsLoading(false);
@@ -257,11 +261,8 @@ export default function Timesheets() {
 
   const loadUsers = async () => {
     try {
-      const data = await api.getUsers();
-      const usersList = (data && typeof data === 'object' && 'data' in data && Array.isArray(data.data)) 
-        ? data.data 
-        : (Array.isArray(data) ? data : []);
-      setUsers(Array.isArray(usersList) ? usersList.filter(u => u.id) : []);
+      const data = await getUsers();
+      setUsers(Array.isArray(data) ? data.filter(u => u.id) : []);
     } catch (error) {
       console.error('Failed to load users:', error);
       toast.error('Failed to load users');
@@ -271,13 +272,11 @@ export default function Timesheets() {
 
   const loadFormData = async () => {
     try {
-      const [clientsResponse, activityData] = await Promise.all([
-        api.getClients({ limit: 100 }).catch(() => ({ data: [] })),
-        api.getActivityTypes(true).catch(() => []),
+      const [clientsData, activityData] = await Promise.all([
+        getClients().catch(() => []),
+        getActivityTypes().catch(() => []),
       ]);
       
-      // Handle paginated clients response
-      const clientsData = clientsResponse.data || (Array.isArray(clientsResponse) ? clientsResponse : []);
       setClients(Array.isArray(clientsData) ? clientsData.filter(c => c.id) : []);
       setActivityTypes(Array.isArray(activityData) ? activityData.filter(a => a.id) : []);
       setCostCenters([]); // Cost centers are now loaded per-project
@@ -295,9 +294,9 @@ export default function Timesheets() {
     setCostCenters([]); // Reset cost centers when client changes
     if (clientId) {
       try {
-        const projectsResponse = await api.getProjects({ client_id: clientId, limit: 100 });
-        const projectsData = projectsResponse.data || (Array.isArray(projectsResponse) ? projectsResponse : []);
-        setProjects(Array.isArray(projectsData) ? projectsData.filter(p => p.id) : []);
+        const projectsData = await getProjects();
+        const filtered = projectsData.filter((p: any) => p.client_id === clientId);
+        setProjects(Array.isArray(filtered) ? filtered.filter(p => p.id) : []);
       } catch (error) {
         setProjects([]);
       }
@@ -309,8 +308,8 @@ export default function Timesheets() {
   const handleProjectChange = async (projectId: string) => {
     if (projectId) {
       try {
-        const costCenterData = await api.getCostCenters(true, projectId);
-        const loadedCostCenters = Array.isArray(costCenterData) ? costCenterData.filter(cc => cc.id) : [];
+        const costCenterData = await getCostCenters();
+        const loadedCostCenters = Array.isArray(costCenterData) ? costCenterData.filter(cc => cc.id && cc.project_id === projectId) : [];
         setCostCenters(loadedCostCenters);
         
         // Update activity entries: reset cost centers and set default to first if available
@@ -662,7 +661,7 @@ export default function Timesheets() {
         if (entry.user_ids.length > 0) {
           for (const userId of entry.user_ids) {
             const hours = parseFloat(entry.user_hours[userId]);
-            await api.createTimesheet({
+            await createTimesheet({
               project_id: formData.project_id,
               activity_type_id: entry.activity_type_id,
               cost_center_id: entry.cost_center_id,
@@ -676,7 +675,7 @@ export default function Timesheets() {
           }
         } else {
           // No users assigned, create entry for current user
-          await api.createTimesheet({
+          await createTimesheet({
             project_id: formData.project_id,
             activity_type_id: entry.activity_type_id,
             cost_center_id: entry.cost_center_id,
@@ -712,7 +711,7 @@ export default function Timesheets() {
     // Load projects for the client
     if (entry.client_id) {
       try {
-        const projectsData = await api.getProjects({ client_id: entry.client_id });
+        const projectsData = await getProjectsSupabase({ client_id: entry.client_id });
         setProjects(Array.isArray(projectsData) ? projectsData : []);
       } catch (error) {
         setProjects([]);
@@ -818,19 +817,18 @@ export default function Timesheets() {
           formDataToSend.append('user_id', userId);
         }
         
-        // Include existing image URLs
-        if (imagePreviews.length > 0) {
-          formDataToSend.append('image_urls', JSON.stringify(imagePreviews));
-        }
-        
-        imageFiles.forEach((file) => {
-          formDataToSend.append('images', file);
+        await updateTimesheet(editingEntry.id, {
+          project_id: formData.project_id,
+          activity_type_id: entry.activity_type_id,
+          cost_center_id: entry.cost_center_id,
+          date: formData.date,
+          hours: hours,
+          user_id: userId,
+          notes: entry.notes || formData.notes,
         });
-        
-        await api.updateTimesheet(editingEntry.id, formDataToSend);
       } else {
         // No new images, just update the data
-        await api.updateTimesheet(editingEntry.id, {
+        await updateTimesheet(editingEntry.id, {
           project_id: formData.project_id,
           activity_type_id: entry.activity_type_id,
           cost_center_id: entry.cost_center_id,
@@ -864,7 +862,7 @@ export default function Timesheets() {
     if (!confirm('Are you sure you want to delete this entry?')) return;
 
     try {
-      await api.deleteTimesheet(entry.id);
+      await deleteTimesheet(entry.id);
       toast.success('Timesheet entry deleted');
       loadTimesheets();
     } catch (error: any) {

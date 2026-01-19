@@ -22,13 +22,6 @@ export default function Dashboard() {
 
   useEffect(() => {
     loadDashboardData();
-    
-    // Auto-refresh every 30 seconds
-    const interval = setInterval(() => {
-      loadDashboardData();
-    }, 30000);
-
-    return () => clearInterval(interval);
   }, []);
 
   // Show welcome notification once per session
@@ -50,43 +43,22 @@ export default function Dashboard() {
   }, [user, notifyInfo]);
 
   const loadDashboardData = async () => {
-    try {
-      const [metricsData, statsData, timesheetsData, projectsData] = await Promise.all([
-        api.getDashboardMetrics().catch(() => null),
-        api.getQuickStats().catch(() => null),
-        api.getRecentTimesheets(5).catch(() => []),
-        api.getActiveProjects(5).catch(() => [])
-      ]);
-      setMetrics(metricsData || {
-        totalProjects: 0,
-        activeProjects: 0,
-        totalHours: 0,
-        totalRevenue: 0,
-        projectsTrend: 0,
-        hoursTrend: 0,
-        revenueTrend: 0,
-        activeTeam: 0,
-        recentActivity: []
-      });
-      setQuickStats(statsData);
-      setRecentTimesheets(Array.isArray(timesheetsData) ? timesheetsData : []);
-      setActiveProjects(Array.isArray(projectsData) ? projectsData : []);
-    } catch (error) {
-      console.error('Failed to load dashboard data:', error);
-      setMetrics({
-        totalProjects: 0,
-        activeProjects: 0,
-        totalHours: 0,
-        totalRevenue: 0,
-        projectsTrend: 0,
-        hoursTrend: 0,
-        revenueTrend: 0,
-        activeTeam: 0,
-        recentActivity: []
-      });
-    } finally {
-      setIsLoading(false);
-    }
+    // Dashboard backend routes were removed; show placeholder data to avoid 404s
+    setMetrics({
+      totalProjects: 0,
+      activeProjects: 0,
+      totalHours: 0,
+      totalRevenue: 0,
+      projectsTrend: 0,
+      hoursTrend: 0,
+      revenueTrend: 0,
+      activeTeam: 0,
+      recentActivity: []
+    });
+    setQuickStats(null);
+    setRecentTimesheets([]);
+    setActiveProjects([]);
+    setIsLoading(false);
   };
 
   if (isLoading) {

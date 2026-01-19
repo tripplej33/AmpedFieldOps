@@ -99,7 +99,7 @@ router.get('/:id', authenticate, async (req: AuthRequest, res: Response) => {
     // Get related projects
     const { data: projects, error: projectsError } = await supabase
       .from('projects')
-      .select('id, code, name, status, budget, actual_cost')
+      .select('id, name, status, budget, actual_cost')
       .eq('client_id', req.params.id)
       .order('created_at', { ascending: false });
 

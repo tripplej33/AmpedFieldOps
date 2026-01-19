@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { api } from '@/lib/api';
+import { getClients, getProjects } from '@/lib/supabaseQueries';
 import { Client, Project, CostCenter } from '@/types';
 import { Loader2, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -65,9 +66,8 @@ export default function PurchaseOrderModal({ projectId: initialProjectId, open, 
 
   const loadSuppliers = async () => {
     try {
-      const clients = await api.getClients();
+      const clientsList = await getClients();
       // In this system, suppliers are stored as clients (could add is_supplier flag in future)
-      const clientsList = clients.data || (Array.isArray(clients) ? clients : []);
       setSuppliers(Array.isArray(clientsList) ? clientsList.filter(c => c.id) : []);
     } catch (error) {
       console.error('Failed to load suppliers:', error);
@@ -78,8 +78,7 @@ export default function PurchaseOrderModal({ projectId: initialProjectId, open, 
 
   const loadProjects = async () => {
     try {
-      const projectsData = await api.getProjects();
-      const projectsList = projectsData.data || (Array.isArray(projectsData) ? projectsData : []);
+      const projectsList = await getProjects();
       setProjects(Array.isArray(projectsList) ? projectsList.filter(p => p.id) : []);
     } catch (error) {
       console.error('Failed to load projects:', error);
@@ -95,7 +94,7 @@ export default function PurchaseOrderModal({ projectId: initialProjectId, open, 
         setSelectedProject(project);
       } else {
         // Fetch project details if not in list
-        const allProjects = await api.getProjects();
+        const allProjects = await getProjects();
         const foundProject = Array.isArray(allProjects) ? allProjects.find((p: Project) => p.id === projId) : null;
         setSelectedProject(foundProject || null);
       }

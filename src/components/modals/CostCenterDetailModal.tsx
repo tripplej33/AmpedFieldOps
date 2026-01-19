@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { CostCenter, Project, TimesheetEntry, ProjectFile } from '@/types';
 import { api } from '@/lib/api';
+import { getTimesheets } from '@/lib/supabaseQueries';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
@@ -82,11 +83,11 @@ export default function CostCenterDetailModal({
     if (!costCenter || !project) return;
     setIsLoadingTimesheets(true);
     try {
-      const data = await api.getTimesheets({ 
+      const data = await getTimesheets({ 
         project_id: project.id, 
         cost_center_id: costCenter.id 
       });
-      setTimesheets(Array.isArray(data) ? data : (data.data || []));
+      setTimesheets(Array.isArray(data) ? data : []);
     } catch (error) {
       console.error('Failed to load timesheets:', error);
       setTimesheets([]);

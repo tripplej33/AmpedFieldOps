@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { api } from '@/lib/api';
+import { getClients, getProjects } from '@/lib/supabaseQueries';
 import { Client, Project, PurchaseOrder } from '@/types';
 import { Loader2, Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -62,8 +63,7 @@ export default function BillModal({ purchaseOrderId, open, onOpenChange, onBillC
 
   const loadSuppliers = async () => {
     try {
-      const clients = await api.getClients();
-      const clientsList = clients.data || (Array.isArray(clients) ? clients : []);
+      const clientsList = await getClients();
       setSuppliers(Array.isArray(clientsList) ? clientsList.filter(c => c.id) : []);
     } catch (error) {
       console.error('Failed to load suppliers:', error);
@@ -74,8 +74,7 @@ export default function BillModal({ purchaseOrderId, open, onOpenChange, onBillC
 
   const loadProjects = async () => {
     try {
-      const projectsData = await api.getProjects();
-      const projectsList = projectsData.data || (Array.isArray(projectsData) ? projectsData : []);
+      const projectsList = await getProjects();
       setProjects(Array.isArray(projectsList) ? projectsList.filter(p => p.id) : []);
     } catch (error) {
       console.error('Failed to load projects:', error);

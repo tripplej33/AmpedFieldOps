@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { useAuth } from '@/contexts/AuthContext';
 import Header from '@/components/layout/Header';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -10,7 +11,7 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { Pagination } from '@/components/ui/pagination';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { api } from '@/lib/api';
+import { getClients, createClient, updateClient, deleteClient } from '@/lib/supabaseQueries';
 import { Client } from '@/types';
 import { Search, Plus, Phone, Mail, MapPin, Clock, Briefcase, Loader2, Users, ShoppingCart, DollarSign } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -54,9 +55,14 @@ export default function Clients() {
     notes: '',
   });
 
+  const { isAuthenticated, isLoading: authLoading } = useAuth();
+
   useEffect(() => {
-    loadClients();
-  }, [page, limit, searchQuery, activeTab]);
+    // Only load data once auth is complete and user is authenticated
+    if (!authLoading && isAuthenticated) {
+      loadClients();
+    }
+  }, [page, limit, searchQuery, activeTab, authLoading, isAuthenticated]);
 
   // Handle URL parameters for opening specific client
   useEffect(() => {
@@ -76,48 +82,47 @@ export default function Clients() {
   const loadClients = async () => {
     setIsLoading(true);
     try {
-      const params: any = {
+      // Call direct Supabase function (no pagination support due to RLS limitations)
+      let data = await getClients();
+      
+      // Filter by type
+      data = data.filter((client: any) => {
+        if (activeTab === 'customers') {
+          return client.client_type === 'customer' || client.client_type === 'both';
+        } else {
+          return client.client_type === 'supplier' || client.client_type === 'both';
+        }
+      });
+      
+      // Filter by search query
+      if (searchQuery) {
+        const query = searchQuery.toLowerCase();
+        data = data.filter((client: any) => 
+          client.name.toLowerCase().includes(query) ||
+          client.contact_name?.toLowerCase().includes(query) ||
+          client.location?.toLowerCase().includes(query)
+        );
+      }
+      
+      // Calculate pagination
+      const total = data.length;
+      const totalPages = Math.ceil(total / limit);
+      const startIdx = (page - 1) * limit;
+      const endIdx = startIdx + limit;
+      const paginatedData = data.slice(startIdx, endIdx);
+      
+      setClients(paginatedData);
+      setPagination({
         page,
         limit,
-        client_type: activeTab === 'customers' ? 'customer' : 'supplier',
-      };
-      if (searchQuery) {
-        params.search = searchQuery;
-      }
-      
-      const response = await api.getClients(params);
-      
-      // Handle both paginated and non-paginated responses (backward compatibility)
-      if (response.data && response.pagination) {
-        setClients(response.data);
-        setPagination(response.pagination);
-      } else if (Array.isArray(response)) {
-        // Fallback for non-paginated response
-        setClients(response);
-        setPagination({
-          page: 1,
-          limit: response.length,
-          total: response.length,
-          totalPages: 1,
-          hasNext: false,
-          hasPrev: false,
-        });
-      } else {
-        setClients([]);
-        setPagination({
-          page: 1,
-          limit: 20,
-          total: 0,
-          totalPages: 0,
-          hasNext: false,
-          hasPrev: false,
-        });
-      }
+        total,
+        totalPages,
+        hasNext: page < totalPages,
+        hasPrev: page > 1,
+      });
     } catch (error: any) {
       console.error('Failed to load clients:', error);
-      if (error?.message !== 'Failed to fetch') {
-        toast.error('Failed to load clients');
-      }
+      toast.error(error.message || 'Failed to load clients');
       setClients([]);
       setPagination({
         page: 1,
@@ -157,7 +162,7 @@ export default function Clients() {
 
     setIsSubmitting(true);
     try {
-      await api.createClient(formData);
+      await createClient(formData);
       toast.success('Client created successfully');
       setCreateModalOpen(false);
       resetForm();
@@ -192,7 +197,7 @@ export default function Clients() {
 
     setIsSubmitting(true);
     try {
-      await api.updateClient(editingClient.id, formData);
+      await updateClient(editingClient.id, formData);
       toast.success('Client updated successfully');
       setEditModalOpen(false);
       resetForm();
@@ -208,7 +213,7 @@ export default function Clients() {
     if (!confirm(`Are you sure you want to delete ${client.name}?`)) return;
 
     try {
-      await api.deleteClient(client.id);
+      await deleteClient(client.id);
       toast.success('Client deleted');
       loadClients();
     } catch (error: any) {

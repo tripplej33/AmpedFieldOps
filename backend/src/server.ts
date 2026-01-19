@@ -13,28 +13,18 @@ import { StorageFactory } from './lib/storage/StorageFactory';
 import { resolveStoragePath } from './lib/storage/pathUtils';
 import { authenticate } from './middleware/auth';
 
-// Import routes
-import authRoutes from './routes/auth';
-import usersRoutes from './routes/users';
-import clientsRoutes from './routes/clients';
-import projectsRoutes from './routes/projects';
-import timesheetsRoutes from './routes/timesheets';
-import costCentersRoutes from './routes/costCenters';
-import activityTypesRoutes from './routes/activityTypes';
+// Import routes (legacy CRUD routes moved to Supabase direct queries)
 import searchRoutes from './routes/search';
 import setupRoutes from './routes/setup';
 import xeroRoutes from './routes/xero';
-import settingsRoutes from './routes/settings';
-import permissionsRoutes from './routes/permissions';
-import rolePermissionsRoutes from './routes/role-permissions';
-import dashboardRoutes from './routes/dashboard';
 import healthRoutes from './routes/health';
 import troubleshooterRoutes from './routes/troubleshooter';
-import filesRoutes from './routes/files';
-import safetyDocumentsRoutes from './routes/safetyDocuments';
-import backupsRoutes from './routes/backups';
-import documentScanRoutes from './routes/documentScan';
 import { createProxyMiddleware } from 'http-proxy-middleware';
+
+// Initialize Supabase client on startup
+console.log('[Server] Loading Supabase client...');
+import { supabase as supabaseInitTest } from './db/supabase';
+console.log('[Server] Supabase client loaded:', supabaseInitTest ? 'SUCCESS' : 'NULL');
 
 const app = express();
 
@@ -196,27 +186,12 @@ app.get('/uploads/:path*', authenticate, async (req, res, next) => {
 // Apply global rate limiting to all API routes
 app.use('/api', globalApiRateLimit);
 
-// API Routes
-app.use('/api/auth', authRoutes);
-app.use('/api/users', usersRoutes);
-app.use('/api/clients', clientsRoutes);
-app.use('/api/projects', projectsRoutes);
-app.use('/api/timesheets', timesheetsRoutes);
-app.use('/api/cost-centers', costCentersRoutes);
-app.use('/api/activity-types', activityTypesRoutes);
+// API Routes (legacy CRUD routes now handled via Supabase direct queries from frontend)
 app.use('/api/search', searchRoutes);
 app.use('/api/setup', setupRoutes);
 app.use('/api/xero', xeroRoutes);
-app.use('/api/settings', settingsRoutes);
-app.use('/api/permissions', permissionsRoutes);
-app.use('/api/role-permissions', rolePermissionsRoutes);
-app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/health', healthRoutes);
 app.use('/api/troubleshooter', troubleshooterRoutes);
-app.use('/api/files', filesRoutes);
-app.use('/api/safety-documents', safetyDocumentsRoutes);
-app.use('/api/backups', backupsRoutes);
-app.use('/api/document-scan', documentScanRoutes);
 
 // Error handling middleware (must be last)
 app.use(errorHandler);

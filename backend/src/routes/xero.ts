@@ -5,7 +5,7 @@ import { env } from '../config/env';
 import { log } from '../lib/logger';
 import { ensureXeroTables } from '../db/ensureXeroTables';
 import { saveXeroToken, getValidXeroToken } from '../lib/xero/tokenManager';
-import { supabase as supabaseClient } from '../db/supabase';
+import { supabase as supabaseClient, getSupabaseClient } from '../db/supabase';
 import { fetchWithRateLimit } from '../lib/xero/rateLimiter';
 import { parseXeroError, getErrorMessage } from '../lib/xero/errorHandler';
 import { createPaymentInXero, storePayment, getPayments, CreatePaymentData } from '../lib/xero/payments';
@@ -52,24 +52,40 @@ import {
 
 const router = Router();
 
-// Middleware to disable all Xero endpoints
+// Middleware to selectively enable Xero endpoints during development
+// Allow certain endpoints for configuration and status checks
 router.use((req, res, next) => {
   // Allow callback endpoint for OAuth flow
   if (req.path === '/callback') {
     return next();
   }
   
-  // All other Xero endpoints are disabled
+  // Allow status and auth URL endpoints for UI configuration
+  if ((req.path === '/status' || req.path === '/auth/url') && req.method === 'GET') {
+    return next();
+  }
+  
+  // Allow storing Xero credentials from UI settings
+  if (req.path === '/credentials' && req.method === 'POST') {
+    return next();
+  }
+  
+  // All other Xero sync endpoints are disabled (invoke, sync, etc.)
+  // These will be enabled once single-org OAuth flow is complete
   return res.status(503).json({
-    error: 'Xero integration is not configured',
-    message: 'The Xero sync feature is currently disabled. Please configure Xero settings first.',
-    status: 'disabled'
+    error: 'Xero sync feature not yet enabled',
+    message: 'Xero integration is in Phase 2 setup. Status checks available; sync endpoints pending.',
+    status: 'phase_2_pending'
   });
 });
 
 // Get Xero credentials from Supabase settings table
 async function getXeroCredentials() {
-  const supabase = supabaseClient!;
+  const supabase = supabaseClient || getSupabaseClient();
+  if (!supabase) {
+    log.error('Supabase client unavailable while fetching Xero credentials');
+    return { clientId: '', clientSecret: '', redirectUri: '' };
+  }
   
   try {
     const { data: settings, error } = await supabase

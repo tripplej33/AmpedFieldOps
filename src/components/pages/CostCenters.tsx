@@ -23,6 +23,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { api } from '@/lib/api';
+import { getProjects } from '@/lib/supabaseQueries';
 import { CostCenter, Project } from '@/types';
 import { 
   Plus, 
@@ -79,9 +80,8 @@ export default function CostCenters() {
 
   const loadProjects = async () => {
     try {
-      const data = await api.getProjects();
-      const projectsList = data.data || (Array.isArray(data) ? data : []);
-      setProjects(Array.isArray(projectsList) ? projectsList.filter(p => p.id) : []);
+      const data = await getProjects();
+      setProjects(Array.isArray(data) ? data.filter(p => p.id) : []);
     } catch (error) {
       console.error('Failed to load projects:', error);
       toast.error('Failed to load projects');

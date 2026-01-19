@@ -25,7 +25,7 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
     if (!type || type === 'clients') {
       const { data: clients } = await supabase
         .from('clients')
-        .select('id, name, contact_name, email, location, status')
+        .select('id, name, contact_name, email, status')
         .or(`name.ilike.${searchTerm},contact_name.ilike.${searchTerm},address.ilike.${searchTerm},email.ilike.${searchTerm}`)
         .order('name', { ascending: true })
         .limit(searchLimit);
@@ -36,7 +36,7 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
     if (!type || type === 'projects') {
       const { data: projects } = await supabase
         .from('projects')
-        .select('id, code, name, status, clients(name)')
+        .select('id, name, status, clients(name)')
         .or(`name.ilike.${searchTerm},code.ilike.${searchTerm},description.ilike.${searchTerm}`)
         .order('created_at', { ascending: false })
         .limit(searchLimit);
@@ -54,7 +54,7 @@ router.get('/', authenticate, async (req: AuthRequest, res: Response) => {
 
       let query_builder = supabase
         .from('timesheets')
-        .select('id, date, hours, notes, projects(name), clients(name), users(name)')
+        .select('id, entry_date, hours, description, projects(name), users(name)')
         .or(`notes.ilike.${searchTerm}`);
 
       if (!canViewAll) {
